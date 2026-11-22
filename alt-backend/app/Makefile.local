@@ -53,7 +53,7 @@ lint:
 fmt:
 	@echo "Formatting code..."
 	@gofmt -w .
-	@goimports -w . 2>/dev/null || echo "goimports not installed, run: go install golang.org/x/tools/cmd/goimports@latest"
+	@goimports -w . 2>/dev/null || echo "goimports not installed, run: go install golang.org/x/tools/cmd/goimports@v0.42.0"
 	@echo "✅ Code formatting completed"
 
 # Build the application

@@ -1,0 +1,45 @@
+---
+max_judgment_rules: 9
+---
+
+# Rule Ledger (CHECK-07)
+
+This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE.md`, and `.agents/rules/` with its concrete mechanical enforcement mechanism (or marks it as `判断` when human/agent judgment is still required).
+
+`scripts/agent-harness/harness_selfcheck.py` (check **H11**) verifies that:
+- Every non-`判断` row references at least one existing repository script/test path or `ast-grep:<id>` rule under `scripts/lint/ast-grep/rules/`.
+- Every `C-NN` corpus reference and `ADR-NNNNNN` reference in `由来` exists in the repository.
+- The number of `判断` rows equals `max_judgment_rules` monotonically: adding new `判断` rules is blocked, and mechanizing a rule requires lowering `max_judgment_rules` in the same commit.
+
+| ID | 規則 | 強制手段 | 由来 |
+|---|---|---|---|
+| R-01 | `.env`・`.kisage/*`・`secrets`・鍵ファイル・追跡済み migration を直接編集しない | `scripts/agent-harness/guard_protected_paths.py` | CLAUDE.md / AGENTS.md |
+| R-02 | Knowledge projector はイベント時刻（`OccurredAt`）とペイロードのみを使い、`time.Now()` や `GetLatest*` を呼ばない | `scripts/agent-harness/guard_event_time.py` | ADR-000447 / ADR-000468 |
+| R-03 | 破壊的 Docker 操作や本番 Compose（`-p alt`）の再作成・停止は明示的承認なしに実行しない | `scripts/agent-harness/guard_ops_commands.py` | .agents/rules/deployment.md |
+| R-04 | `CLAUDE.md` と `AGENTS.md` の共有ブロックを一致させ、文書サイズ上限・スキル解決・失敗の型台帳を維持する | `scripts/agent-harness/harness_selfcheck.py` | AGENTS.md / CLAUDE.md |
+| R-05 | エージェント作業は `allowed_paths`・ファイル/関数上限・許可ルールで境界化し、3 項目ハンドオフを必須とする | `scripts/agent-harness/task_packet.py` | .agents/rules/task-packet.md |
+| R-06 | コード変更前に ADR preflight を実行し、確定済み ADR は追記専用（置換は新 ADR）とする | `.agents/skills/adr-preflight/scripts/adr_preflight.py`, `scripts/agent-harness/adr_supersede_gate.py`, `scripts/lint/adr.sh` | CLAUDE.md / AGENTS.md |
+| R-07 | Clean Architecture の内向き依存境界（`Handler → Usecase → Port → Gateway → Driver`）を遵守する | `.agents/skills/clean-architecture/scripts/check_layers.sh` | AGENTS.md / CLAUDE.md |
+| R-08 | 破壊的 DB マイグレーションを無承認で導入しない | `scripts/agent-harness/migration_destructive_gate.py` | scripts/lint/harness.sh |
+| R-09 | ポストモーテムのアクションアイテムを未完了のまま持ち越さない | `scripts/agent-harness/postmortem_ledger.py` | scripts/lint/harness.sh |
+| R-10 | 追跡ファイルの 0 バイト破壊、未許可の 0 バイト未追跡ファイル、およびバイナリ成果物（ELF/Mach-O/PE）の残留を禁止する | `scripts/lint/check_worktree_hygiene.py` | C-19 / C-20 |
+| R-11 | リント実行前にディスク空き容量下限を検証し、`LINT_POLICY`（`fix-existing` / `block-new`）を伝播する | `scripts/lint/run.sh` | C-19 |
+| R-12 | ADR 根拠のない包括的 lint 抑制（`noqa` / `nolint` / `#nosec` / 設定 allowlist 拡張）を禁止する | `scripts/lint/check_suppressions.py` | C-22 |
+| R-13 | 静的スキャナの 0 ファイル通過（サイレントパス）をカナリア監査で検知する | `scripts/lint/canary_audit.py` | C-21 |
+| R-14 | 各 Python サービスのランタイム・ターゲットバージョン整合性を維持し非互換構文の混入を防ぐ | `scripts/lint/check_python_versions.py` | C-05 |
+| R-15 | `deploy/desired-env.lkal` を検証し外部 API レート制限（`RATE_LIMIT_EXTERNAL_API_INTERVAL >= 5s`）を保証する | `scripts/kisage-env.py` | ADR-000982 |
+| R-16 | 認証トークン直書きおよび昇格権限 CI トリガ（`pull_request_target` / `workflow_run`）を禁止する | `scripts/check-no-service-token.sh`, `.github/workflows/scripts/workflow-safety-check.py` | ADR-000763 |
+| R-17 | Protobuf 契約・破壊的変更・allowlist 同期および Pact CDC 契約を検証する | `scripts/lint/proto.sh`, `scripts/pact-check.sh` | ADR-000928 |
+| R-18 | Compose include 構成および Go/Python 生成ヘルパの同期ズレを検出する | `scripts/lint/compose.sh`, `scripts/codegen/sync_go_canonical.py`, `scripts/codegen/pki_py/sync_python_pki.py` | AGENTS.md / CLAUDE.md |
+| R-19 | Go の構造ガードレール（正規 HTTP サーバ、定数化された FileMode / BodyLimit、安全な proto/Connect nil ガード）を遵守する | `ast-grep:go-no-raw-http-server`, `ast-grep:go-no-octal-filemode-literal`, `ast-grep:go-no-inline-body-limit`, `ast-grep:go-no-manual-connect-msg-nil-guard`, `ast-grep:go-no-unguarded-response-proto-getter` | C-04 / C-11 / C-12 / C-15 |
+| R-20 | Python・Rust の構造ガードレール（`finally` での手動 `aclose()` 禁止、`sys.modules` 直接破壊禁止、サイレント `Option<Regex>` 禁止）を遵守する | `ast-grep:python-no-manual-aclose-in-finally`, `ast-grep:python-no-direct-sys-modules-assign`, `ast-grep:rust-no-silent-option-regex` | C-07 / C-08 / C-17 |
+| R-21 | 失敗コーパス（`C-01`..`C-22`）による回帰検証を維持し捕捉率低下を防ぐ | `scripts/harness/corpus.py` | C-01 / C-09 / C-21 / C-22 |
+| R-22 | 実装前に失敗テストを書く（TDD: RED → GREEN → REFACTOR） | 判断（実装前の RED 確認はプロセス規律） | AGENTS.md / CLAUDE.md |
+| R-23 | Go / Rust / TS 変更時は `--build` 付きでコンパイル済みサービスを再ビルドする | 判断（ビルド反映手順の確認） | AGENTS.md / CLAUDE.md |
+| R-24 | 変更前に `<service>/CLAUDE.md` を確認し、修復 PR では正規契約（`docs/plan/knowledge-trail-core-concept.md`）を再読込する | 判断（着手時の文脈ロードで確認） | ADR-000940 |
+| R-25 | 未配線 DI 依存のサイレントフォールバックを禁止し、起動ログとビジネス経路での panic を強制する | 判断（コードレビューと failure-pattern-review で確認） | ADR-000928 |
+| R-26 | 必須設定欠落時は起動時に非ゼロ終了（fail-fast）し、無効化は明示設定とする | 判断（起動処理レビューで確認） | AGENTS.md / CLAUDE.md |
+| R-27 | Stream コンシューマは永続化後に XACK し、XAUTOCLAIM 回収ループを実装する | 判断（コンシューマ実装レビューで確認） | AGENTS.md / CLAUDE.md |
+| R-28 | ロジック改変を伴う一括 autofix（`golangci-lint --fix`, `cargo clippy --fix`, `ruff --unsafe-fixes`）を実行しない | 判断（GUARD-01、タスクパケット規律で運用） | C-01 / C-02 / C-03 |
+| R-29 | 検証・ビルドはフォアグラウンド同期実行とし、歴史的資産 `stopped-using-k8s/` は明示指示なしに変更しない | 判断（実行手順と変更スコープ確認） | .agents/rules/task-packet.md |
+| R-30 | `alt-backend/app` の 4 バイナリ（`backend` / `harvester` / `notifier` / `datahub`）責務分離を維持する | 判断（設計・変更レビューで確認） | ADR-000954 |

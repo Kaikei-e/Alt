@@ -17,6 +17,8 @@ Run:
 from __future__ import annotations
 
 import argparse
+import datetime
+import hashlib
 import io
 import pathlib
 import re
@@ -25,6 +27,7 @@ import subprocess
 import sys
 import tokenize
 import tomllib
+from collections import Counter
 from dataclasses import dataclass
 
 MIN_REASON_LENGTH = 5
@@ -98,14 +101,36 @@ FROZEN_CARGO_BASELINES: dict[tuple[str, str], frozenset[str]] = {
 
 ADR_ID_RE = re.compile(r"\bADR-(\d{6})\b")
 ADR_EXACT_RE = re.compile(r"^ADR-(\d{6})$")
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+EXPIRES_INLINE_RE = re.compile(r"\bexpires\s*[:=]\s*([^\s),;\]]+)", re.IGNORECASE)
 NON_REASON_CHARS_RE = re.compile(r"[\s#/*<>!:\-—.,;()\[\]{}]+")
+GENERATED_HEADER_RE = re.compile(r"Code generated .* DO NOT EDIT\.?", re.IGNORECASE)
+GENERATED_HEADER_LINES = 40
 
 PY_FILE_NOQA_RE = re.compile(r"^#\s*(?:ruff|flake8)\s*:\s*noqa\b(.*)$", re.IGNORECASE)
 PY_INLINE_NOQA_RE = re.compile(r"#\s*noqa\b(.*)$", re.IGNORECASE)
 PY_NOQA_CODES_RE = re.compile(
-    r"^:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)(?:$|[\s#\-—(;])",
+    r"^:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)(?:$|[\s#\-—(;:])",
 )
 PY_TRAILING_BAD_CODE_RE = re.compile(r",\s*(?:ALL|\*)", re.IGNORECASE)
+PY_NOSEC_RE = re.compile(r"#\s*nosec\b(.*)$", re.IGNORECASE)
+PY_NOSEC_B608_RE = re.compile(r"\bB608\b", re.IGNORECASE)
+PY_SECONDARY_DIRECTIVE_RE = re.compile(
+    r"#\s*(?:nosec|type:\s*ignore|pyright:\s*ignore|pyrefly:\s*ignore)\b.*$",
+    re.IGNORECASE,
+)
+
+SQL_SUPPRESSION_CODES = frozenset({"S608", "G201", "G202", "B608"})
+SQL_FORBIDDEN_VALUE_RE = re.compile(r"(?:\bvalue\b|値)", re.IGNORECASE)
+SQL_FORBIDDEN_UNTRUSTED_RE = re.compile(r"(?:\buntrusted\b|\bexternal\b|信頼境界外)", re.IGNORECASE)
+SQL_ALLOWED_KIND_RE = re.compile(
+    r"(?:\bidentifier\b|識別子|\bnot[-_\s]?sql\b|非\s*SQL)",
+    re.IGNORECASE,
+)
+SQL_ALLOWED_TRUST_RE = re.compile(
+    r"(?:\btrusted\b|\binternal\b|\bconstant\b|\ballowlist\b|信頼境界内)",
+    re.IGNORECASE,
+)
 
 GO_NOLINT_RE = re.compile(
     r"^(?://|/\*)\s*nolint(?::\s*([A-Za-z0-9_\-]+(?:\s*,\s*[A-Za-z0-9_\-]+)*)\s*,?)?(?=$|[\s*/])(.*)$",
@@ -181,8 +206,53 @@ class _GoNolintCtx:
     trailing: str
 
 
+@dataclass(frozen=True)
+class _BroadCtx:
+    rel_path: str
+    line_no: int
+    directive_desc: str
+    context_text: str
+
+
+PythonNoqaKey = tuple[str, tuple[str, ...], str]
+
+
+def default_today() -> datetime.date:
+    """Return today's UTC date for deterministic expiration checks."""
+    return datetime.datetime.now(tz=datetime.UTC).date()
+
+
+def _parse_iso_date(raw: str) -> datetime.date | None:
+    cleaned = raw.strip()
+    if not ISO_DATE_RE.match(cleaned):
+        return None
+    try:
+        return datetime.date.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+
+def normalize_source_line(line: str) -> str:
+    """Collapse internal and surrounding whitespace for stable line fingerprinting."""
+    return " ".join(line.split())
+
+
+def line_fingerprint_sha256(line: str) -> str:
+    """Return SHA-256 hex digest of a whitespace-normalized source line."""
+    return hashlib.sha256(normalize_source_line(line).encode("utf-8")).hexdigest()
+
+
+def is_generated_source_text(text: str) -> bool:
+    """Return True if the first 40 lines contain a standard DO NOT EDIT header."""
+    for line in text.splitlines()[:GENERATED_HEADER_LINES]:
+        if GENERATED_HEADER_RE.search(line):
+            return True
+    return False
+
+
 def _reason_len(text: str) -> int:
     cleaned = ADR_ID_RE.sub("", text)
+    cleaned = EXPIRES_INLINE_RE.sub("", cleaned)
     cleaned = NON_REASON_CHARS_RE.sub("", cleaned)
     return len(cleaned)
 
@@ -208,11 +278,60 @@ def _strip_comment_delimiters(raw: str) -> str:
     return text.strip()
 
 
+def _validate_ledger_expires(
+    entry: dict[str, object],
+    label: str,
+    allowlist_rel: str,
+    today: datetime.date,
+) -> list[Violation]:
+    expires = entry.get("expires")
+    if expires is None or (isinstance(expires, str) and not expires.strip()):
+        return [
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.missing-expires",
+                f"{label}: missing required 'expires = \"YYYY-MM-DD\"'",
+            )
+        ]
+    if not isinstance(expires, str):
+        return [
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.invalid",
+                f"{label}: 'expires' must be a YYYY-MM-DD string",
+            )
+        ]
+    exp_date = _parse_iso_date(expires)
+    if exp_date is None:
+        return [
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.invalid",
+                f"{label}: invalid 'expires' date {expires!r} (expected YYYY-MM-DD)",
+            )
+        ]
+    if exp_date < today:
+        return [
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.expired",
+                f"{label}: suppression expired on {exp_date.isoformat()} "
+                f"(today is {today.isoformat()})",
+            )
+        ]
+    return []
+
+
 def _validate_ledger_metadata(
     entry: dict[str, object],
     label: str,
     allowlist_rel: str,
     repo_root: pathlib.Path,
+    today: datetime.date,
 ) -> list[Violation]:
     violations: list[Violation] = []
     reason = entry.get("reason")
@@ -225,6 +344,8 @@ def _validate_ledger_metadata(
                 f"{label}: missing or too-short 'reason' (>= {MIN_REASON_LENGTH} non-space chars)",
             )
         )
+
+    violations.extend(_validate_ledger_expires(entry, label, allowlist_rel, today))
 
     status = entry.get("status")
     adr = entry.get("adr")
@@ -277,11 +398,12 @@ def _load_bandit_entries(
     allowlist_rel: str,
     repo_root: pathlib.Path,
     violations: list[Violation],
+    today: datetime.date,
 ) -> dict[str, BanditAllowEntry]:
     result: dict[str, BanditAllowEntry] = {}
     for idx, entry in enumerate(raw_entries):
         label = f"bandit[{idx}]"
-        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root))
+        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root, today))
         path_val = entry.get("path")
         skips = entry.get("skips", [])
         exclude_dirs = entry.get("exclude_dirs", [])
@@ -326,11 +448,12 @@ def _load_golangci_entries(
     allowlist_rel: str,
     repo_root: pathlib.Path,
     violations: list[Violation],
+    today: datetime.date,
 ) -> dict[str, tuple[GolangciExclusionEntry, ...]]:
     grouped: dict[str, list[GolangciExclusionEntry]] = {}
     for idx, entry in enumerate(raw_entries):
         label = f"golangci_exclusions[{idx}]"
-        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root))
+        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root, today))
         config = entry.get("config", ".golangci.yml")
         linters = entry.get("linters", [])
         if not isinstance(config, str) or not isinstance(linters, list):
@@ -378,11 +501,12 @@ def _load_cargo_entries(
     allowlist_rel: str,
     repo_root: pathlib.Path,
     violations: list[Violation],
+    today: datetime.date,
 ) -> dict[tuple[str, str], frozenset[str]]:
     result: dict[tuple[str, str], frozenset[str]] = {}
     for idx, entry in enumerate(raw_entries):
         label = f"cargo_lint_allows[{idx}]"
-        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root))
+        violations.extend(_validate_ledger_metadata(entry, label, allowlist_rel, repo_root, today))
         path_val = entry.get("path")
         section = entry.get("section")
         allows = entry.get("allows", [])
@@ -419,8 +543,11 @@ def _load_cargo_entries(
 def load_allowlist(
     allowlist_path: pathlib.Path,
     repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
 ) -> tuple[Allowlist, list[Violation]]:
     """Load and validate the frozen suppression allowlist TOML file."""
+    ref_today = today if today is not None else default_today()
     data = tomllib.loads(allowlist_path.read_text(encoding="utf-8"))
     try:
         rel = allowlist_path.resolve().relative_to(repo_root.resolve()).as_posix()
@@ -445,16 +572,25 @@ def load_allowlist(
                 )
             )
         else:
-            violations.extend(_validate_ledger_metadata(ruff_cfg, "ruff", rel, repo_root))
+            violations.extend(
+                _validate_ledger_metadata(ruff_cfg, "ruff", rel, repo_root, ref_today)
+            )
 
-    bandit = _load_bandit_entries(data.get("bandit", []), rel, repo_root, violations)
+    bandit = _load_bandit_entries(data.get("bandit", []), rel, repo_root, violations, ref_today)
     golangci = _load_golangci_entries(
         data.get("golangci_exclusions", []),
         rel,
         repo_root,
         violations,
+        ref_today,
     )
-    cargo = _load_cargo_entries(data.get("cargo_lint_allows", []), rel, repo_root, violations)
+    cargo = _load_cargo_entries(
+        data.get("cargo_lint_allows", []),
+        rel,
+        repo_root,
+        violations,
+        ref_today,
+    )
     return (
         Allowlist(
             ruff_global_ignores=ruff_global,
@@ -777,21 +913,30 @@ def check_cargo_toml(rel_path: str, text: str, allowlist: Allowlist) -> list[Vio
     return violations
 
 
+def _extract_broad_expires_dates(context_text: str) -> list[datetime.date]:
+    dates: list[datetime.date] = []
+    for raw_token in EXPIRES_INLINE_RE.findall(context_text):
+        parsed = _parse_iso_date(raw_token.rstrip("),.;]}"))
+        if parsed is not None:
+            dates.append(parsed)
+    return dates
+
+
 def _check_broad_suppression(
-    rel_path: str,
-    line_no: int,
-    directive_desc: str,
-    context_text: str,
+    ctx: _BroadCtx,
     repo_root: pathlib.Path,
+    today: datetime.date | None = None,
 ) -> list[Violation]:
-    adr_matches = ADR_ID_RE.findall(context_text)
+    ref_today = today if today is not None else default_today()
+    adr_matches = ADR_ID_RE.findall(ctx.context_text)
     if not adr_matches:
         return [
             Violation(
-                rel_path,
-                line_no,
+                ctx.rel_path,
+                ctx.line_no,
                 "source.broad.missing-adr",
-                f"{directive_desc} requires an ADR-NNNNNN reference and reason comment",
+                f"{ctx.directive_desc} requires an ADR-NNNNNN reference, reason comment, "
+                f"and 'expires: YYYY-MM-DD'",
             )
         ]
     violations: list[Violation] = []
@@ -800,23 +945,145 @@ def _check_broad_suppression(
         if not adr_path.is_file():
             violations.append(
                 Violation(
-                    rel_path,
-                    line_no,
+                    ctx.rel_path,
+                    ctx.line_no,
                     "source.broad.nonexistent-adr",
-                    f"{directive_desc} cites ADR-{adr_num} but docs/ADR/{adr_num}.md does not exist",
+                    f"{ctx.directive_desc} cites ADR-{adr_num} but docs/ADR/{adr_num}.md does not exist",
                 )
             )
-    if _reason_len(context_text) < MIN_REASON_LENGTH:
+    if _reason_len(ctx.context_text) < MIN_REASON_LENGTH:
+        violations.append(
+            Violation(
+                ctx.rel_path,
+                ctx.line_no,
+                "source.broad.missing-reason",
+                f"{ctx.directive_desc} requires a reason comment (>= {MIN_REASON_LENGTH} non-space "
+                f"chars alongside ADR-NNNNNN)",
+            )
+        )
+    exp_dates = _extract_broad_expires_dates(ctx.context_text)
+    if not exp_dates:
+        violations.append(
+            Violation(
+                ctx.rel_path,
+                ctx.line_no,
+                "source.broad.missing-expires",
+                f"{ctx.directive_desc} requires 'expires: YYYY-MM-DD' in comment context",
+            )
+        )
+    elif min(exp_dates) < ref_today:
+        earliest = min(exp_dates)
+        violations.append(
+            Violation(
+                ctx.rel_path,
+                ctx.line_no,
+                "source.broad.expired",
+                f"{ctx.directive_desc} expired on {earliest.isoformat()} "
+                f"(today is {ref_today.isoformat()})",
+            )
+        )
+    return violations
+
+
+def extract_python_noqa_reason(tail: str) -> str:
+    """Extract human reason text following '# noqa: CODE(S)' after removing secondary directives."""
+    cleaned = PY_SECONDARY_DIRECTIVE_RE.sub("", tail).strip()
+    cleaned = re.sub(r"^(?:--|—|-|#|:|;|\s)+", "", cleaned).strip()
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
+def check_sql_suppression_reason(
+    rel_path: str,
+    line_no: int,
+    codes: tuple[str, ...],
+    reason: str,
+) -> list[Violation]:
+    """Enforce SQL kind and trust-boundary classification on S608/G201/G202/B608 suppressions."""
+    sql_codes = [c for c in codes if c.upper() in SQL_SUPPRESSION_CODES]
+    if not sql_codes:
+        return []
+    label = ",".join(sql_codes)
+    violations: list[Violation] = []
+    if SQL_FORBIDDEN_VALUE_RE.search(reason):
         violations.append(
             Violation(
                 rel_path,
                 line_no,
-                "source.broad.missing-reason",
-                f"{directive_desc} requires a reason comment (>= {MIN_REASON_LENGTH} non-space "
-                f"chars alongside ADR-NNNNNN)",
+                "source.sql.value-interpolation-forbidden",
+                f"SQL suppression ({label}) forbids value interpolation; use bind parameters",
+            )
+        )
+    elif not SQL_ALLOWED_KIND_RE.search(reason):
+        violations.append(
+            Violation(
+                rel_path,
+                line_no,
+                "source.sql.missing-kind",
+                f"SQL suppression ({label}) reason must classify kind "
+                f"(identifier/識別子 or not-sql/非SQL)",
+            )
+        )
+    if SQL_FORBIDDEN_UNTRUSTED_RE.search(reason):
+        violations.append(
+            Violation(
+                rel_path,
+                line_no,
+                "source.sql.untrusted-boundary-forbidden",
+                f"SQL suppression ({label}) forbids untrusted/external trust boundary",
+            )
+        )
+    elif not SQL_ALLOWED_TRUST_RE.search(reason):
+        violations.append(
+            Violation(
+                rel_path,
+                line_no,
+                "source.sql.missing-trust-boundary",
+                f"SQL suppression ({label}) reason must state trust boundary "
+                f"(trusted/internal/constant/allowlist/信頼境界内)",
             )
         )
     return violations
+
+
+def load_python_noqa_baseline(baseline_path: pathlib.Path) -> dict[PythonNoqaKey, int]:
+    """Load frozen multiplicity ledger of pre-existing reasonless Python # noqa occurrences."""
+    data = tomllib.loads(baseline_path.read_text(encoding="utf-8"))
+    result: dict[PythonNoqaKey, int] = {}
+    for entry in data.get("entries", []):
+        if not isinstance(entry, dict):
+            continue
+        path_val = entry.get("path")
+        codes_val = entry.get("codes")
+        sha_val = entry.get("line_sha256")
+        count_val = entry.get("count", 1)
+        if (
+            isinstance(path_val, str)
+            and isinstance(codes_val, list)
+            and isinstance(sha_val, str)
+            and isinstance(count_val, int)
+            and count_val > 0
+        ):
+            codes = tuple(sorted({str(c).strip().upper() for c in codes_val if str(c).strip()}))
+            key: PythonNoqaKey = (path_val, codes, sha_val)
+            result[key] = result.get(key, 0) + count_val
+    return result
+
+
+def _tokenize_python_comments(text: str) -> list[tuple[int, str]]:
+    try:
+        return [
+            (tok.start[0], tok.string)
+            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
+            if tok.type == tokenize.COMMENT
+        ]
+    except (tokenize.TokenError, IndentationError):
+        return [
+            (idx, line.lstrip())
+            for idx, line in enumerate(text.splitlines(), 1)
+            if line.lstrip().startswith("#")
+        ]
 
 
 def _preceding_comment_text(comment_by_line: dict[int, str], start_line: int) -> str:
@@ -840,23 +1107,61 @@ def _python_file_noqa_trailing_reason(rest: str) -> str:
     return stripped
 
 
-def check_python_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[Violation]:
-    """Enforce Python # ruff: noqa, # flake8: noqa, and inline # noqa rules."""
-    try:
-        comments = [
-            (tok.start[0], tok.string)
-            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
-            if tok.type == tokenize.COMMENT
+def _check_python_inline_noqa(
+    rel_path: str,
+    line_no: int,
+    rest: str,
+    src_line: str,
+    state: tuple[dict[PythonNoqaKey, int], Counter[PythonNoqaKey]],
+) -> list[Violation]:
+    codes_match = PY_NOQA_CODES_RE.match(rest)
+    if not codes_match or PY_TRAILING_BAD_CODE_RE.search(rest):
+        return [
+            Violation(
+                rel_path,
+                line_no,
+                "source.python.noqa-missing-code",
+                "inline '# noqa' must specify concrete rule code(s) (e.g. '# noqa: S603')",
+            )
         ]
-    except (tokenize.TokenError, IndentationError):
-        comments = [
-            (idx, line.lstrip())
-            for idx, line in enumerate(text.splitlines(), 1)
-            if line.lstrip().startswith("#")
-        ]
-
-    comment_by_line = {ln: _strip_comment_delimiters(raw) for ln, raw in comments}
+    codes = tuple(sorted({c.strip().upper() for c in codes_match.group(1).split(",") if c.strip()}))
+    tail = rest[codes_match.end(1) :]
+    reason = extract_python_noqa_reason(tail)
     violations: list[Violation] = []
+    baseline, seen_reasonless = state
+    if not _has_sufficient_reason(reason):
+        key: PythonNoqaKey = (rel_path, codes, line_fingerprint_sha256(src_line))
+        seen_reasonless[key] += 1
+        if seen_reasonless[key] > baseline.get(key, 0):
+            violations.append(
+                Violation(
+                    rel_path,
+                    line_no,
+                    "source.python.noqa-missing-reason",
+                    f"inline '# noqa: {', '.join(codes)}' requires a reason comment "
+                    f"(e.g. '-- <reason>' or '# <reason>', >= {MIN_REASON_LENGTH} non-space chars)",
+                )
+            )
+    violations.extend(check_sql_suppression_reason(rel_path, line_no, codes, reason))
+    return violations
+
+
+def check_python_source(
+    rel_path: str,
+    text: str,
+    repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+    python_noqa_baseline: dict[PythonNoqaKey, int] | None = None,
+) -> list[Violation]:
+    """Enforce Python # ruff: noqa, # flake8: noqa, inline # noqa, and SQL # nosec rules."""
+    comments = _tokenize_python_comments(text)
+    lines = text.splitlines()
+    comment_by_line = {ln: _strip_comment_delimiters(raw) for ln, raw in comments}
+    baseline = python_noqa_baseline if python_noqa_baseline is not None else {}
+    seen_reasonless: Counter[PythonNoqaKey] = Counter()
+    violations: list[Violation] = []
+
     for line_no, raw in comments:
         file_match = PY_FILE_NOQA_RE.match(raw)
         if file_match:
@@ -865,27 +1170,32 @@ def check_python_source(rel_path: str, text: str, repo_root: pathlib.Path) -> li
             context = f"{preceding}\n{trailing}".strip()
             violations.extend(
                 _check_broad_suppression(
-                    rel_path,
-                    line_no,
-                    "file-level Python noqa",
-                    context,
+                    _BroadCtx(rel_path, line_no, "file-level Python noqa", context),
                     repo_root,
+                    today,
                 )
             )
             continue
 
         inline_match = PY_INLINE_NOQA_RE.search(raw)
         if inline_match:
-            rest = inline_match.group(1)
-            if not PY_NOQA_CODES_RE.match(rest) or PY_TRAILING_BAD_CODE_RE.search(rest):
-                violations.append(
-                    Violation(
-                        rel_path,
-                        line_no,
-                        "source.python.noqa-missing-code",
-                        "inline '# noqa' must specify concrete rule code(s) (e.g. '# noqa: S603')",
-                    )
+            src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
+            violations.extend(
+                _check_python_inline_noqa(
+                    rel_path,
+                    line_no,
+                    inline_match.group(1),
+                    src_line,
+                    (baseline, seen_reasonless),
                 )
+            )
+            continue
+
+        nosec_match = PY_NOSEC_RE.search(raw)
+        if nosec_match and PY_NOSEC_B608_RE.search(nosec_match.group(1)):
+            after_b608 = PY_NOSEC_B608_RE.sub("", nosec_match.group(1), count=1)
+            reason = re.sub(r"^(?:--|—|-|#|:|;|\s)+", "", after_b608).strip()
+            violations.extend(check_sql_suppression_reason(rel_path, line_no, ("B608",), reason))
     return violations
 
 
@@ -969,6 +1279,7 @@ def _check_go_nolint_comment(
     ctx: _GoNolintCtx,
     match: re.Match[str],
     repo_root: pathlib.Path,
+    today: datetime.date | None = None,
 ) -> list[Violation]:
     linters_raw = match.group(1)
     rest = match.group(2)
@@ -991,7 +1302,11 @@ def _check_go_nolint_comment(
         reason_part = _extract_go_nolint_reason(rest, ctx.trailing)
         combined = f"{ctx.preceding}\n{reason_part}".strip()
         desc = "file-level Go nolint" if ctx.before_package else "blanket Go nolint"
-        return _check_broad_suppression(ctx.rel_path, ctx.line_no, desc, combined, repo_root)
+        return _check_broad_suppression(
+            _BroadCtx(ctx.rel_path, ctx.line_no, desc, combined),
+            repo_root,
+            today,
+        )
 
     reason = _extract_go_nolint_reason(rest, ctx.trailing)
     if not _has_sufficient_reason(reason):
@@ -1022,7 +1337,8 @@ def _check_go_nosec_comment(rel_path: str, line_no: int, rest: str) -> list[Viol
                     f"(>= {MIN_REASON_LENGTH} non-space chars)",
                 )
             ]
-        return []
+        codes = tuple(re.findall(r"G\d{3}", with_reason.group(1)))
+        return check_sql_suppression_reason(rel_path, line_no, codes, reason)
     if GO_NOSEC_RULE_ONLY_RE.match(cleaned):
         return [
             Violation(
@@ -1043,7 +1359,13 @@ def _check_go_nosec_comment(rel_path: str, line_no: int, rest: str) -> list[Viol
     ]
 
 
-def check_go_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[Violation]:
+def check_go_source(
+    rel_path: str,
+    text: str,
+    repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+) -> list[Violation]:
     """Enforce Go //nolint and // #nosec governance rules."""
     comments = _scan_go_comments(text)
     comment_by_line: dict[int, str] = {}
@@ -1068,7 +1390,7 @@ def check_go_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[V
                 preceding=_preceding_comment_text(comment_by_line, start_line),
                 trailing=trailing,
             )
-            violations.extend(_check_go_nolint_comment(ctx, nolint_match, repo_root))
+            violations.extend(_check_go_nolint_comment(ctx, nolint_match, repo_root, today))
             continue
 
         nosec_match = GO_NOSEC_RE.match(raw)
@@ -1291,7 +1613,13 @@ def _rust_context_for_attr(tokens: list[_RustToken], attr_index: int) -> str:
     return "\n".join(parts)
 
 
-def check_rust_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[Violation]:
+def check_rust_source(
+    rel_path: str,
+    text: str,
+    repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+) -> list[Violation]:
     """Enforce Rust #![allow(...)] and mod-level #[allow(...)] governance."""
     tokens = _scan_rust_tokens(text)
     violations: list[Violation] = []
@@ -1300,11 +1628,14 @@ def check_rust_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list
             ctx = _rust_context_for_attr(tokens, idx)
             violations.extend(
                 _check_broad_suppression(
-                    rel_path,
-                    tok.start_line,
-                    "Rust crate/module inner #![allow(...)]",
-                    ctx,
+                    _BroadCtx(
+                        rel_path,
+                        tok.start_line,
+                        "Rust crate/module inner #![allow(...)]",
+                        ctx,
+                    ),
                     repo_root,
+                    today,
                 )
             )
         elif (
@@ -1315,11 +1646,14 @@ def check_rust_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list
             ctx = _rust_context_for_attr(tokens, idx)
             violations.extend(
                 _check_broad_suppression(
-                    rel_path,
-                    tok.start_line,
-                    "Rust module-level #[allow(...)] on mod",
-                    ctx,
+                    _BroadCtx(
+                        rel_path,
+                        tok.start_line,
+                        "Rust module-level #[allow(...)] on mod",
+                        ctx,
+                    ),
                     repo_root,
+                    today,
                 )
             )
     return violations
@@ -1412,48 +1746,63 @@ def _check_ts_biome_line(rel_path: str, line_no: int, rest: str) -> list[Violati
 
 
 def _check_ts_broad_directive(
-    rel_path: str,
-    line_no: int,
-    body: str,
+    ctx: _BroadCtx,
     preceding: str,
     repo_root: pathlib.Path,
+    today: datetime.date | None = None,
 ) -> list[Violation] | None:
+    body = ctx.context_text
     biome_all = TS_BIOME_ALL_RE.search(body)
     if biome_all:
         trailing = biome_all.group(1)
         if ":" in trailing:
             trailing = trailing.split(":", 1)[1]
         return _check_broad_suppression(
-            rel_path,
-            line_no,
-            "file-level biome-ignore-all",
-            f"{preceding}\n{trailing}".strip(),
+            _BroadCtx(
+                ctx.rel_path,
+                ctx.line_no,
+                "file-level biome-ignore-all",
+                f"{preceding}\n{trailing}".strip(),
+            ),
             repo_root,
+            today,
         )
     deno_file = TS_DENO_FILE_RE.search(body)
     if deno_file:
         return _check_broad_suppression(
-            rel_path,
-            line_no,
-            "file-level deno-lint-ignore-file",
-            f"{preceding}\n{deno_file.group(1)}".strip(),
+            _BroadCtx(
+                ctx.rel_path,
+                ctx.line_no,
+                "file-level deno-lint-ignore-file",
+                f"{preceding}\n{deno_file.group(1)}".strip(),
+            ),
             repo_root,
+            today,
         )
     eslint_broad = TS_ESLINT_BROAD_RE.search(body)
     if eslint_broad:
         trailing = eslint_broad.group(1)
         reason_part = trailing.split("--", 1)[1] if "--" in trailing else ""
         return _check_broad_suppression(
-            rel_path,
-            line_no,
-            "file/block-level eslint-disable",
-            f"{preceding}\n{reason_part}".strip(),
+            _BroadCtx(
+                ctx.rel_path,
+                ctx.line_no,
+                "file/block-level eslint-disable",
+                f"{preceding}\n{reason_part}".strip(),
+            ),
             repo_root,
+            today,
         )
     return None
 
 
-def check_ts_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[Violation]:
+def check_ts_source(
+    rel_path: str,
+    text: str,
+    repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+) -> list[Violation]:
     """Enforce Biome, Deno lint, and ESLint suppression governance."""
     is_svelte = rel_path.endswith(".svelte")
     comments = _scan_ts_comments(text, is_svelte=is_svelte)
@@ -1465,7 +1814,12 @@ def check_ts_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[V
         body = _strip_comment_delimiters(raw)
         preceding = _preceding_comment_text(comment_by_line, start_line)
 
-        broad_result = _check_ts_broad_directive(rel_path, start_line, body, preceding, repo_root)
+        broad_result = _check_ts_broad_directive(
+            _BroadCtx(rel_path, start_line, "", body),
+            preceding,
+            repo_root,
+            today,
+        )
         if broad_result is not None:
             violations.extend(broad_result)
             continue
@@ -1490,19 +1844,91 @@ def check_ts_source(rel_path: str, text: str, repo_root: pathlib.Path) -> list[V
     return violations
 
 
-def check_source_file(rel_path: str, text: str, repo_root: pathlib.Path) -> list[Violation]:
+def check_source_file(
+    rel_path: str,
+    text: str,
+    repo_root: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+    python_noqa_baseline: dict[PythonNoqaKey, int] | None = None,
+) -> list[Violation]:
     """Dispatch source-code suppression checks by file extension."""
     if is_excluded_source_path(rel_path):
         return []
     if rel_path.endswith(".py"):
-        return check_python_source(rel_path, text, repo_root)
+        return check_python_source(
+            rel_path,
+            text,
+            repo_root,
+            today=today,
+            python_noqa_baseline=python_noqa_baseline,
+        )
     if rel_path.endswith(".go"):
-        return check_go_source(rel_path, text, repo_root)
+        return check_go_source(rel_path, text, repo_root, today=today)
     if rel_path.endswith(".rs"):
-        return check_rust_source(rel_path, text, repo_root)
+        return check_rust_source(rel_path, text, repo_root, today=today)
     if rel_path.endswith(TS_EXTENSIONS):
-        return check_ts_source(rel_path, text, repo_root)
+        return check_ts_source(rel_path, text, repo_root, today=today)
     return []
+
+
+def collect_python_noqa_reasonless(repo_root: pathlib.Path) -> dict[PythonNoqaKey, int]:
+    """Collect all reasonless inline Python '# noqa: CODE' occurrences in the repo."""
+    counts: Counter[PythonNoqaKey] = Counter()
+    for rel_path in _git_ls_files(repo_root):
+        if not rel_path.endswith(".py") or is_excluded_source_path(rel_path):
+            continue
+        full_path = repo_root / rel_path
+        if not full_path.is_file():
+            continue
+        text = full_path.read_text(encoding="utf-8", errors="replace")
+        if is_generated_source_text(text):
+            continue
+        lines = text.splitlines()
+        for line_no, raw in _tokenize_python_comments(text):
+            if PY_FILE_NOQA_RE.match(raw):
+                continue
+            inline_match = PY_INLINE_NOQA_RE.search(raw)
+            if not inline_match:
+                continue
+            rest = inline_match.group(1)
+            codes_match = PY_NOQA_CODES_RE.match(rest)
+            if not codes_match or PY_TRAILING_BAD_CODE_RE.search(rest):
+                continue
+            codes = tuple(
+                sorted({c.strip().upper() for c in codes_match.group(1).split(",") if c.strip()})
+            )
+            reason = extract_python_noqa_reason(rest[codes_match.end(1) :])
+            if not _has_sufficient_reason(reason):
+                src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
+                key: PythonNoqaKey = (rel_path, codes, line_fingerprint_sha256(src_line))
+                counts[key] += 1
+    return dict(counts)
+
+
+def render_python_noqa_baseline_toml(counts: dict[PythonNoqaKey, int]) -> str:
+    """Serialize frozen reasonless Python # noqa baseline entries to deterministic TOML."""
+    out = [
+        "# Frozen baseline of pre-existing reasonless Python `# noqa: CODE` occurrences (CHECK-03).",
+        "# Auto-generated by `python3 scripts/lint/check_suppressions.py --update-python-noqa-baseline`.",
+        "# New reasonless `# noqa: CODE` lines are rejected; removing existing ones lowers this ledger.",
+        "",
+        "version = 1",
+        "",
+    ]
+    for (rel_path, codes, line_sha), count in sorted(counts.items()):
+        codes_toml = ", ".join(f'"{c}"' for c in codes)
+        out.extend(
+            [
+                "[[entries]]",
+                f'path = "{rel_path}"',
+                f"codes = [{codes_toml}]",
+                f'line_sha256 = "{line_sha}"',
+                f"count = {count}",
+                "",
+            ]
+        )
+    return "\n".join(out)
 
 
 def _git_ls_files(repo_root: pathlib.Path) -> list[str]:
@@ -1518,9 +1944,16 @@ def _git_ls_files(repo_root: pathlib.Path) -> list[str]:
     return sorted({line for line in proc.stdout.splitlines() if line})
 
 
-def check_repo(repo_root: pathlib.Path, allowlist_path: pathlib.Path) -> list[Violation]:
+def check_repo(
+    repo_root: pathlib.Path,
+    allowlist_path: pathlib.Path,
+    *,
+    today: datetime.date | None = None,
+    python_noqa_baseline: dict[PythonNoqaKey, int] | None = None,
+) -> list[Violation]:
     """Run all config allowlist and tracked source-code suppression checks."""
-    allowlist, violations = load_allowlist(allowlist_path, repo_root)
+    ref_today = today if today is not None else default_today()
+    allowlist, violations = load_allowlist(allowlist_path, repo_root, today=ref_today)
     tracked_files = _git_ls_files(repo_root)
 
     for rel_path in tracked_files:
@@ -1541,7 +1974,15 @@ def check_repo(repo_root: pathlib.Path, allowlist_path: pathlib.Path) -> list[Vi
             violations.extend(check_cargo_toml(rel_path, text, allowlist))
         elif not is_excluded_source_path(rel_path):
             text = full_path.read_text(encoding="utf-8", errors="replace")
-            violations.extend(check_source_file(rel_path, text, repo_root))
+            violations.extend(
+                check_source_file(
+                    rel_path,
+                    text,
+                    repo_root,
+                    today=ref_today,
+                    python_noqa_baseline=python_noqa_baseline,
+                )
+            )
 
     violations.sort(key=lambda v: (v.path, v.line, v.rule, v.message))
     return violations
@@ -1564,12 +2005,95 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="Path to suppression_allowlist.toml (default: <repo-root>/scripts/lint/suppression_allowlist.toml).",
     )
+    parser.add_argument(
+        "--today",
+        type=str,
+        default=None,
+        help="Override current date (YYYY-MM-DD) for deterministic expiration checks.",
+    )
+    parser.add_argument(
+        "--python-noqa-baseline",
+        type=pathlib.Path,
+        default=None,
+        help="Path to python_noqa_baseline.toml (default: <repo-root>/scripts/lint/ratchet/python_noqa_baseline.toml if present).",
+    )
+    parser.add_argument(
+        "--no-python-noqa-baseline",
+        action="store_true",
+        default=False,
+        help="Disable reasonless Python # noqa baseline (require reasons on every line).",
+    )
+    parser.add_argument(
+        "--update-python-noqa-baseline",
+        action="store_true",
+        default=False,
+        help="Write/update python_noqa_baseline.toml from current reasonless Python # noqa lines.",
+    )
     return parser.parse_args(argv)
+
+
+def _resolve_today_arg(raw_today: str | None) -> datetime.date | None:
+    if raw_today is None:
+        return default_today()
+    return _parse_iso_date(raw_today)
+
+
+def _resolve_baseline(
+    args: argparse.Namespace,
+    repo_root: pathlib.Path,
+) -> tuple[dict[PythonNoqaKey, int] | None, str | None]:
+    if args.no_python_noqa_baseline:
+        return {}, None
+    if args.python_noqa_baseline is not None:
+        bl_path = args.python_noqa_baseline.resolve()
+        if not bl_path.is_file():
+            return None, f"python_noqa baseline not found: {bl_path}"
+        return load_python_noqa_baseline(bl_path), None
+    default_bl = repo_root / "scripts" / "lint" / "ratchet" / "python_noqa_baseline.toml"
+    if default_bl.is_file():
+        return load_python_noqa_baseline(default_bl), None
+    return {}, None
+
+
+def _update_python_noqa_baseline(args: argparse.Namespace, repo_root: pathlib.Path) -> int:
+    target_bl = (
+        args.python_noqa_baseline.resolve()
+        if args.python_noqa_baseline is not None
+        else repo_root / "scripts" / "lint" / "ratchet" / "python_noqa_baseline.toml"
+    )
+    counts = collect_python_noqa_reasonless(repo_root)
+    target_bl.parent.mkdir(parents=True, exist_ok=True)
+    target_bl.write_text(render_python_noqa_baseline_toml(counts), encoding="utf-8")
+    total = sum(counts.values())
+    sys.stdout.write(
+        f"Updated {target_bl} ({len(counts)} unique fingerprints, {total} total occurrences).\n"
+    )
+    return EXIT_CLEAN
+
+
+def _report_violations(violations: list[Violation]) -> int:
+    if violations:
+        for v in violations:
+            loc = f"{v.path}:{v.line}" if v.line > 0 else v.path
+            sys.stderr.write(f"{loc}: [{v.rule}] {v.message}\n")
+        sys.stderr.write(f"\nFAIL: {len(violations)} suppression governance violation(s) found.\n")
+        return EXIT_VIOLATIONS
+    sys.stdout.write("OK: suppression governance and config allowlist checks clean.\n")
+    return EXIT_CLEAN
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     repo_root: pathlib.Path = args.repo_root.resolve()
+
+    if args.update_python_noqa_baseline:
+        return _update_python_noqa_baseline(args, repo_root)
+
+    ref_today = _resolve_today_arg(args.today)
+    if ref_today is None:
+        sys.stderr.write(f"ERROR: invalid --today date {args.today!r} (expected YYYY-MM-DD)\n")
+        return EXIT_USAGE_ERROR
+
     allowlist_path: pathlib.Path = (
         args.allowlist.resolve()
         if args.allowlist is not None
@@ -1580,20 +2104,21 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE_ERROR
 
     try:
-        violations = check_repo(repo_root, allowlist_path)
+        baseline, bl_err = _resolve_baseline(args, repo_root)
+        if bl_err is not None:
+            sys.stderr.write(f"ERROR: {bl_err}\n")
+            return EXIT_USAGE_ERROR
+        violations = check_repo(
+            repo_root,
+            allowlist_path,
+            today=ref_today,
+            python_noqa_baseline=baseline,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError, tomllib.TOMLDecodeError) as exc:
         sys.stderr.write(f"ERROR: suppression check failed to execute: {exc}\n")
         return EXIT_USAGE_ERROR
 
-    if violations:
-        for v in violations:
-            loc = f"{v.path}:{v.line}" if v.line > 0 else v.path
-            sys.stderr.write(f"{loc}: [{v.rule}] {v.message}\n")
-        sys.stderr.write(f"\nFAIL: {len(violations)} suppression governance violation(s) found.\n")
-        return EXIT_VIOLATIONS
-
-    sys.stdout.write("OK: suppression governance and config allowlist checks clean.\n")
-    return EXIT_CLEAN
+    return _report_violations(violations)
 
 
 if __name__ == "__main__":

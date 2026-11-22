@@ -21,6 +21,18 @@ if [ "$actual_buf_version" != "$BUF_VERSION" ]; then
   exit 1
 fi
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+canary_audit_script="${script_dir}/canary_audit.py"
+if [ -f "${canary_audit_script}" ]; then
+  echo "==> [${target}] canary audit (buf lint)"
+  if ! python3 "${canary_audit_script}" proto-canary; then
+    exit 1
+  fi
+elif [ -f "${repo_root}/scripts/lint/run.sh" ]; then
+  echo "error: missing canary audit helper: ${canary_audit_script}" >&2
+  exit 1
+fi
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 

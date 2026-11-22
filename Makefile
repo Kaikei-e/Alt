@@ -100,10 +100,12 @@ generate-mocks:
 	@find $(PORT_BASE_DIR) -name "*.go" | while read -r file; do \
 		package_name=$$(basename $$(dirname $$file)); \
 		interface_name=$$(grep -Eo "type [[:alpha:]]+ interface" $$file | awk '{print $$2}' | head -n 1); \
+		rel_file="$${file#./alt-backend/app/}"; \
 		if [ -n "$$interface_name" ]; then \
 			echo "  - Generating mock for interface '$$interface_name' from '$$file'"; \
-			mockgen -source=$$file \
-				-destination=$(MOCKS_DIR)/mock_$$package_name.go \
+			go -C alt-backend/app tool -modfile=../../scripts/codegen/go.tool.mod mockgen \
+				-source=$$rel_file \
+				-destination=mocks/mock_$$package_name.go \
 				-package=mocks \
 				$$interface_name; \
 		else \

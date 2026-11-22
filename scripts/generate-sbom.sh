@@ -35,7 +35,7 @@ elif have cyclonedx-gomod; then
 else
   echo "error: neither 'syft' nor 'cyclonedx-gomod' is installed" >&2
   echo "  install syft:           https://github.com/anchore/syft" >&2
-  echo "  install cyclonedx-gomod: go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest" >&2
+  echo "  install cyclonedx-gomod: go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0" >&2
   exit 1
 fi
 

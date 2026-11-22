@@ -50,6 +50,14 @@ REPO_PATH_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9_./-])((?:scripts|\.github|\.claude/skills)/[^\s`'\"()（）,、。]+)"
 )
 LEADIN_BREAK_RE = re.compile(r"\*\*(?:機構|先例|問い|確認コマンド|機械的に見ているもの)\.\*\*")
+RULE_LEDGER_REL = ".agents/rules/rule-ledger.md"
+AST_GREP_RULES_REL = Path("scripts") / "lint" / "ast-grep" / "rules"
+RULE_LEDGER_HEADERS: tuple[str, ...] = ("ID", "規則", "強制手段", "由来")
+CORPUS_ID_RE = re.compile(r"(?<![A-Za-z0-9-])(C-\d{2,})(?![0-9])")
+BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+MAX_JUDGMENT_FM_RE = re.compile(r"^\s*max_judgment_rules\s*:\s*([+-]?\d+)\s*$")
+MAX_JUDGMENT_COMMENT_RE = re.compile(r"<!--\s*max_judgment_rules\s*:\s*([+-]?\d+)\s*-->")
+AST_GREP_ID_LINE_RE = re.compile(r"^\s*id\s*:\s*([A-Za-z0-9_.-]+)\s*$")
 
 
 @dataclass(frozen=True)
@@ -767,6 +775,258 @@ def _check_failure_pattern_catalog(root: Path, findings: list[Finding]) -> None:
     _check_fp_routing_table(skill_path, parsed_sections, findings)
 
 
+def _load_ast_grep_rule_ids(root: Path) -> set[str]:
+    rules_dir = root / AST_GREP_RULES_REL
+    if not rules_dir.is_dir():
+        return set()
+    ids: set[str] = set()
+    for yml_path in sorted(rules_dir.glob("*.yml")):
+        if not yml_path.is_file():
+            continue
+        for line in yml_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = AST_GREP_ID_LINE_RE.match(line)
+            if m is not None:
+                ids.add(m.group(1))
+                break
+    return ids
+
+
+def _extract_max_judgment_rules(text: str) -> int | None:
+    lines = text.splitlines()
+    if lines and lines[0].lstrip("\ufeff").strip() == "---":
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                for fm_line in lines[1:idx]:
+                    m = MAX_JUDGMENT_FM_RE.match(fm_line)
+                    if m is not None:
+                        val = int(m.group(1))
+                        return val if val >= 0 else None
+                break
+
+    for line in lines:
+        m_comment = MAX_JUDGMENT_COMMENT_RE.search(line)
+        if m_comment is not None:
+            val = int(m_comment.group(1))
+            return val if val >= 0 else None
+    return None
+
+
+def _split_md_table_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _parse_rule_ledger_rows(
+    lines: list[str],
+    findings: list[Finding],
+) -> list[tuple[str, str, str, str]] | None:
+    non_fence = _non_fenced_lines(lines)
+    expected = list(RULE_LEDGER_HEADERS)
+    rows: list[tuple[str, str, str, str]] = []
+    pos = 0
+    found_table = False
+
+    while pos < len(non_fence):
+        _, raw_line = non_fence[pos]
+        if (
+            raw_line.strip().startswith("|")
+            and _split_md_table_cells(raw_line) == expected
+            and pos + 1 < len(non_fence)
+            and re.match(r"^\|\s*:?-{2,}", non_fence[pos + 1][1].strip())
+        ):
+            found_table = True
+            pos += 2
+            while pos < len(non_fence):
+                _, row_line = non_fence[pos]
+                if not row_line.strip().startswith("|"):
+                    break
+                cells = _split_md_table_cells(row_line)
+                if len(cells) != len(expected):
+                    findings.append(
+                        Finding(
+                            "H11",
+                            RULE_LEDGER_REL,
+                            f"table row has {len(cells)} columns (expected {len(expected)}): {row_line.strip()}",
+                        )
+                    )
+                else:
+                    rows.append((cells[0], cells[1], cells[2], cells[3]))
+                pos += 1
+            break
+        pos += 1
+
+    if not found_table:
+        findings.append(
+            Finding(
+                "H11",
+                RULE_LEDGER_REL,
+                "missing canonical Markdown table with columns '| ID | 規則 | 強制手段 | 由来 |'",
+            )
+        )
+        return None
+    if not rows:
+        findings.append(
+            Finding(
+                "H11",
+                RULE_LEDGER_REL,
+                "rule ledger table has 0 data rows",
+            )
+        )
+        return None
+    return rows
+
+
+def _check_rule_ledger_enforcement(
+    root: Path,
+    rule_id: str,
+    enforcement: str,
+    ast_grep_ids: set[str],
+    findings: list[Finding],
+) -> None:
+    concrete_refs = 0
+    for span in BACKTICK_SPAN_RE.findall(enforcement):
+        token = span.strip()
+        if not token:
+            continue
+        if token.startswith("ast-grep:"):
+            concrete_refs += 1
+            rule_name = token.removeprefix("ast-grep:").strip()
+            if not rule_name or rule_name not in ast_grep_ids:
+                findings.append(
+                    Finding(
+                        "H11",
+                        RULE_LEDGER_REL,
+                        f"row '{rule_id}' references missing ast-grep rule '{rule_name}' (not found in {AST_GREP_RULES_REL.as_posix()}/*.yml)",
+                    )
+                )
+            continue
+
+        candidate = token.split(maxsplit=1)[0].rstrip(".,;:")
+        if "/" in candidate:
+            concrete_refs += 1
+            if not (root / candidate).exists():
+                findings.append(
+                    Finding(
+                        "H11",
+                        RULE_LEDGER_REL,
+                        f"row '{rule_id}' references missing repo path '{candidate}'",
+                    )
+                )
+
+    if concrete_refs == 0:
+        findings.append(
+            Finding(
+                "H11",
+                RULE_LEDGER_REL,
+                f"row '{rule_id}' is not marked '判断' and cites no backticked repo path or ast-grep:<id> in 強制手段",
+            )
+        )
+
+
+def _check_rule_ledger_row(
+    root: Path,
+    row: tuple[str, str, str, str],
+    ast_grep_ids: set[str],
+    findings: list[Finding],
+) -> bool:
+    rule_id, rule_desc, enforcement, origin = row
+    if not rule_id or not rule_desc or not enforcement or not origin:
+        findings.append(
+            Finding(
+                "H11",
+                RULE_LEDGER_REL,
+                f"row '{rule_id or '<empty>'}' contains empty required column(s)",
+            )
+        )
+
+    for corpus_id in dict.fromkeys(CORPUS_ID_RE.findall(origin)):
+        corpus_meta = root / "scripts" / "harness" / "corpus" / corpus_id / "meta.toml"
+        if not corpus_meta.is_file():
+            findings.append(
+                Finding(
+                    "H11",
+                    RULE_LEDGER_REL,
+                    f"row '{rule_id}' cites corpus case {corpus_id} but scripts/harness/corpus/{corpus_id}/meta.toml does not exist",
+                )
+            )
+
+    for adr_digits in dict.fromkeys(ADR_PRECEDENT_RE.findall(origin)):
+        adr_rel = f"docs/ADR/{adr_digits}.md"
+        if not (root / adr_rel).is_file():
+            findings.append(
+                Finding(
+                    "H11",
+                    RULE_LEDGER_REL,
+                    f"row '{rule_id}' cites ADR-{adr_digits} but {adr_rel} does not exist",
+                )
+            )
+
+    if enforcement.strip().startswith("判断"):
+        return True
+
+    _check_rule_ledger_enforcement(root, rule_id, enforcement, ast_grep_ids, findings)
+    return False
+
+
+def _check_rule_ledger(root: Path, findings: list[Finding]) -> None:
+    """H11: verify .agents/rules/rule-ledger.md structure, references, and judgment ratchet."""
+    ledger_path = root / RULE_LEDGER_REL
+    if not ledger_path.is_file():
+        findings.append(Finding("H11", RULE_LEDGER_REL, f"{RULE_LEDGER_REL} is missing"))
+        return
+
+    text = ledger_path.read_text(encoding="utf-8", errors="replace")
+    max_judgment = _extract_max_judgment_rules(text)
+    if max_judgment is None:
+        findings.append(
+            Finding(
+                "H11",
+                RULE_LEDGER_REL,
+                "missing non-negative integer 'max_judgment_rules' in frontmatter or metadata comment",
+            )
+        )
+
+    rows = _parse_rule_ledger_rows(text.splitlines(), findings)
+    if rows is None:
+        return
+
+    ast_grep_ids = _load_ast_grep_rule_ids(root)
+    seen_ids: set[str] = set()
+    judgment_rows = 0
+    for row in rows:
+        rule_id = row[0]
+        if rule_id in seen_ids:
+            findings.append(
+                Finding("H11", RULE_LEDGER_REL, f"duplicate rule ID '{rule_id}' in rule ledger")
+            )
+        elif rule_id:
+            seen_ids.add(rule_id)
+        if _check_rule_ledger_row(root, row, ast_grep_ids, findings):
+            judgment_rows += 1
+
+    if max_judgment is not None:
+        if judgment_rows > max_judgment:
+            findings.append(
+                Finding(
+                    "H11",
+                    RULE_LEDGER_REL,
+                    f"judgment rule count ({judgment_rows}) exceeds max_judgment_rules ({max_judgment}); mechanize rules instead of adding prose-only judgment rules",
+                )
+            )
+        elif judgment_rows < max_judgment:
+            findings.append(
+                Finding(
+                    "H11",
+                    RULE_LEDGER_REL,
+                    f"judgment rule count ({judgment_rows}) is below max_judgment_rules ({max_judgment}); lower max_judgment_rules to {judgment_rows} in the same commit",
+                )
+            )
+
+
 def _check_hooks_pair(root: Path, findings: list[Finding]) -> tuple[bool, int, int | str]:
     codex_path = root / ".codex" / "hooks.json"
     codex_hooks_count = 0
@@ -921,6 +1181,9 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
 
     # H10: failure-pattern catalog consistency and precedent existence
     _check_failure_pattern_catalog(root, findings)
+
+    # H11: rule ledger integrity and monotonic judgment-rule ratchet
+    _check_rule_ledger(root, findings)
 
     meta = {
         "claude_present": claude_present,

@@ -1,0 +1,630 @@
+# 45-target scanner canary coverage ledger (CHECK-04).
+# Verified by: python3 scripts/lint/canary_audit.py verify-ledger --repo-root .
+#
+# Every target enumerated by `./scripts/lint/run.sh --list` MUST appear under
+# `[targets."<target>"]`, and every scanner for that target MUST declare either:
+#   - `status = "canary"` with `canary = "<canary_audit.py subcommand>"`, OR
+#   - `status = "exempt"` / `status = "not-applicable"` with a non-empty `reason`.
+version = 1
+
+# ---------------------------------------------------------------------------
+# Go targets (18) — scripts/lint/go.sh
+# ---------------------------------------------------------------------------
+
+[targets."alt-backend/app"]
+kind = "go"
+[targets."alt-backend/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."alt-backend/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."alt-backend/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."alt-backend/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."alt-backend/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."alt-backend/sidecar-proxy"]
+kind = "go"
+[targets."alt-backend/sidecar-proxy".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."alt-backend/sidecar-proxy".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."alt-backend/sidecar-proxy".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."alt-backend/sidecar-proxy".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."alt-backend/sidecar-proxy".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."alt-butterfly-facade"]
+kind = "go"
+[targets."alt-butterfly-facade".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."alt-butterfly-facade".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."alt-butterfly-facade".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."alt-butterfly-facade".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."alt-butterfly-facade".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."alt-perf/k6/mock-rss-server"]
+kind = "go"
+[targets."alt-perf/k6/mock-rss-server".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."alt-perf/k6/mock-rss-server".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."alt-perf/k6/mock-rss-server".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."alt-perf/k6/mock-rss-server".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."alt-perf/k6/mock-rss-server".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."altctl"]
+kind = "go"
+[targets."altctl".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."altctl".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."altctl".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."altctl".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."altctl".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."auth-hub"]
+kind = "go"
+[targets."auth-hub".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."auth-hub".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."auth-hub".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."auth-hub".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."auth-hub".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."docker/inference-proxy"]
+kind = "go"
+[targets."docker/inference-proxy".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."docker/inference-proxy".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."docker/inference-proxy".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."docker/inference-proxy".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."docker/inference-proxy".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."docker/otel-relay"]
+kind = "go"
+[targets."docker/otel-relay".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."docker/otel-relay".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."docker/otel-relay".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."docker/otel-relay".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."docker/otel-relay".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."docker/readonly-proxy"]
+kind = "go"
+[targets."docker/readonly-proxy".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."docker/readonly-proxy".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."docker/readonly-proxy".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."docker/readonly-proxy".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."docker/readonly-proxy".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."knowledge-sovereign/app"]
+kind = "go"
+[targets."knowledge-sovereign/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."knowledge-sovereign/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."knowledge-sovereign/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."knowledge-sovereign/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."knowledge-sovereign/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."mq-hub/app"]
+kind = "go"
+[targets."mq-hub/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."mq-hub/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."mq-hub/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."mq-hub/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."mq-hub/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."pki-agent"]
+kind = "go"
+[targets."pki-agent".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."pki-agent".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."pki-agent".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."pki-agent".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."pki-agent".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."pre-processor-sidecar/app"]
+kind = "go"
+[targets."pre-processor-sidecar/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor-sidecar/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor-sidecar/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."pre-processor-sidecar/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."pre-processor-sidecar/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."pre-processor-sidecar/cmd/credential-health-checker"]
+kind = "go"
+[targets."pre-processor-sidecar/cmd/credential-health-checker".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor-sidecar/cmd/credential-health-checker".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor-sidecar/cmd/credential-health-checker".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."pre-processor-sidecar/cmd/credential-health-checker".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."pre-processor-sidecar/cmd/credential-health-checker".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."pre-processor/app"]
+kind = "go"
+[targets."pre-processor/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."pre-processor/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."pre-processor/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."pre-processor/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."proto/tools/protovis"]
+kind = "go"
+[targets."proto/tools/protovis".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."proto/tools/protovis".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."proto/tools/protovis".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."proto/tools/protovis".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."proto/tools/protovis".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."rag-orchestrator"]
+kind = "go"
+[targets."rag-orchestrator".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."rag-orchestrator".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."rag-orchestrator".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."rag-orchestrator".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."rag-orchestrator".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+[targets."search-indexer/app"]
+kind = "go"
+[targets."search-indexer/app".scanners.golangci-lint]
+status = "canary"
+canary = "go-canary"
+[targets."search-indexer/app".scanners.gosec]
+status = "canary"
+canary = "go-canary"
+[targets."search-indexer/app".scanners.govulncheck]
+status = "canary"
+canary = "go-verify-govulncheck"
+[targets."search-indexer/app".scanners.gofmt]
+status = "exempt"
+reason = "Deterministic Go stdlib formatter verified end-to-end by entrypoint_canary.py"
+[targets."search-indexer/app".scanners.go-vet]
+status = "exempt"
+reason = "Go compiler stdlib vet pass paired with isolated golangci-lint go-canary"
+
+# ---------------------------------------------------------------------------
+# Python targets (11) — scripts/lint/python.sh
+# ---------------------------------------------------------------------------
+
+[targets."acolyte-orchestrator"]
+kind = "python"
+[targets."acolyte-orchestrator".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."acolyte-orchestrator".scanners.bandit]
+status = "canary"
+canary = "python-canary"
+[targets."acolyte-orchestrator".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."dashboard"]
+kind = "python"
+[targets."dashboard".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."dashboard".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in dashboard/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."dashboard".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."metrics"]
+kind = "python"
+[targets."metrics".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."metrics".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in metrics/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."metrics".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."monitors/utilizer"]
+kind = "python"
+[targets."monitors/utilizer".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."monitors/utilizer".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in monitors/utilizer/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."monitors/utilizer".scanners.pyrefly]
+status = "not-applicable"
+reason = "pyrefly is not declared in monitors/utilizer/pyproject.toml dev dependencies"
+
+[targets."news-creator/app"]
+kind = "python"
+[targets."news-creator/app".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."news-creator/app".scanners.bandit]
+status = "canary"
+canary = "python-canary"
+[targets."news-creator/app".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."recap-evaluator"]
+kind = "python"
+[targets."recap-evaluator".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."recap-evaluator".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in recap-evaluator/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."recap-evaluator".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."recap-subworker"]
+kind = "python"
+[targets."recap-subworker".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."recap-subworker".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in recap-subworker/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."recap-subworker".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."rerank-server"]
+kind = "python"
+[targets."rerank-server".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."rerank-server".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in rerank-server/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."rerank-server".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."scripts"]
+kind = "python"
+[targets."scripts".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."scripts".scanners.bandit]
+status = "not-applicable"
+reason = "bandit is not declared in scripts/pyproject.toml dev dependencies; Ruff S-rules cover security checks"
+[targets."scripts".scanners.pyrefly]
+status = "not-applicable"
+reason = "pyrefly is not declared in scripts/pyproject.toml dev dependencies"
+
+[targets."tag-generator/app"]
+kind = "python"
+[targets."tag-generator/app".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."tag-generator/app".scanners.bandit]
+status = "canary"
+canary = "python-canary"
+[targets."tag-generator/app".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+[targets."tts-speaker"]
+kind = "python"
+[targets."tts-speaker".scanners.ruff]
+status = "canary"
+canary = "python-canary"
+[targets."tts-speaker".scanners.bandit]
+status = "canary"
+canary = "python-canary"
+[targets."tts-speaker".scanners.pyrefly]
+status = "canary"
+canary = "python-canary"
+
+# ---------------------------------------------------------------------------
+# Rust targets (4) — scripts/lint/rust.sh
+# ---------------------------------------------------------------------------
+
+[targets."plecto"]
+kind = "rust"
+[targets."plecto".scanners.clippy]
+status = "canary"
+canary = "rust-canary"
+[targets."plecto".scanners.rustfmt]
+status = "exempt"
+reason = "Deterministic rustfmt check pinned to rust-toolchain.toml channel alongside clippy canary"
+
+[targets."rask-log-aggregator/app"]
+kind = "rust"
+[targets."rask-log-aggregator/app".scanners.clippy]
+status = "canary"
+canary = "rust-canary"
+[targets."rask-log-aggregator/app".scanners.rustfmt]
+status = "exempt"
+reason = "Deterministic rustfmt check pinned to rust-toolchain.toml channel alongside clippy canary"
+
+[targets."rask-log-forwarder/app"]
+kind = "rust"
+[targets."rask-log-forwarder/app".scanners.clippy]
+status = "canary"
+canary = "rust-canary"
+[targets."rask-log-forwarder/app".scanners.rustfmt]
+status = "exempt"
+reason = "Deterministic rustfmt check pinned to rust-toolchain.toml channel alongside clippy canary"
+
+[targets."recap-worker/recap-worker"]
+kind = "rust"
+[targets."recap-worker/recap-worker".scanners.clippy]
+status = "canary"
+canary = "rust-canary"
+[targets."recap-worker/recap-worker".scanners.rustfmt]
+status = "exempt"
+reason = "Deterministic rustfmt check pinned to rust-toolchain.toml channel alongside clippy canary"
+
+# ---------------------------------------------------------------------------
+# Frontend targets (1) — scripts/lint/frontend.sh
+# ---------------------------------------------------------------------------
+
+[targets."alt-frontend-sv"]
+kind = "frontend"
+[targets."alt-frontend-sv".scanners.biome]
+status = "canary"
+canary = "frontend-canary"
+[targets."alt-frontend-sv".scanners.svelte-check]
+status = "exempt"
+reason = "Full SvelteKit workspace type-check and tsc verified against locked node_modules version"
+
+# ---------------------------------------------------------------------------
+# Deno targets (2) — scripts/lint/deno.sh
+# ---------------------------------------------------------------------------
+
+[targets."alt-perf"]
+kind = "deno"
+[targets."alt-perf".scanners.deno-lint]
+status = "canary"
+canary = "deno-canary"
+[targets."alt-perf".scanners.deno-fmt]
+status = "exempt"
+reason = "Deterministic Deno formatter executed with the exact .dvmrc pinned binary"
+
+[targets."auth-token-manager"]
+kind = "deno"
+[targets."auth-token-manager".scanners.deno-lint]
+status = "canary"
+canary = "deno-canary"
+[targets."auth-token-manager".scanners.deno-fmt]
+status = "exempt"
+reason = "Deterministic Deno formatter executed with the exact .dvmrc pinned binary"
+
+# ---------------------------------------------------------------------------
+# Proto targets (1) — scripts/lint/proto.sh
+# ---------------------------------------------------------------------------
+
+[targets."proto"]
+kind = "proto"
+[targets."proto".scanners.buf-lint]
+status = "canary"
+canary = "proto-canary"
+[targets."proto".scanners.buf-breaking]
+status = "exempt"
+reason = "Remote main branch comparison requires git history against origin/main"
+[targets."proto".scanners.allowlist-drift]
+status = "exempt"
+reason = "Deterministic protovis regeneration diff check against committed allowlists"
+
+# ---------------------------------------------------------------------------
+# Named repository targets (8) — scripts/lint/<name>.sh
+# ---------------------------------------------------------------------------
+
+[targets."adr"]
+kind = "named"
+[targets."adr".scanners.docdag]
+status = "exempt"
+reason = "Validates repository ADR DAG directly via version-pinned docdag validate and lint --strict"
+[targets."adr".scanners.adr-supersede-gate]
+status = "exempt"
+reason = "Python ADR supersede gate tested by harness unit test suite"
+
+[targets."apparmor"]
+kind = "named"
+[targets."apparmor".scanners.bash-n]
+status = "exempt"
+reason = "Shell syntax verification via builtin bash -n on three AppArmor helper scripts"
+
+[targets."compose"]
+kind = "named"
+[targets."compose".scanners.compose-audits]
+status = "exempt"
+reason = "Each compose audit script is paired with its own unit test suite executed directly in compose.sh"
+[targets."compose".scanners.lkal-kisage]
+status = "exempt"
+reason = "LKAL schema check and kisage env verification paired with test-kisage-env.py in compose.sh"
+
+[targets."e2e"]
+kind = "named"
+[targets."e2e".scanners.e2e-suite-checks]
+status = "exempt"
+reason = "Self-testing shell and Python guards on Playwright suite registration and clean worktree"
+
+[targets."harness"]
+kind = "named"
+[targets."harness".scanners.harness-gates]
+status = "exempt"
+reason = "Meta-harness executing 22-case regression corpus and self-test suites directly"
+
+[targets."observability"]
+kind = "named"
+[targets."observability".scanners.promtool-amtool]
+status = "exempt"
+reason = "SHA256-verified promtool and amtool validate Prometheus and Alertmanager rule fixtures directly"
+
+[targets."registry"]
+kind = "named"
+[targets."registry".scanners.service-registry]
+status = "exempt"
+reason = "Deterministic service registry regeneration diff and compose image audit scripts"
+
+[targets."repo"]
+kind = "named"
+[targets."repo".scanners.actionlint]
+status = "canary"
+canary = "actionlint-canary"
+[targets."repo".scanners.workflow-safety-check]
+status = "exempt"
+reason = "Covered by test_workflow_safety_check.py executed directly inside repo.sh"
+[targets."repo".scanners.ast-grep]
+status = "exempt"
+reason = "Rule self-tests executed directly via ast-grep test inside repo.sh before scanning"
+[targets."repo".scanners.suppression-governance]
+status = "exempt"
+reason = "Covered by test-check-suppressions.py executed directly inside repo.sh"

@@ -109,10 +109,10 @@ dev-setup:
 	$(GOMOD) tidy
 	$(GOMOD) download
 	@echo "Installing development tools..."
-	$(GOCMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	$(GOCMD) install github.com/securego/gosec/v2/cmd/gosec@latest
-	$(GOCMD) install go.uber.org/mock/mockgen@latest
-	$(GOCMD) install golang.org/x/tools/cmd/goimports@latest
+	$(GOCMD) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+	$(GOCMD) install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
+	$(GOCMD) install go.uber.org/mock/mockgen@v0.6.0
+	$(GOCMD) install golang.org/x/tools/cmd/goimports@v0.42.0
 	@echo "Development environment ready! ✅"
 
 # Docker targets

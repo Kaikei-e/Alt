@@ -77,6 +77,19 @@ if [[ "$actual_ver" != "$pinned" ]]; then
   exit 1
 fi
 
+canary_audit_script="${script_dir}/canary_audit.py"
+if [[ -f "${canary_audit_script}" ]]; then
+  echo "==> [${project_dir}] canary audit (deno lint)"
+  if ! python3 "${canary_audit_script}" deno-canary \
+    --project-dir "${project_path}" \
+    --deno-bin "${deno_bin}"; then
+    exit 1
+  fi
+elif [[ -f "${repo_root}/scripts/lint/run.sh" ]]; then
+  echo "Error: missing canary audit helper: ${canary_audit_script}" >&2
+  exit 1
+fi
+
 cd "$project_path"
 
 fmt_status="pass"
