@@ -17,7 +17,7 @@ notes = "In alt-backend/sidecar-proxy/pkg/proxy/utils.go (1ae0da0c9), gosec G705
 
 [detection]
 planned_checks = ["CHECK-01"]
-active_checks = []
-currently_caught = false
-current_method = "差分読みのみ"
-expected_signal = ""
+active_checks = ["CHECK-01"]
+currently_caught = true
+current_method = "CHECK-01"
+expected_signal = "go.output_escaping_change"

@@ -17,7 +17,11 @@ notes = "To silence a type-checker error during news-creator summarize_handler r
 
 [detection]
 planned_checks = ["CHECK-01", "ARCH-02", "VERIFY-04"]
-active_checks = ["ARCH-02"]
+active_checks = ["ARCH-02", "CHECK-01"]
 currently_caught = true
-current_method = "ARCH-02"
-expected_signal = "python-no-manual-aclose-in-finally"
+current_method = "ARCH-02+CHECK-01"
+expected_signal = ""
+
+[detection.expected_signals]
+ARCH-02 = "python-no-manual-aclose-in-finally"
+CHECK-01 = "python.finally_body_change"

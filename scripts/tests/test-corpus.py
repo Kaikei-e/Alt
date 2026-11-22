@@ -39,6 +39,7 @@ CORPUS_SCRIPT = ROOT / "scripts" / "harness" / "corpus.py"
 REAL_CORPUS_DIR = ROOT / "scripts" / "harness" / "corpus"
 
 DEFAULT_MIN_CASES = 22
+MIN_CAUGHT_CASES = 21
 MAX_SNIPPET_LINES = 120
 MAX_SNIPPET_BYTES = 8192
 EXIT_OK = 0
@@ -89,7 +90,7 @@ class MetaSpec:
     commits: tuple[str, ...] = ("d8ce79dec",)
     source_ref: str = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
     notes: str = "Minimal deterministic failure reproduction snippet."
-    planned_checks: tuple[str, ...] = ("CHECK-01",)
+    planned_checks: tuple[str, ...] = ("VERIFY-01",)
     active_checks: tuple[str, ...] = ()
     currently_caught: bool = False
     current_method: str = "diff-review-only"
@@ -380,7 +381,7 @@ def test_capture_rate_and_outcomes() -> None:
             meta_toml=build_meta_toml(
                 MetaSpec(
                     case_id="C-01",
-                    planned_checks=("CHECK-01", "EXEC-01"),
+                    planned_checks=("VERIFY-01", "EXEC-01"),
                     active_checks=(),
                     currently_caught=False,
                 )
@@ -618,7 +619,7 @@ def test_schema_and_security_rejections() -> None:
             meta_toml=build_meta_toml(
                 MetaSpec(
                     case_id="C-01",
-                    planned_checks=("CHECK-01",),
+                    planned_checks=("VERIFY-01",),
                     active_checks=(),
                     currently_caught=True,
                     expected_signal="some-signal",
@@ -664,7 +665,7 @@ def test_schema_and_security_rejections() -> None:
             meta_toml=build_meta_toml(
                 MetaSpec(
                     case_id="C-01",
-                    planned_checks=("CHECK-01",),
+                    planned_checks=("VERIFY-01",),
                     active_checks=(),
                     currently_caught=False,
                     expected_signal="should-be-empty",
@@ -718,7 +719,7 @@ def test_special_valid_cases_and_full_22_fixture() -> None:
                             before_file="before.py",
                             after_file="after.py",
                             commits=("worktree-uncommitted",),
-                            planned_checks=("CHECK-06",),
+                            planned_checks=("VERIFY-01",),
                             active_checks=(),
                             currently_caught=False,
                         )
@@ -738,7 +739,7 @@ def test_special_valid_cases_and_full_22_fixture() -> None:
                             before_file="before.bin",
                             after_file="after.elf",
                             commits=("worktree-uncommitted",),
-                            planned_checks=("CHECK-06",),
+                            planned_checks=("VERIFY-01",),
                             active_checks=(),
                             currently_caught=False,
                         )
@@ -760,7 +761,7 @@ def test_special_valid_cases_and_full_22_fixture() -> None:
                         MetaSpec(
                             case_id=cid,
                             title=f"Synthetic expected-miss case {cid}",
-                            planned_checks=("CHECK-01",),
+                            planned_checks=("VERIFY-01",),
                             active_checks=(),
                             currently_caught=False,
                         )
@@ -816,7 +817,7 @@ def test_repo03_config_and_multi_check() -> None:
         and hasattr(corpus_mod, "PROCESS_CHECKS")
         and "VERIFY-01" in getattr(corpus_mod, "PROCESS_CHECKS", frozenset())
         and "EXEC-01" in getattr(corpus_mod, "PROCESS_CHECKS", frozenset())
-        and "CHECK-01" in getattr(corpus_mod, "UNIMPLEMENTED_CORPUS_CHECKS", frozenset())
+        and getattr(corpus_mod, "UNIMPLEMENTED_CORPUS_CHECKS", None) == frozenset()
         and getattr(corpus_mod, "UNIMPLEMENTED_CORPUS_CHECKS", frozenset()).isdisjoint(
             getattr(corpus_mod, "PROCESS_CHECKS", frozenset())
         ),
@@ -1331,6 +1332,170 @@ def test_arch02_arch03_arch06_runners() -> None:
         )
 
 
+def test_check01_check05_check06_runners() -> None:
+    sys.stdout.write("CHECK-01, CHECK-05, and CHECK-06 diff runners\n")
+    corpus_mod = load_corpus_module()
+
+    expected_checks = frozenset(
+        {
+            "CHECK-01",
+            "CHECK-02",
+            "CHECK-03",
+            "CHECK-04",
+            "CHECK-05",
+            "CHECK-06",
+            "CHECK-07",
+        }
+    )
+    check(
+        "CHECK-01..CHECK-07 are in IMPLEMENTED_CHECKS and CHECK-01/05/06 in DIFF_CHECKS",
+        expected_checks <= getattr(corpus_mod, "IMPLEMENTED_CHECKS", frozenset())
+        and frozenset({"CHECK-01", "CHECK-05", "CHECK-06"})
+        <= getattr(corpus_mod, "DIFF_CHECKS", frozenset())
+        and expected_checks.isdisjoint(
+            getattr(corpus_mod, "UNIMPLEMENTED_CORPUS_CHECKS", frozenset())
+        ),
+        f"impl={getattr(corpus_mod, 'IMPLEMENTED_CHECKS', None)!r}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+
+        # 1. CHECK-01 (Python control-flow return drop)
+        c_01 = tmp / "check01-py"
+        write_case(
+            c_01,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="dropping else return caught by CHECK-01",
+                    category="control-flow-drop",
+                    language="python",
+                    before_file="before.py",
+                    after_file="after.py",
+                    evaluation_mode="diff",
+                    origin_files=("news-creator/app/sample.py",),
+                    planned_checks=("CHECK-01",),
+                    active_checks=("CHECK-01",),
+                    currently_caught=True,
+                    current_method="CHECK-01",
+                    expected_signal="python.control_flow_return_change",
+                )
+            ),
+            files={
+                "before.py": (
+                    "def acquire(flag: bool) -> int:\n"
+                    "    if flag:\n"
+                    "        return 1\n"
+                    "    else:\n"
+                    "        return 2\n"
+                ),
+                "after.py": ("def acquire(flag: bool) -> int:\n    if flag:\n        return 1\n"),
+            },
+        )
+        res = run_corpus_cli(c_01, min_cases=1)
+        check(
+            "CHECK-01 runner catches Python control-flow return drop via behavior_screener.py",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 2. CHECK-05 (hand-edited DO NOT EDIT generated file)
+        c_05 = tmp / "check05-codegen"
+        write_case(
+            c_05,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="hand-edited DO NOT EDIT generated Go file caught by CHECK-05",
+                    category="generated-code-tampering",
+                    language="go",
+                    before_file="before.go",
+                    after_file="after.go",
+                    evaluation_mode="diff",
+                    origin_files=(
+                        "rag-orchestrator/internal/adapter/rag_http/openapi/server.gen.go",
+                    ),
+                    planned_checks=("CHECK-05",),
+                    active_checks=("CHECK-05",),
+                    currently_caught=True,
+                    current_method="CHECK-05",
+                    expected_signal="codegen.do-not-edit-modified",
+                )
+            ),
+            files={
+                "before.go": "// Code generated by oapi-codegen DO NOT EDIT.\npackage openapi\n\nconst V = 1\n",
+                "after.go": "// Code generated by oapi-codegen DO NOT EDIT.\npackage openapi\n\nconst V = 2\n",
+            },
+        )
+        res = run_corpus_cli(c_05, min_cases=1)
+        check(
+            "CHECK-05 runner catches DO NOT EDIT tampering via check_generated_code.py",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 3. CHECK-06 (0-byte tracked truncation + untracked ELF binary)
+        c_06 = tmp / "check06-hygiene"
+        write_case(
+            c_06,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="0-byte tracked file truncation caught by CHECK-06",
+                    category="worktree-hygiene",
+                    language="python",
+                    before_file="before.py",
+                    after_file="after.py",
+                    evaluation_mode="diff",
+                    commits=("worktree-uncommitted",),
+                    origin_files=("recap-subworker/recap_subworker/app/routers/runs.py",),
+                    planned_checks=("CHECK-06",),
+                    active_checks=("CHECK-06",),
+                    currently_caught=True,
+                    current_method="CHECK-06",
+                    expected_signal="hygiene.zero-byte-tracked",
+                )
+            ),
+            files={"before.py": "def router() -> str:\n    return 'ok'\n", "after.py": b""},
+        )
+        write_case(
+            c_06,
+            "C-02",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-02",
+                    title="untracked ELF binary caught by CHECK-06",
+                    category="worktree-hygiene",
+                    language="binary",
+                    before_file="before.go",
+                    after_file="after.elf",
+                    evaluation_mode="after",
+                    commits=("worktree-uncommitted",),
+                    origin_files=("alt-backend/app/alt-backend",),
+                    planned_checks=("CHECK-06",),
+                    active_checks=("CHECK-06",),
+                    currently_caught=True,
+                    current_method="CHECK-06",
+                    expected_signal="hygiene.binary-artifact",
+                )
+            ),
+            files={
+                "before.go": "package main\n\nfunc main() {}\n",
+                "after.elf": b"\x7fELF\x02\x01\x01\x00" + (b"\x00" * 56),
+            },
+        )
+        res = run_corpus_cli(c_06, min_cases=2)
+        check(
+            "CHECK-06 runner catches 0-byte truncation and untracked ELF via check_worktree_hygiene.py",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 2/2 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+
 def test_real_corpus(*, allow_missing_corpus_dir: bool) -> None:
     sys.stdout.write("real repository corpus verification\n")
     has_cases = REAL_CORPUS_DIR.is_dir() and any(REAL_CORPUS_DIR.iterdir())
@@ -1353,10 +1518,20 @@ def test_real_corpus(*, allow_missing_corpus_dir: bool) -> None:
         sys.stdout.write(res.stdout)
     if res.stderr:
         sys.stderr.write(res.stderr)
+    caught_count = 0
+    for line in res.stdout.splitlines():
+        if line.startswith("CORPUS CAPTURE RATE: "):
+            ratio = line.removeprefix("CORPUS CAPTURE RATE: ").split(" ", 1)[0]
+            numerator, _, _denominator = ratio.partition("/")
+            if numerator.isdigit():
+                caught_count = int(numerator)
     check(
-        f"real repository corpus passes (>= {DEFAULT_MIN_CASES} cases)",
-        res.returncode == EXIT_OK and "CORPUS CAPTURE RATE:" in res.stdout,
-        f"rc={res.returncode}",
+        f"real repository corpus passes (>= {DEFAULT_MIN_CASES} cases, >= {MIN_CAUGHT_CASES} caught)",
+        res.returncode == EXIT_OK
+        and "CORPUS CAPTURE RATE:" in res.stdout
+        and "failures=0]" in res.stdout
+        and caught_count >= MIN_CAUGHT_CASES,
+        f"rc={res.returncode}, caught={caught_count}",
     )
 
 
@@ -1387,6 +1562,7 @@ def main(argv: list[str] | None = None) -> int:
     test_diff_mode_runner()
     test_directory_symlinks_and_timeout()
     test_arch02_arch03_arch06_runners()
+    test_check01_check05_check06_runners()
     test_real_corpus(allow_missing_corpus_dir=args.allow_missing_corpus_dir)
 
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")

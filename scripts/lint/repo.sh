@@ -79,7 +79,49 @@ run_ast_grep_scan() {
   "$bin" scan -c scripts/lint/ast-grep/sgconfig.yml
 }
 
+resolve_suppression_diff_base() {
+  local head_sha raw_base target_sha merge_base
+  head_sha="$(git rev-parse --verify --quiet 'HEAD^{commit}')" || return 1
+
+  raw_base="${LINT_BASE:-}"
+  if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
+    target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")" || return 1
+    merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || return 1
+    [ -n "$merge_base" ] || return 1
+    printf '%s\n' "$merge_base"
+    return 0
+  fi
+
+  if target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')" &&
+    merge_base="$(git merge-base "$head_sha" "$target_sha" 2>/dev/null)" &&
+    [ -n "$merge_base" ]; then
+    if [ "$merge_base" = "$head_sha" ]; then
+      git rev-parse --verify --quiet 'HEAD~1^{commit}'
+      return $?
+    fi
+    printf '%s\n' "$merge_base"
+    return 0
+  fi
+
+  git rev-parse --verify --quiet 'HEAD~1^{commit}'
+}
+
+run_suppression_diff_summary() {
+  if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+    echo "OK: GITHUB_STEP_SUMMARY unset; skipping PR summary write."
+    return 0
+  fi
+  local base
+  if ! base="$(resolve_suppression_diff_base)"; then
+    echo "ERROR: unable to resolve base commit for suppression diff summary" >&2
+    return 1
+  fi
+  python3 scripts/lint/suppression_diff_report.py --base "$base" --summary-file "$GITHUB_STEP_SUMMARY"
+}
+
+run_step "actionlint-canary" python3 scripts/lint/canary_audit.py actionlint-canary
 run_step "actionlint" go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+run_step "canary-ledger" python3 scripts/lint/canary_audit.py verify-ledger --repo-root .
 run_step "workflow-safety-tests" python3 -m unittest discover -s .github/workflows/scripts -p "test_*.py"
 run_step "workflow-forbidden-triggers-grep" check_forbidden_triggers_grep
 run_step "workflow-safety-check" python3 .github/workflows/scripts/workflow-safety-check.py
@@ -87,11 +129,19 @@ run_step "lint-run-tests" bash scripts/tests/test-lint-run.sh
 run_step "lint-canary-tests" python3 scripts/tests/test-lint-canary.py
 run_step "suppression-check-tests" python3 scripts/tests/test-check-suppressions.py
 run_step "suppression-governance" python3 scripts/lint/check_suppressions.py
+run_step "suppression-ratchet-tests" python3 scripts/tests/test-check-ratchet.py
+run_step "suppression-ratchet" python3 scripts/lint/check_ratchet.py
+run_step "suppression-diff-tests" python3 scripts/tests/test-suppression-diff-report.py
+run_step "suppression-diff-summary" run_suppression_diff_summary
 run_step "ast-grep-rule-tests" run_ast_grep_rule_tests
 run_step "ast-grep-scan" run_ast_grep_scan
 run_step "go-canonical-sync" python3 scripts/codegen/sync_go_canonical.py --check
 run_step "python-pki-sync" python3 scripts/codegen/pki_py/sync_python_pki.py --check
 run_step "python-version-parity" python3 scripts/lint/check_python_versions.py
+run_step "generated-code-tests" python3 scripts/tests/test-check-generated-code.py
+run_step "generated-code-governance" python3 scripts/lint/check_generated_code.py
+run_step "worktree-hygiene-tests" python3 scripts/tests/test-worktree-hygiene.py
+run_step "worktree-hygiene" python3 scripts/lint/check_worktree_hygiene.py
 
 printf '%s\n' "${summary[@]}"
 exit "$fail"

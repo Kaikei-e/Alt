@@ -3,9 +3,9 @@
 
 Validates every failure case under `scripts/harness/corpus/<ID>/` (`C-01`..`C-NN`),
 executes active implemented checks (`pyrefly`, `REPO-02`, `REPO-03`, `ARCH-02`,
-`ARCH-03`, `ARCH-06`) against each case's `before` (must pass) and `after` (must
-fail with `expected_signal`), counts unimplemented checks as `expected-miss`, and
-reports the canonical capture rate.
+`ARCH-03`, `ARCH-06`, `CHECK-01`, `CHECK-05`, `CHECK-06`) against each case's
+`before` (must pass) and `after` (must fail with `expected_signal`), counts
+unimplemented checks as `expected-miss`, and reports the canonical capture rate.
 
 Run:
     python3 scripts/harness/corpus.py
@@ -71,11 +71,6 @@ IMPLEMENTED_CHECKS = frozenset(
         "ARCH-04",
         "ARCH-05",
         "ARCH-06",
-    }
-)
-DIFF_CHECKS: frozenset[str] = frozenset()
-UNIMPLEMENTED_CORPUS_CHECKS = frozenset(
-    {
         "CHECK-01",
         "CHECK-02",
         "CHECK-03",
@@ -85,6 +80,8 @@ UNIMPLEMENTED_CORPUS_CHECKS = frozenset(
         "CHECK-07",
     }
 )
+DIFF_CHECKS: frozenset[str] = frozenset({"CHECK-01", "CHECK-05", "CHECK-06"})
+UNIMPLEMENTED_CORPUS_CHECKS: frozenset[str] = frozenset()
 PROCESS_CHECKS = frozenset(
     {
         "VERIFY-01",
@@ -694,6 +691,30 @@ def discover_cases(
     return cases, errors
 
 
+def _find_main_worktree(repo_root: pathlib.Path) -> pathlib.Path | None:
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        return None
+    try:
+        res = subprocess.run(  # noqa: S603 - fixed argv querying local git worktrees
+            [git_bin, "-C", str(repo_root), "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if res.returncode != 0:
+        return None
+    for line in res.stdout.splitlines():
+        if line.startswith("worktree "):
+            candidate = pathlib.Path(line.removeprefix("worktree ").strip())
+            if candidate.is_dir():
+                return candidate
+    return None
+
+
 def _resolve_pyrefly_bin(repo_root: pathlib.Path) -> tuple[pathlib.Path | None, str]:
     env_bin = os.environ.get("PYREFLY_BIN", "").strip()
     if env_bin:
@@ -709,10 +730,16 @@ def _resolve_pyrefly_bin(repo_root: pathlib.Path) -> tuple[pathlib.Path | None, 
     if on_path is not None:
         return pathlib.Path(on_path), ""
 
-    for svc in PYREFLY_FALLBACK_SERVICES:
-        venv_bin = repo_root / svc / ".venv" / "bin" / "pyrefly"
-        if venv_bin.is_file() and os.access(venv_bin, os.X_OK):
-            return venv_bin, ""
+    roots = [repo_root]
+    main_wt = _find_main_worktree(repo_root)
+    if main_wt is not None and main_wt.resolve() != repo_root.resolve():
+        roots.append(main_wt)
+
+    for root in roots:
+        for svc in PYREFLY_FALLBACK_SERVICES:
+            venv_bin = root / svc / ".venv" / "bin" / "pyrefly"
+            if venv_bin.is_file() and os.access(venv_bin, os.X_OK):
+                return venv_bin, ""
 
     return None, "pyrefly executable not found (checked PYREFLY_BIN, PATH, and service .venv/bin)"
 
@@ -1166,6 +1193,187 @@ def _run_arch06_check(
     )
 
 
+def _run_check01_diff(
+    case: CorpusCase,
+    before_path: pathlib.Path,
+    after_path: pathlib.Path,
+    repo_root: pathlib.Path,
+) -> CheckOutcome:
+    screener_script = repo_root / "scripts" / "lint" / "behavior_screener.py"
+    if not screener_script.is_file():
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"missing behavior_screener.py at {screener_script}",
+        )
+
+    cmd = [
+        sys.executable,
+        str(screener_script),
+        "--before",
+        str(before_path),
+        "--after",
+        str(after_path),
+        "--language",
+        case.language,
+        "--fail-on-candidates",
+    ]
+    if case.origin.files:
+        cmd.extend(["--logical-path", case.origin.files[0]])
+
+    try:
+        res = subprocess.run(  # noqa: S603 - fixed argv running behavior_screener.py
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"CHECK-01 timed out after {SUBPROCESS_TIMEOUT_SECONDS}s",
+        )
+    except OSError as exc:
+        return CheckOutcome(exit_code=-1, output="", runner_error=f"CHECK-01 exec error: {exc}")
+
+    combined = f"{res.stdout}\n{res.stderr}".strip()
+    return CheckOutcome(exit_code=res.returncode, output=combined)
+
+
+def _run_check05_diff(
+    _case: CorpusCase,
+    before_path: pathlib.Path,
+    after_path: pathlib.Path,
+    repo_root: pathlib.Path,
+) -> CheckOutcome:
+    checker_script = repo_root / "scripts" / "lint" / "check_generated_code.py"
+    if not checker_script.is_file():
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"missing check_generated_code.py at {checker_script}",
+        )
+
+    cmd = [
+        sys.executable,
+        str(checker_script),
+        "--before",
+        str(before_path),
+        "--after",
+        str(after_path),
+    ]
+    try:
+        res = subprocess.run(  # noqa: S603 - fixed argv running check_generated_code.py
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"CHECK-05 timed out after {SUBPROCESS_TIMEOUT_SECONDS}s",
+        )
+    except OSError as exc:
+        return CheckOutcome(exit_code=-1, output="", runner_error=f"CHECK-05 exec error: {exc}")
+
+    combined = f"{res.stdout}\n{res.stderr}".strip()
+    return CheckOutcome(exit_code=res.returncode, output=combined)
+
+
+def _run_git_step(git_bin: str, repo_dir: pathlib.Path, args: list[str]) -> str | None:
+    try:
+        res = subprocess.run(  # noqa: S603 - fixed git command inside temporary corpus directory
+            [git_bin, "-C", str(repo_dir), *args],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return f"CHECK-06 git {args[0]} timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+    except OSError as exc:
+        return f"CHECK-06 git {args[0]} exec error: {exc}"
+    if res.returncode != 0:
+        return f"CHECK-06 git {args[0]} failed: {_snippet(res.stderr or res.stdout)}"
+    return None
+
+
+def _run_check06_diff(
+    case: CorpusCase,
+    before_path: pathlib.Path,
+    after_path: pathlib.Path,
+    repo_root: pathlib.Path,
+) -> CheckOutcome:
+    checker_script = repo_root / "scripts" / "lint" / "check_worktree_hygiene.py"
+    git_bin = shutil.which("git")
+    if not checker_script.is_file() or git_bin is None:
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error="CHECK-06 prerequisites missing (check_worktree_hygiene.py or git)",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="alt-corpus-check06-") as tmp_str:
+        tmp_repo = pathlib.Path(tmp_str)
+        for git_args in (
+            ["init", "-q"],
+            ["config", "user.name", "Corpus Runner"],
+            ["config", "user.email", "corpus@example.com"],
+        ):
+            err = _run_git_step(git_bin, tmp_repo, git_args)
+            if err is not None:
+                return CheckOutcome(exit_code=-1, output="", runner_error=err)
+
+        if case.language == "binary":
+            tracked_name = "main.go"
+            shutil.copyfile(before_path, tmp_repo / tracked_name)
+        else:
+            tracked_name = f"sample{before_path.suffix}"
+            shutil.copyfile(before_path, tmp_repo / tracked_name)
+
+        for git_args in (["add", tracked_name], ["commit", "-q", "-m", "baseline"]):
+            err = _run_git_step(git_bin, tmp_repo, git_args)
+            if err is not None:
+                return CheckOutcome(exit_code=-1, output="", runner_error=err)
+
+        if case.language == "binary":
+            if after_path != before_path:
+                shutil.copyfile(after_path, tmp_repo / case.after_file)
+        else:
+            (tmp_repo / tracked_name).write_bytes(after_path.read_bytes())
+
+        cmd = [
+            sys.executable,
+            str(checker_script),
+            "--repo-root",
+            str(tmp_repo),
+        ]
+        try:
+            res = subprocess.run(  # noqa: S603 - fixed argv running check_worktree_hygiene.py
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return CheckOutcome(
+                exit_code=-1,
+                output="",
+                runner_error=f"CHECK-06 timed out after {SUBPROCESS_TIMEOUT_SECONDS}s",
+            )
+        except OSError as exc:
+            return CheckOutcome(exit_code=-1, output="", runner_error=f"CHECK-06 exec error: {exc}")
+
+    combined = f"{res.stdout}\n{res.stderr}".strip()
+    return CheckOutcome(exit_code=res.returncode, output=combined)
+
+
 BUILTIN_RUNNERS: dict[str, RegisteredRunner] = {
     "pyrefly": RegisteredRunner(mode="after", run_single=_run_pyrefly_check),
     "REPO-02": RegisteredRunner(mode="after", run_single=_run_repo02_check),
@@ -1173,6 +1381,9 @@ BUILTIN_RUNNERS: dict[str, RegisteredRunner] = {
     "ARCH-02": RegisteredRunner(mode="after", run_single=_run_arch02_check),
     "ARCH-03": RegisteredRunner(mode="after", run_single=_run_arch03_check),
     "ARCH-06": RegisteredRunner(mode="after", run_single=_run_arch06_check),
+    "CHECK-01": RegisteredRunner(mode="diff", run_diff=_run_check01_diff),
+    "CHECK-05": RegisteredRunner(mode="diff", run_diff=_run_check05_diff),
+    "CHECK-06": RegisteredRunner(mode="diff", run_diff=_run_check06_diff),
 }
 
 

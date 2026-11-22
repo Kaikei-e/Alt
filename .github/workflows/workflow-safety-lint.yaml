@@ -79,7 +79,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Fetch base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags origin "$BASE_REF"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
@@ -87,6 +93,19 @@ jobs:
           go-version: "1.27.4"
           check-latest: true
           cache: false
+
+      - name: Read Buf version
+        id: buf_version
+        run: |
+          buf_version="$(sed -n 's/^readonly BUF_VERSION="\([^"]*\)"/\1/p' scripts/lint/proto.sh | head -n 1)"
+          test -n "$buf_version"
+          echo "version=$buf_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buf
+        uses: bufbuild/buf-action@37ac33d8960807670a6e9719080e885197b09cc6  # v1.7.0
+        with:
+          setup_only: true
+          version: ${{ steps.buf_version.outputs.version }}
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
@@ -115,4 +134,5 @@ jobs:
       - name: Run repository lint
         env:
           TARGET: repo
+          LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: ./scripts/lint/run.sh "$TARGET"

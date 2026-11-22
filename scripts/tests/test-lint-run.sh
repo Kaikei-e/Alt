@@ -548,6 +548,7 @@ mkdir -p \
   "$tmp_proto_bin"
 cp "$RUN_SH" "$tmp_dirty_git/scripts/lint/run.sh"
 cp "$REPO_ROOT/scripts/lint/proto.sh" "$tmp_dirty_git/scripts/lint/proto.sh"
+cp "$REPO_ROOT/scripts/lint/canary_audit.py" "$tmp_dirty_git/scripts/lint/canary_audit.py"
 cp "$REPO_ROOT/alt-frontend-sv/biome.json" "$tmp_dirty_git/alt-frontend-sv/biome.json"
 printf 'alt-frontend-sv/test-results/\n' >"$tmp_dirty_git/.gitignore"
 printf 'module svc-go\n' >"$tmp_dirty_git/svc-go/go.mod"
@@ -611,7 +612,14 @@ case "${1:-}" in
     done
     [ -n "$out" ] && : >"$out"
     ;;
-  lint|breaking)
+  lint)
+    if [ -f canary.proto ]; then
+      echo 'canary.proto:5:6:Enum name "bad_enum" should be PascalCase.' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  breaking)
     exit 0
     ;;
   *)

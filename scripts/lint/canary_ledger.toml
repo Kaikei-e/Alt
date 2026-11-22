@@ -628,3 +628,12 @@ reason = "Rule self-tests executed directly via ast-grep test inside repo.sh bef
 [targets."repo".scanners.suppression-governance]
 status = "exempt"
 reason = "Covered by test-check-suppressions.py executed directly inside repo.sh"
+[targets."repo".scanners.suppression-ratchet]
+status = "exempt"
+reason = "Covered by test-check-ratchet.py and test-suppression-diff-report.py executed directly inside repo.sh"
+[targets."repo".scanners.generated-code-governance]
+status = "exempt"
+reason = "Covered by test-check-generated-code.py executed directly inside repo.sh"
+[targets."repo".scanners.worktree-hygiene]
+status = "exempt"
+reason = "Covered by test-worktree-hygiene.py executed directly inside repo.sh"

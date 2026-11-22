@@ -17,7 +17,7 @@ notes = "In rag-orchestrator Echo v5 migration (c2814346f), generated server.gen
 
 [detection]
 planned_checks = ["CHECK-05", "EXEC-02"]
-active_checks = []
-currently_caught = false
-current_method = "差分読みのみ"
-expected_signal = ""
+active_checks = ["CHECK-05"]
+currently_caught = true
+current_method = "CHECK-05"
+expected_signal = "codegen.do-not-edit-modified"

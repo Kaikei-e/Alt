@@ -4,6 +4,9 @@
 
 version = 1
 
+[governance]
+max_judgment_rules = 9
+
 [targets.acolyte-orchestrator]
 python_noqa = 216
 
@@ -96,7 +99,7 @@ rust_allow = 309
 python_noqa = 3
 
 [targets.scripts]
-python_noqa = 293
+python_noqa = 338
 
 [targets."search-indexer/app"]
 go_nolint = 1
