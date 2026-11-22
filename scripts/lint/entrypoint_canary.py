@@ -38,6 +38,9 @@ EXIT_FAIL = 1
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DOCKERFILE_BUN_PIN_RE = re.compile(r"(^FROM\s+oven/bun:)([0-9][0-9.]*)(-.*)?$", re.MULTILINE)
 OUTPUT_SNIPPET_LIMIT = 800
+QUICK_SUBPROCESS_TIMEOUT_S = 15
+BASELINE_SUBPROCESS_TIMEOUT_S = 180
+LINT_SUBPROCESS_TIMEOUT_S = 300
 
 ALL_LANGUAGES = ("go", "python", "rust", "frontend", "deno", "proto")
 
@@ -90,6 +93,7 @@ def _find_main_worktree(repo_root: pathlib.Path) -> pathlib.Path | None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=QUICK_SUBPROCESS_TIMEOUT_S,
     )
     if res.returncode != 0:
         return None
@@ -141,6 +145,7 @@ def _run_staged_lint(
         capture_output=True,
         text=True,
         check=False,
+        timeout=LINT_SUBPROCESS_TIMEOUT_S,
     )
 
 
@@ -172,7 +177,7 @@ def _run_go_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> CaseResul
         violation_file.write_text(
             'package main\n\nimport "crypto/tls"\n\n'
             "func entrypointCanaryViolation() *tls.Config {\n"
-            "\tx := 1\n"
+            "    x:=1\n"
             "\tx = 2\n"
             "\t_ = x\n"
             "\treturn &tls.Config{InsecureSkipVerify: true}\n"
@@ -186,6 +191,7 @@ def _run_go_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> CaseResul
             combined,
             (
                 "canary audit passed (go)",
+                "Run gofmt -w on these files:",
                 "entrypoint_canary_violation.go",
                 "G402",
             ),
@@ -200,7 +206,11 @@ def _run_go_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> CaseResul
             )
 
     return CaseResult(
-        "go", target, True, time.monotonic() - start, "baseline pass + G402/ineffassign caught"
+        "go",
+        target,
+        True,
+        time.monotonic() - start,
+        "baseline pass + gofmt and G402/ineffassign caught",
     )
 
 
@@ -346,6 +356,7 @@ def _align_staged_bun_pin_if_needed(dockerfile: pathlib.Path) -> str | None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=QUICK_SUBPROCESS_TIMEOUT_S,
     )
     if res.returncode != 0:
         return None
@@ -402,6 +413,7 @@ def _run_frontend_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> Cas
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=BASELINE_SUBPROCESS_TIMEOUT_S,
             )
             if base_res.returncode != 0:
                 return CaseResult(
@@ -576,6 +588,22 @@ CASE_RUNNERS: dict[str, Callable[..., CaseResult]] = {
 }
 
 
+def _is_language_available(repo_root: pathlib.Path, lang: str) -> bool:
+    checks: dict[str, Callable[[], bool]] = {
+        "go": lambda: shutil.which("go") is not None and shutil.which("jq") is not None,
+        "python": lambda: shutil.which("uv") is not None,
+        "rust": lambda: shutil.which("cargo") is not None,
+        "frontend": lambda: (
+            shutil.which("bun") is not None
+            and _resolve_frontend_node_modules(repo_root, "alt-frontend-sv") is not None
+        ),
+        "deno": lambda: shutil.which("deno") is not None,
+        "proto": lambda: shutil.which("buf") is not None and shutil.which("go") is not None,
+    }
+    probe = checks.get(lang)
+    return probe() if probe is not None else False
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="End-to-end isolated entrypoint canary for scripts/lint/run.sh.",
@@ -597,6 +625,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip unmutated baseline run before injecting violations.",
     )
+    parser.add_argument(
+        "--available-only",
+        action="store_true",
+        help="Run only requested language families whose toolchain binaries are present on PATH.",
+    )
     return parser.parse_args(argv)
 
 
@@ -610,6 +643,16 @@ def main(argv: list[str] | None = None) -> int:
             f"ERROR: unknown language(s): {unknown} (expected subset of {list(ALL_LANGUAGES)})\n"
         )
         return 2
+
+    if args.available_only:
+        selected = [lang for lang in languages if _is_language_available(repo_root, lang)]
+        skipped = [lang for lang in languages if lang not in selected]
+        if skipped:
+            sys.stdout.write(f"  SKIP  unavailable language toolchain(s): {', '.join(skipped)}\n")
+        if not selected:
+            sys.stderr.write("ERROR: --available-only matched 0 available language toolchains\n")
+            return EXIT_FAIL
+        languages = selected
 
     results: list[CaseResult] = []
     for lang in languages:

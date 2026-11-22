@@ -85,11 +85,19 @@ resolve_suppression_diff_base() {
 
   raw_base="${LINT_BASE:-}"
   if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
-    target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")" || return 1
-    merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || return 1
-    [ -n "$merge_base" ] || return 1
-    printf '%s\n' "$merge_base"
-    return 0
+    if target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+      merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || return 1
+      [ -n "$merge_base" ] || return 1
+      if [ "$merge_base" = "$head_sha" ]; then
+        git rev-parse --verify --quiet 'HEAD~1^{commit}'
+        return $?
+      fi
+      printf '%s\n' "$merge_base"
+      return 0
+    fi
+    if [[ ! "$raw_base" =~ ^[0-9a-fA-F]{40}$ ]]; then
+      return 1
+    fi
   fi
 
   if target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')" &&
@@ -119,6 +127,15 @@ run_suppression_diff_summary() {
   python3 scripts/lint/suppression_diff_report.py --base "$base" --summary-file "$GITHUB_STEP_SUMMARY"
 }
 
+run_generated_code_governance() {
+  local base
+  if ! base="$(resolve_suppression_diff_base)"; then
+    echo "ERROR: unable to resolve base commit for generated code governance" >&2
+    return 1
+  fi
+  python3 scripts/lint/check_generated_code.py --base "$base"
+}
+
 run_step "actionlint-canary" python3 scripts/lint/canary_audit.py actionlint-canary
 run_step "actionlint" go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
 run_step "canary-ledger" python3 scripts/lint/canary_audit.py verify-ledger --repo-root .
@@ -139,7 +156,7 @@ run_step "go-canonical-sync" python3 scripts/codegen/sync_go_canonical.py --chec
 run_step "python-pki-sync" python3 scripts/codegen/pki_py/sync_python_pki.py --check
 run_step "python-version-parity" python3 scripts/lint/check_python_versions.py
 run_step "generated-code-tests" python3 scripts/tests/test-check-generated-code.py
-run_step "generated-code-governance" python3 scripts/lint/check_generated_code.py
+run_step "generated-code-governance" run_generated_code_governance
 run_step "worktree-hygiene-tests" python3 scripts/tests/test-worktree-hygiene.py
 run_step "worktree-hygiene" python3 scripts/lint/check_worktree_hygiene.py
 

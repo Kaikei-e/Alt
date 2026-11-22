@@ -54,8 +54,8 @@ GO_NOLINT_RE = re.compile(
 GO_NOSEC_RE = re.compile(r"^(?://|/\*)\s*#nosec\b(.*)$", re.DOTALL)
 GO_NOSEC_RULES_RE = re.compile(r"^((?:G\d{3}(?:[\s,]+)?)+)(?:--|//)(.*)$", re.DOTALL)
 
-RUST_INNER_ALLOW_RE = re.compile(r"^#!\[\s*allow\s*\((.*)\)\s*\]$", re.DOTALL)
-RUST_OUTER_ALLOW_RE = re.compile(r"^#\[\s*allow\s*\((.*)\)\s*\]$", re.DOTALL)
+RUST_INNER_ALLOW_RE = re.compile(r"^#\s*!\s*\[\s*(?:allow|expect)\s*\((.*)\)\s*\]$", re.DOTALL)
+RUST_OUTER_ALLOW_RE = re.compile(r"^#\s*\[\s*(?:allow|expect)\s*\((.*)\)\s*\]$", re.DOTALL)
 
 TS_BIOME_ALL_RE = re.compile(r"\bbiome-ignore-all\b(.*)$", re.DOTALL)
 TS_BIOME_LINE_RE = re.compile(r"\bbiome-ignore\b(?!-all)(.*)$", re.DOTALL)
@@ -137,11 +137,13 @@ def _clean_reason(raw: str) -> str:
     return compact or "-"
 
 
-def extract_allowlist_records(text: str) -> list[SuppressionRecord]:
+def extract_allowlist_records(text: str, *, strict: bool = True) -> list[SuppressionRecord]:
     """Extract config-level suppression entries from suppression_allowlist.toml."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
+        if strict:
+            raise
         return []
     records: list[SuppressionRecord] = []
 
@@ -427,12 +429,36 @@ def _skip_rust_char_literal(text: str, pos: int) -> int | None:
     return None
 
 
-def _read_rust_attribute(text: str, pos: int, start_line: int) -> tuple[_RustToken, int, int]:
+def _match_rust_attr_start(text: str, pos: int) -> tuple[bool, int] | None:
     n = len(text)
-    is_inner = pos + 1 < n and text[pos + 1] == "!"
-    i = pos + (2 if is_inner else 1)
+    if pos >= n or text[pos] != "#":
+        return None
+    j = pos + 1
+    while j < n and text[j].isspace():
+        j += 1
+    is_inner = False
+    if j < n and text[j] == "!":
+        is_inner = True
+        j += 1
+        while j < n and text[j].isspace():
+            j += 1
+    if j < n and text[j] == "[":
+        return is_inner, j
+    return None
+
+
+def _read_rust_attribute(
+    text: str,
+    pos: int,
+    start_line: int,
+    *,
+    is_inner: bool,
+    bracket_pos: int,
+) -> tuple[_RustToken, int, int]:
+    n = len(text)
+    line = start_line + text.count("\n", pos, bracket_pos)
+    i = bracket_pos
     depth = 0
-    line = start_line
     while i < n:
         ch = text[i]
         if ch == "\n":
@@ -472,10 +498,11 @@ def _scan_rust_comment_or_attr(
     if ch == "/" and pos + 1 < n and text[pos + 1] == "*":
         end, nl = _skip_rust_block_comment(text, pos)
         return _RustToken("COMMENT", text[pos:end], line, line + nl), end, line + nl
-    if ch == "#" and (
-        (pos + 1 < n and text[pos + 1] == "[") or (pos + 2 < n and text[pos + 1 : pos + 3] == "![")
-    ):
-        return _read_rust_attribute(text, pos, line)
+    if ch == "#":
+        attr_start = _match_rust_attr_start(text, pos)
+        if attr_start is not None:
+            is_inner, bracket_pos = attr_start
+            return _read_rust_attribute(text, pos, line, is_inner=is_inner, bracket_pos=bracket_pos)
     return None
 
 
@@ -737,10 +764,15 @@ def _extract_ts_records(rel_path: str, text: str) -> list[SuppressionRecord]:
     return records
 
 
-def extract_file_records(rel_path: str, text: str) -> list[SuppressionRecord]:
+def extract_file_records(
+    rel_path: str,
+    text: str,
+    *,
+    strict_allowlist: bool = True,
+) -> list[SuppressionRecord]:
     """Extract all config, broad, or inline suppressions from a single file's contents."""
     if rel_path == ALLOWLIST_REL_PATH:
-        return extract_allowlist_records(text)
+        return extract_allowlist_records(text, strict=strict_allowlist)
     if is_excluded_source_path(rel_path) or is_generated_source_text(text):
         return []
     records: list[SuppressionRecord] = []
@@ -769,30 +801,76 @@ def _run_git(
     )
 
 
-def _git_show_optional(repo_root: pathlib.Path, rev: str, rel_path: str) -> str | None:
-    proc = _run_git(repo_root, "show", f"{rev}:{rel_path}", check=False)
+def _validate_git_rev(repo_root: pathlib.Path, rev: str) -> str:
+    """Reject option-like revisions (CWE-88) and verify rev resolves to a commit."""
+    cleaned = rev.strip()
+    if not cleaned or cleaned.startswith("-"):
+        msg = f"invalid git revision {rev!r}: must not be empty or start with '-'"
+        raise ValueError(msg)
+    proc = _run_git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        f"{cleaned}^{{commit}}",
+    )
+    resolved = proc.stdout.strip()
+    if not resolved:
+        msg = f"git revision did not resolve to a commit: {rev!r}"
+        raise ValueError(msg)
+    return resolved
+
+
+def _is_safe_worktree_file(repo_root: pathlib.Path, rel_path: str) -> pathlib.Path | None:
+    p = pathlib.PurePosixPath(rel_path) if rel_path else None
+    if (
+        p is None
+        or "\x00" in rel_path
+        or rel_path.startswith("/")
+        or p.is_absolute()
+        or ".." in p.parts
+    ):
+        return None
+    full = repo_root / rel_path
+    repo_resolved = repo_root.resolve()
+    try:
+        resolved = full.resolve()
+    except OSError:
+        return None
+    if full.is_symlink() or not resolved.is_relative_to(repo_resolved):
+        return None
+    cursor = repo_resolved
+    for part in resolved.relative_to(repo_resolved).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            return None
+    return full if full.is_file() else None
+
+
+def _git_show_optional(repo_root: pathlib.Path, rev_sha: str, rel_path: str) -> str | None:
+    proc = _run_git(repo_root, "show", "--end-of-options", f"{rev_sha}:{rel_path}", check=False)
     return proc.stdout if proc.returncode == 0 else None
 
 
-def _read_after_text(repo_root: pathlib.Path, head_rev: str | None, rel_path: str) -> str | None:
-    if head_rev is not None:
-        return _git_show_optional(repo_root, head_rev, rel_path)
-    full = repo_root / rel_path
-    return full.read_text(encoding="utf-8", errors="replace") if full.is_file() else None
+def _read_after_text(repo_root: pathlib.Path, head_sha: str | None, rel_path: str) -> str | None:
+    if head_sha is not None:
+        return _git_show_optional(repo_root, head_sha, rel_path)
+    full = _is_safe_worktree_file(repo_root, rel_path)
+    return full.read_text(encoding="utf-8", errors="replace") if full is not None else None
 
 
 def _collect_changed_paths(
     repo_root: pathlib.Path,
-    base_rev: str,
-    head_rev: str | None,
+    base_sha: str,
+    head_sha: str | None,
 ) -> set[str]:
     diff_args = (
-        ["diff", "--name-only", base_rev, head_rev]
-        if head_rev
-        else ["diff", "--name-only", base_rev]
+        ["diff", "--name-only", base_sha, head_sha, "--"]
+        if head_sha
+        else ["diff", "--name-only", base_sha, "--"]
     )
     paths = {line for line in _run_git(repo_root, *diff_args).stdout.splitlines() if line}
-    if head_rev is None:
+    if head_sha is None:
         untracked = _run_git(
             repo_root, "ls-files", "--others", "--exclude-standard"
         ).stdout.splitlines()
@@ -800,9 +878,11 @@ def _collect_changed_paths(
     return paths
 
 
-def _collect_after_surface_totals(repo_root: pathlib.Path, head_rev: str | None) -> Counter[str]:
-    if head_rev is not None:
-        files = _run_git(repo_root, "ls-tree", "-r", "--name-only", head_rev).stdout.splitlines()
+def _collect_after_surface_totals(repo_root: pathlib.Path, head_sha: str | None) -> Counter[str]:
+    if head_sha is not None:
+        files = _run_git(
+            repo_root, "ls-tree", "-r", "--name-only", head_sha, "--"
+        ).stdout.splitlines()
     else:
         files = _run_git(
             repo_root, "ls-files", "--cached", "--others", "--exclude-standard"
@@ -812,10 +892,10 @@ def _collect_after_surface_totals(repo_root: pathlib.Path, head_rev: str | None)
     for rel_path in files:
         if rel_path != ALLOWLIST_REL_PATH and is_excluded_source_path(rel_path):
             continue
-        text = _read_after_text(repo_root, head_rev, rel_path)
+        text = _read_after_text(repo_root, head_sha, rel_path)
         if text is None:
             continue
-        for rec in extract_file_records(rel_path, text):
+        for rec in extract_file_records(rel_path, text, strict_allowlist=True):
             totals[rec.surface] += 1
     return totals
 
@@ -879,22 +959,26 @@ def build_diff_report(
     head_rev: str | None = None,
 ) -> str:
     """Compute before/after suppression diff and render GitHub Flavored Markdown."""
-    changed_paths = sorted(_collect_changed_paths(repo_root, base_rev, head_rev))
+    base_sha = _validate_git_rev(repo_root, base_rev)
+    head_sha = _validate_git_rev(repo_root, head_rev) if head_rev is not None else None
+    changed_paths = sorted(_collect_changed_paths(repo_root, base_sha, head_sha))
     before_changed: list[SuppressionRecord] = []
     after_changed: list[SuppressionRecord] = []
 
     for rel_path in changed_paths:
         if rel_path != ALLOWLIST_REL_PATH and is_excluded_source_path(rel_path):
             continue
-        before_text = _git_show_optional(repo_root, base_rev, rel_path)
+        before_text = _git_show_optional(repo_root, base_sha, rel_path)
         if before_text is not None:
-            before_changed.extend(extract_file_records(rel_path, before_text))
-        after_text = _read_after_text(repo_root, head_rev, rel_path)
+            before_changed.extend(
+                extract_file_records(rel_path, before_text, strict_allowlist=False)
+            )
+        after_text = _read_after_text(repo_root, head_sha, rel_path)
         if after_text is not None:
-            after_changed.extend(extract_file_records(rel_path, after_text))
+            after_changed.extend(extract_file_records(rel_path, after_text, strict_allowlist=True))
 
     added, removed = _diff_records(before_changed, after_changed)
-    after_totals = _collect_after_surface_totals(repo_root, head_rev)
+    after_totals = _collect_after_surface_totals(repo_root, head_sha)
     added_by_surface = Counter(r.surface for r in added)
     removed_by_surface = Counter(r.surface for r in removed)
 
@@ -977,7 +1061,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         report = build_diff_report(repo_root, base_rev, args.head)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        OSError,
+        ValueError,
+        tomllib.TOMLDecodeError,
+    ) as exc:
         sys.stderr.write(f"ERROR: failed to build suppression diff report: {exc}\n")
         return EXIT_USAGE_ERROR
 

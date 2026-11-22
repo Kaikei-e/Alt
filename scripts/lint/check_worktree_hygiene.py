@@ -372,6 +372,30 @@ def _check_untracked_zero_byte(
         )
 
 
+def _check_staged_added_zero_byte(
+    repo_root: Path,
+    staged_added_files: list[str],
+    allowlist_regexes: list[re.Pattern[str]],
+    findings: list[HygieneFinding],
+) -> None:
+    for rel_path in staged_added_files:
+        if any(rx.match(rel_path) for rx in allowlist_regexes):
+            continue
+        full_path = repo_root / rel_path
+        try:
+            st = full_path.lstat()
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode) and st.st_size == 0:
+            findings.append(
+                HygieneFinding(
+                    code="hygiene.zero-byte-staged",
+                    path=rel_path,
+                    detail="newly staged 0-byte file is not matched by scripts/lint/empty_file_allowlist.toml",
+                )
+            )
+
+
 def _check_binary_artifacts(
     repo_root: Path,
     untracked_files: list[str],
@@ -411,10 +435,14 @@ def check_worktree_hygiene(
     staged_files = _list_z_paths(
         repo_root, ["diff", "--cached", "--name-only", "--diff-filter=AM", "-z"]
     )
+    staged_added_files = _list_z_paths(
+        repo_root, ["diff", "--cached", "--name-only", "--diff-filter=A", "-z"]
+    )
 
     findings: list[HygieneFinding] = []
     _check_tracked_zero_byte(repo_root, tracked_files, findings)
     _check_untracked_zero_byte(repo_root, untracked_files, allowlist_regexes, findings)
+    _check_staged_added_zero_byte(repo_root, staged_added_files, allowlist_regexes, findings)
     checked_binary_candidates = _check_binary_artifacts(
         repo_root, untracked_files, staged_files, findings
     )

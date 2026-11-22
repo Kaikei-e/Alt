@@ -601,6 +601,83 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
                         f"Expected check_workflow_doc to reject lint step swallow for {lint_cmd}",
                     )
 
+        # 3) Six adversarial bypass regressions (#17.4 / #16.6)
+        bypass_cases = [
+            (
+                "quote-aware inline comment stripping",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                '          echo "step #1" && ./scripts/lint/run.sh repo || true\n',
+            ),
+            (
+                "job-level continue-on-error on non-lint-named job with lint step",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    # swallow-ok: attempting job-level swallow on execute job\n"
+                "    continue-on-error: true\n"
+                "    steps:\n"
+                '      - run: ./scripts/lint/run.sh "$PROJECT_DIR"\n',
+            ),
+            (
+                "step with if referencing job-type == lint",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - name: Conditional lint step\n"
+                "        if: ${{ inputs.job-type == 'lint' }}\n"
+                "        run: |\n"
+                "          # swallow-ok: trying to swallow conditional lint step\n"
+                "          set +e\n"
+                "          echo running\n",
+            ),
+            (
+                "expression continue-on-error on lint job",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    continue-on-error: ${{ true }}\n"
+                "    steps:\n"
+                "      - run: ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "expression continue-on-error on lint step",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - name: Run lint\n"
+                "        continue-on-error: ${{ true }}\n"
+                "        run: ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "set +o errexit in lint job",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                "          # swallow-ok: trying set +o errexit\n"
+                "          set +o errexit\n"
+                "          ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "path-prefixed GITHUB_WORKSPACE/scripts/lint/run.sh",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                '          "$GITHUB_WORKSPACE/scripts/lint/run.sh" repo || true  # swallow-ok: trying path prefix bypass\n',
+            ),
+        ]
+        for label, body in bypass_cases:
+            with self.subTest(bypass=label):
+                wf_text = (
+                    "name: sample\non:\n  pull_request:\npermissions:\n  contents: read\n"
+                    + body
+                )
+                text_errs = self.mod.check_workflow_text("sample.yaml", wf_text)
+                doc_errs = self.mod.check_workflow_doc("sample.yaml", yaml.safe_load(wf_text))
+                self.assertTrue(
+                    len(text_errs) >= 1,
+                    f"Expected check_workflow_text to reject bypass '{label}', got {text_errs}",
+                )
+                self.assertTrue(
+                    len(doc_errs) >= 1,
+                    f"Expected check_workflow_doc to reject bypass '{label}', got {doc_errs}",
+                )
+
     def test_direct_lint_tool_invocations_in_run_are_rejected(self) -> None:
         forbidden_commands = [
             "golangci-lint run ./...",

@@ -98,14 +98,36 @@ if ! "$deno_bin" fmt --check; then
 fi
 
 lint_status="pass"
-if ! "$deno_bin" lint; then
-  lint_status="fail"
+lint_policy="${LINT_POLICY:-fix-existing}"
+if [[ "$lint_policy" == "block-new" ]]; then
+  deno_json="$(mktemp "${TMPDIR:-/tmp}/alt-deno-lint-XXXXXX.json")"
+  deno_rc=0
+  set +e
+  "$deno_bin" lint --json > "$deno_json"
+  deno_rc=$?
+  set -e
+  if [[ "$deno_rc" -ne 0 ]]; then
+    if python3 "${script_dir}/check_ratchet.py" check-fingerprints \
+      --repo-root "${repo_root}" \
+      --project-dir "${project_path}" \
+      --deno-json "$deno_json" \
+      --require-findings; then
+      lint_status="pass (block-new)"
+    else
+      lint_status="fail"
+    fi
+  fi
+  rm -f "$deno_json"
+else
+  if ! "$deno_bin" lint; then
+    lint_status="fail"
+  fi
 fi
 
 echo "=== deno.sh summary (${project_dir}, deno ${pinned}) ==="
 echo "deno fmt --check: ${fmt_status}"
 echo "deno lint: ${lint_status}"
 
-if [[ "$fmt_status" != "pass" || "$lint_status" != "pass" ]]; then
+if [[ "$fmt_status" != "pass" || "$lint_status" == "fail" ]]; then
   exit 1
 fi

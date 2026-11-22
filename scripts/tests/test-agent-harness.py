@@ -1481,6 +1481,80 @@ with tempfile.TemporaryDirectory() as tmp:
         res.stdout,
     )
 
+# H11: directory-only backtick ref (e.g. `scripts/`) is rejected
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Directory only | `scripts/` | ADR-000928 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 rejects directory-only backtick ref (`scripts/`)",
+        res.returncode == 1 and any("scripts/" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: non-existent backticked file token without slash paired with real path is rejected
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Fake token | `scripts/agent-harness/guard_event_time.py`, `fake_nonexistent.py` | ADR-000928 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 rejects non-existent backticked .py token without slash",
+        res.returncode == 1 and any("fake_nonexistent.py" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: cross-checks [governance].max_judgment_rules in scripts/lint/ratchet/suppressions.toml
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_and_track(
+        repo,
+        "scripts/lint/ratchet/suppressions.toml",
+        "version = 1\n\n[governance]\nmax_judgment_rules = 99\n",
+    )
+    git(repo, "commit", "-m", "mismatched suppressions.toml governance")
+    res_bad = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines_bad = h11_findings(res_bad.stdout)
+    check(
+        "H11 detects mismatch between rule-ledger.md and suppressions.toml max_judgment_rules",
+        res_bad.returncode == 1 and any("suppressions.toml" in ln for ln in lines_bad),
+        res_bad.stdout,
+    )
+
+    write_and_track(
+        repo,
+        "scripts/lint/ratchet/suppressions.toml",
+        "version = 1\n\n[governance]\nmax_judgment_rules = 1\n",
+    )
+    git(repo, "commit", "-m", "matched suppressions.toml governance")
+    res_ok = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H11 passes when suppressions.toml max_judgment_rules matches rule-ledger.md",
+        res_ok.returncode == 0,
+        res_ok.stdout + res_ok.stderr,
+    )
+
 # Real repository check: require clean exit 0 and zero findings.
 sys.stdout.write("harness_selfcheck: real repository check\n")
 res_real = run_script(SELFCHECK_SCRIPT, args=["--root", str(ROOT)])

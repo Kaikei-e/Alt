@@ -116,11 +116,11 @@ UNSUPPORTED_PATH_GLOB_RE = re.compile(r"[?+\[]")
 # --- Check 12 constants ------------------------------------------------
 RUN_SWALLOW_RE = re.compile(
     r"(?:\|\|\s*(?:true\b|:(?=\s|$|[;#)])|echo\b|exit\s+0\b)"
-    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*\+e(?=\s|$|[;#)]))"
+    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*(?:\+e|\+o\s+errexit)(?=\s|$|[;#)]))"
 )
 SWALLOW_RE = re.compile(
     r"(?:\|\|\s*(?:true\b|:(?=\s|$|[;#)])|echo\b|exit\s+0\b)"
-    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*\+e(?=\s|$|[;#)])"
+    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*(?:\+e|\+o\s+errexit)(?=\s|$|[;#)])"
     r"|\bcontinue-on-error\s*:\s*(?:['\"]true['\"]|true)\b)"
 )
 SWALLOW_OK_COMMENT_RE = re.compile(r"^#\s*swallow-ok:(.*)$")
@@ -132,9 +132,10 @@ LINT_JOB_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 LINT_RUN_CMD_RE = re.compile(
-    r"(?:^|[;&|(\s\"'])(?:\./)?scripts/lint/run\.sh\b"
+    r"(?:^|[;&|(\s\"'/])(?:\./)?scripts/lint/run\.sh\b"
     r"|\bmake\s+(?:[^\n;|&]*\s+)?lint\b"
 )
+LINT_STEP_IF_RE = re.compile(r"\bjob-type\s*==\s*['\"]lint['\"]", re.IGNORECASE)
 
 # --- Check 13 constants ------------------------------------------------
 DIRECT_LINT_TOOLS = frozenset(
@@ -1036,11 +1037,34 @@ def is_lint_job_name(job_name: str) -> bool:
 
 
 def _strip_inline_comment(raw_line: str) -> str:
-    return INLINE_COMMENT_RE.sub("", raw_line)
+    """Strip an unquoted `# ...` shell/YAML inline comment while respecting `'...'` and `\"...\"`."""
+    in_single = False
+    in_double = False
+    escaped = False
+    for idx, ch in enumerate(raw_line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and not in_single:
+            escaped = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if ch == "#" and not in_single and not in_double:
+            if idx == 0 or raw_line[idx - 1].isspace():
+                return raw_line[:idx]
+    return raw_line
 
 
 def is_lint_step(step: Mapping[str, Any]) -> bool:
-    """Return True if a step invokes ./scripts/lint/run.sh or make lint."""
+    """Return True if a step invokes ./scripts/lint/run.sh, make lint, or targets job-type == 'lint'."""
+    step_if = step.get("if")
+    if isinstance(step_if, str) and LINT_STEP_IF_RE.search(step_if):
+        return True
     run = step.get("run")
     if not isinstance(run, str):
         return False
@@ -1051,6 +1075,14 @@ def is_lint_step(step: Mapping[str, Any]) -> bool:
         if LINT_RUN_CMD_RE.search(_strip_inline_comment(raw_line)):
             return True
     return False
+
+
+def _is_forbidden_lint_continue_on_error(mapping: Mapping[str, Any]) -> bool:
+    """Return True if continue-on-error is set to anything other than literal boolean False."""
+    if "continue-on-error" not in mapping:
+        return False
+    val = mapping["continue-on-error"]
+    return val is not False and val is not None
 
 
 def _find_run_swallows(run_body: str) -> list[str]:
@@ -1077,23 +1109,25 @@ def _check_lint_swallows_in_doc(
     for job_name, job in (doc.get("jobs") or {}).items():
         if not isinstance(job, dict):
             continue
+        steps = [s for s in (job.get("steps") or []) if isinstance(s, dict)]
         job_is_lint = is_lint_job_name(str(job_name))
-        if job_is_lint and job.get("continue-on-error") in (True, "true"):
+        job_has_lint_step = any(is_lint_step(s) for s in steps)
+        if (job_is_lint or job_has_lint_step) and _is_forbidden_lint_continue_on_error(job):
+            coe_val = job.get("continue-on-error")
             errors.append(
                 f"::error file={path}::lint job {job_name!r} sets "
-                f"continue-on-error: true; swallowing lint exit codes is "
+                f"continue-on-error: {coe_val!r}; swallowing lint exit codes is "
                 f"unconditionally forbidden even with '# swallow-ok:'."
             )
             bad += 1
-        for step in job.get("steps") or []:
-            if not isinstance(step, dict):
-                continue
+        for step in steps:
             if not (job_is_lint or is_lint_step(step)):
                 continue
-            if step.get("continue-on-error") in (True, "true"):
+            if _is_forbidden_lint_continue_on_error(step):
+                coe_val = step.get("continue-on-error")
                 errors.append(
                     f"::error file={path}::lint step in job {job_name!r} sets "
-                    f"continue-on-error: true; swallowing lint exit codes is "
+                    f"continue-on-error: {coe_val!r}; swallowing lint exit codes is "
                     f"unconditionally forbidden even with '# swallow-ok:'."
                 )
                 bad += 1
