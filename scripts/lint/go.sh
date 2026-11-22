@@ -78,10 +78,11 @@ if [ ! -f "${CANARY_AUDIT_SCRIPT}" ]; then
 fi
 
 canary_dir="$(mktemp -d "${TMPDIR:-/tmp}/alt-go-canary-XXXXXX")"
-cleanup_canary() {
-  rm -rf "${canary_dir}"
+govuln_json="$(mktemp "${TMPDIR:-/tmp}/alt-govulncheck-XXXXXX.json")"
+cleanup_tmp() {
+  rm -rf "${canary_dir}" "${govuln_json}"
 }
-trap cleanup_canary EXIT
+trap cleanup_tmp EXIT
 
 echo "==> [${PROJECT_REL}] canary audit (golangci-lint incl. gosec SARIF)"
 if ! python3 "${CANARY_AUDIT_SCRIPT}" go-canary \
@@ -198,6 +199,23 @@ if [ ! -s ./_reports/govulncheck.sarif ]; then
   echo "ERROR: govulncheck did not produce a non-empty ./_reports/govulncheck.sarif" >&2
   exit 1
 fi
+
+if ! "${GOVULNCHECK_BIN}" -format=json ./... > "${govuln_json}" 2>./_reports/govulncheck.stderr; then
+  [ -s ./_reports/govulncheck.stderr ] && cat ./_reports/govulncheck.stderr >&2
+  rm -f ./_reports/govulncheck.stderr
+  echo "ERROR: govulncheck JSON coverage run failed" >&2
+  exit 1
+fi
+[ -s ./_reports/govulncheck.stderr ] && cat ./_reports/govulncheck.stderr >&2
+rm -f ./_reports/govulncheck.stderr
+
+if ! python3 "${CANARY_AUDIT_SCRIPT}" go-verify-govulncheck \
+  --project-dir "${PROJECT_DIR}" \
+  --govulncheck-sarif ./_reports/govulncheck.sarif \
+  --govulncheck-json "${govuln_json}"; then
+  exit 1
+fi
+
 jq '(.runs[]?.results[]?.stacks | select(type == "array")) |= unique' ./_reports/govulncheck.sarif > ./_reports/govulncheck.sarif.tmp
 mv ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.sarif
 

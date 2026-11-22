@@ -127,11 +127,37 @@ case "$bandit_dep_state" in
     ;;
 esac
 
-echo "==> canary audit (ruff${bandit_canary_suffix})"
+pyrefly_dep_state=""
+pyrefly_dep_rc=0
+set +e
+pyrefly_dep_state="$(query_dev_dep pyrefly)"
+pyrefly_dep_rc=$?
+set -e
+if [[ $pyrefly_dep_rc -ne 0 ]]; then
+  echo "error: failed to inspect pyproject.toml for pyrefly (exit ${pyrefly_dep_rc})" >&2
+  exit 1
+fi
+case "$pyrefly_dep_state" in
+  declared)
+    check_pyrefly="true"
+    pyrefly_canary_suffix=", pyrefly"
+    ;;
+  not-declared)
+    check_pyrefly="false"
+    pyrefly_canary_suffix=""
+    ;;
+  *)
+    echo "error: unexpected dev-dependency check output for pyrefly: ${pyrefly_dep_state}" >&2
+    exit 1
+    ;;
+esac
+
+echo "==> canary audit (ruff${bandit_canary_suffix}${pyrefly_canary_suffix})"
 if ! uv run --frozen --only-group dev python "${canary_audit_script}" python-canary \
   --project-dir "${target_dir}" \
   --work-dir "${work_tmp}/canary" \
-  --check-bandit "${check_bandit}"; then
+  --check-bandit "${check_bandit}" \
+  --check-pyrefly "${check_pyrefly}"; then
   exit 1
 fi
 rm -rf "${work_tmp}/canary"

@@ -44,7 +44,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 LINT_DIR = ROOT / "scripts" / "lint"
 GO_SH = LINT_DIR / "go.sh"
 PYTHON_SH = LINT_DIR / "python.sh"
+RUST_SH = LINT_DIR / "rust.sh"
+FRONTEND_SH = LINT_DIR / "frontend.sh"
+DENO_SH = LINT_DIR / "deno.sh"
+PROTO_SH = LINT_DIR / "proto.sh"
+RUN_SH = LINT_DIR / "run.sh"
 CANARY_AUDIT_PY = LINT_DIR / "canary_audit.py"
+CANARY_LEDGER_TOML = LINT_DIR / "canary_ledger.toml"
 GOLANGCI_YML = ROOT / ".golangci.yml"
 
 GOLANGCI_LINT_VERSION = "v2.14.0"
@@ -53,6 +59,9 @@ GOVULNCHECK_VERSION = "v1.6.0"
 BASH_BIN = shutil.which("bash")
 GO_BIN = shutil.which("go")
 UV_BIN = shutil.which("uv")
+CARGO_BIN = shutil.which("cargo")
+BUF_BIN = shutil.which("buf")
+BUN_BIN = shutil.which("bun")
 
 assert BASH_BIN is not None, "bash executable not found in PATH"
 assert GO_BIN is not None, "go executable not found in PATH"
@@ -112,6 +121,7 @@ def build_go_test_repo(
     tmp: pathlib.Path,
     *,
     golangci_mode: str = "healthy",
+    govulncheck_mode: str = "healthy",
 ) -> tuple[pathlib.Path, pathlib.Path, dict[str, str]]:
     """Build an isolated mini-repo and fake XDG_CACHE_HOME Go linter binaries (no standalone gosec)."""
     repo = tmp / "repo"
@@ -260,9 +270,69 @@ sys.exit(0)
 
     govulncheck_script = f"""#!{sys.executable}
 import json, sys
+
+mode = {govulncheck_mode!r}
+args = sys.argv[1:]
+fmt = "text"
+for i, tok in enumerate(args):
+    if tok.startswith("-format="):
+        fmt = tok.split("=", 1)[1]
+    elif tok == "-format" and i + 1 < len(args):
+        fmt = args[i + 1]
+
+if fmt == "json":
+    if mode == "missing_db":
+        sys.stdout.write(json.dumps({{"config": {{"scanner_name": "govulncheck"}}}}) + "\\n")
+        sys.stdout.write(json.dumps({{"SBOM": {{"modules": [{{"path": "svc-go"}}], "roots": ["svc-go"]}}}}) + "\\n")
+    elif mode == "empty_sbom":
+        sys.stdout.write(json.dumps({{
+            "config": {{
+                "protocol_version": "v1.0.0",
+                "scanner_name": "govulncheck",
+                "scanner_version": "v1.6.0",
+                "db": "https://vuln.go.dev",
+                "go_version": "go1.27.4",
+            }}
+        }}) + "\\n")
+        sys.stdout.write(json.dumps({{"SBOM": {{"modules": [], "roots": []}}}}) + "\\n")
+    else:
+        sys.stdout.write(json.dumps({{
+            "config": {{
+                "protocol_version": "v1.0.0",
+                "scanner_name": "govulncheck",
+                "scanner_version": "v1.6.0",
+                "db": "https://vuln.go.dev",
+                "go_version": "go1.27.4",
+            }}
+        }}) + "\\n")
+        sys.stdout.write(json.dumps({{
+            "SBOM": {{
+                "go_version": "go1.27.4",
+                "modules": [{{"path": "svc-go"}}, {{"path": "stdlib", "version": "v1.27.4"}}],
+                "roots": ["svc-go"],
+            }}
+        }}) + "\\n")
+    sys.exit(0)
+
+driver_props = {{
+    "protocol_version": "v1.0.0",
+    "scanner_name": "govulncheck",
+    "scanner_version": "v1.6.0",
+    "db": "" if mode == "missing_db" else "https://vuln.go.dev",
+    "go_version": "go1.27.4",
+}}
 sys.stdout.write(json.dumps({{
     "version": "2.1.0",
-    "runs": [{{"tool": {{"driver": {{"name": "govulncheck", "rules": []}}}}, "results": []}}],
+    "runs": [{{
+        "tool": {{
+            "driver": {{
+                "name": "govulncheck",
+                "properties": driver_props,
+                "rules": [],
+            }}
+        }},
+        "results": [],
+    }}],
 }}))
 sys.exit(0)
 """
@@ -300,8 +370,10 @@ class PythonRepoSpec:
     """Configuration for constructing an isolated Python test repository."""
 
     with_bandit: bool = True
+    with_pyrefly: bool = False
     ruff_mode: str = "healthy"
     bandit_mode: str = "healthy"
+    pyrefly_mode: str = "healthy"
     create_app_py: bool = True
     project_rel: str = "svc-py"
 
@@ -325,6 +397,8 @@ def build_python_test_repo(
     dev_deps = ['  "ruff>=0.15.0",']
     if cfg.with_bandit:
         dev_deps.append('  "bandit>=1.8.0",')
+    if cfg.with_pyrefly:
+        dev_deps.append('  "pyrefly>=0.42.0",')
     pyproject_lines = [
         "[project]",
         'name = "svc-py"',
@@ -342,6 +416,14 @@ def build_python_test_repo(
         "[tool.bandit]",
         'skips = ["B602", "B101"]',
     ]
+    if cfg.with_pyrefly:
+        pyproject_lines.extend(
+            [
+                "",
+                "[tool.pyrefly]",
+                'project-includes = ["."]',
+            ]
+        )
     (svc / "pyproject.toml").write_text("\n".join(pyproject_lines) + "\n", encoding="utf-8")
 
     if cfg.create_app_py:
@@ -446,6 +528,34 @@ if tool == "bandit":
     )
     sys.exit(0)
 
+if tool == "pyrefly":
+    mode = os.environ.get("MOCK_PYREFLY_MODE", "healthy")
+    if mode == "silent_pass":
+        sys.stdout.write("INFO 0 errors\\n")
+        sys.exit(0)
+    targets: list[pathlib.Path] = []
+    i = 1
+    while i < len(rest):
+        tok = rest[i]
+        if tok in ("--config", "-c"):
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        targets.append(pathlib.Path(tok))
+        i += 1
+    for target in targets:
+        py_files = [target] if target.is_file() else list(target.rglob("*.py"))
+        for py_file in py_files:
+            if py_file.is_file() and 'not_an_int' in py_file.read_text(encoding="utf-8"):
+                sys.stderr.write(
+                    "ERROR `Literal['not_an_int']` is not assignable to `int` [bad-assignment]\\n"
+                )
+                sys.exit(1)
+    sys.stdout.write("INFO 0 errors\\n")
+    sys.exit(0)
+
 sys.stderr.write(f"stub uv: unexpected tool {{tool}}\\n")
 sys.exit(2)
 """
@@ -455,6 +565,7 @@ sys.exit(2)
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     env["MOCK_RUFF_MODE"] = cfg.ruff_mode
     env["MOCK_BANDIT_MODE"] = cfg.bandit_mode
+    env["MOCK_PYREFLY_MODE"] = cfg.pyrefly_mode
     return repo, svc, env
 
 
@@ -1024,6 +1135,638 @@ if UV_BIN is not None:
         check(f"{proj_rel} tree unchanged after canary", before_tree == after_tree)
 else:
     sys.stdout.write("  SKIP  uv binary not installed on PATH (covered by stub B1-B7)\n")
+
+# ---------------------------------------------------------------------------
+# Group A9 & B9: govulncheck verification and pyrefly canary
+# ---------------------------------------------------------------------------
+sys.stdout.write("A9. Go govulncheck coverage and DB metadata verification\n")
+for vuln_mode, expected_substr in (
+    ("missing_db", "govulncheck"),
+    ("empty_sbom", "ZERO-FILE SCAN DETECTED"),
+):
+    with tempfile.TemporaryDirectory() as td:
+        repo, svc, env = build_go_test_repo(pathlib.Path(td), govulncheck_mode=vuln_mode)
+        res = run_go_sh(repo, "svc-go", env)
+        check(
+            f"govulncheck {vuln_mode}: go.sh exits 1",
+            res.returncode == 1,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        check(
+            f"govulncheck {vuln_mode}: stderr reports {expected_substr}",
+            expected_substr in res.stderr,
+            res.stderr,
+        )
+
+sys.stdout.write("B9. Python pyrefly canary (healthy, broken silent-pass, not declared)\n")
+with tempfile.TemporaryDirectory() as td:
+    repo, svc, env = build_python_test_repo(
+        pathlib.Path(td),
+        PythonRepoSpec(with_bandit=False, with_pyrefly=True, pyrefly_mode="healthy"),
+    )
+    res = run_python_sh(repo, "svc-py", env)
+    check(
+        "pyrefly healthy: python.sh exits 0",
+        res.returncode == 0,
+        f"rc={res.returncode}, stderr={res.stderr!r}",
+    )
+    check(
+        "pyrefly healthy: summary includes pyrefly: pass", "pyrefly: pass" in res.stdout, res.stdout
+    )
+
+with tempfile.TemporaryDirectory() as td:
+    repo, svc, env = build_python_test_repo(
+        pathlib.Path(td),
+        PythonRepoSpec(with_bandit=False, with_pyrefly=True, pyrefly_mode="silent_pass"),
+    )
+    res = run_python_sh(repo, "svc-py", env)
+    check(
+        "pyrefly silent_pass: python.sh exits 1",
+        res.returncode == 1,
+        f"rc={res.returncode}, stdout={res.stdout!r}",
+    )
+    check(
+        "pyrefly silent_pass: stderr reports CANARY AUDIT FAILED",
+        "CANARY AUDIT FAILED" in res.stderr,
+        res.stderr,
+    )
+
+if UV_BIN is not None:
+    rerank_dir = ROOT / "rerank-server"
+    if (rerank_dir / "pyproject.toml").is_file() and (rerank_dir / "uv.lock").is_file():
+        probe = subprocess.run(  # noqa: S603 - fixed argv probing cached pyrefly dev group
+            [UV_BIN, "run", "--frozen", "--only-group", "dev", "pyrefly", "--version"],
+            cwd=str(rerank_dir),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if probe.returncode == 0:
+            res = subprocess.run(  # noqa: S603 - fixed argv running real pyrefly canary
+                [
+                    sys.executable,
+                    str(CANARY_AUDIT_PY),
+                    "python-canary",
+                    "--project-dir",
+                    str(rerank_dir),
+                    "--check-bandit",
+                    "false",
+                    "--check-pyrefly",
+                    "true",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            check(
+                "real pyrefly canary exits 0 on rerank-server",
+                res.returncode == 0,
+                f"rc={res.returncode}, stderr={res.stderr!r}",
+            )
+
+# ---------------------------------------------------------------------------
+# Group C: Rust canary tests (rust-canary + rust.sh)
+# ---------------------------------------------------------------------------
+sys.stdout.write("C1. Rust rust-canary wired in rust.sh (healthy vs silent_pass)\n")
+for rust_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = pathlib.Path(td)
+        repo = td_path / "repo"
+        lint_dir = repo / "scripts" / "lint"
+        lint_dir.mkdir(parents=True)
+        shutil.copy2(RUST_SH, lint_dir / "rust.sh")
+        shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
+        shutil.copy2(RUN_SH, lint_dir / "run.sh")
+        crate = repo / "svc-rust"
+        (crate / "src").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(
+            '[package]\nname = "svc-rust"\nversion = "0.1.0"\nedition = "2021"\n',
+            encoding="utf-8",
+        )
+        (crate / "rust-toolchain.toml").write_text(
+            '[toolchain]\nchannel = "1.99.1"\ncomponents = ["rustfmt", "clippy"]\n',
+            encoding="utf-8",
+        )
+        (crate / "src" / "lib.rs").write_text("pub fn ok() -> i32 { 1 }\n", encoding="utf-8")
+
+        bin_dir = td_path / "stub-bin"
+        cargo_stub = f"""#!{sys.executable}
+import pathlib, sys
+
+mode = {rust_mode!r}
+args = sys.argv[1:]
+if args == ["--version"]:
+    sys.stdout.write("cargo 1.99.1 (stub)\\n")
+    sys.exit(0)
+if args and args[0] == "fmt":
+    sys.exit(0)
+if args and args[0] == "clippy":
+    lib_rs = pathlib.Path.cwd() / "src" / "lib.rs"
+    is_canary = lib_rs.is_file() and "x == x" in lib_rs.read_text(encoding="utf-8")
+    if is_canary and mode == "healthy":
+        sys.stderr.write("error: equal expressions as operands to `==` (clippy::eq_op)\\n")
+        sys.exit(101)
+    sys.exit(0)
+sys.exit(0)
+"""
+        make_executable(bin_dir / "cargo", cargo_stub)
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+        env["XDG_CACHE_HOME"] = str(td_path / "cache")
+        res = subprocess.run(  # noqa: S603 - fixed argv running rust.sh under test
+            [BASH_BIN, str(lint_dir / "rust.sh"), "svc-rust"],
+            cwd=str(repo),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(
+            f"rust.sh ({rust_mode}) exits {expected_rc}",
+            res.returncode == expected_rc,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        if expected_rc == 1:
+            check(
+                "rust.sh (silent_pass) reports CANARY AUDIT FAILED",
+                "CANARY AUDIT FAILED" in res.stderr,
+                res.stderr,
+            )
+
+if CARGO_BIN is not None and (ROOT / "plecto" / "Cargo.toml").is_file():
+    before_plecto = snapshot_tree(ROOT / "plecto")
+    res = subprocess.run(  # noqa: S603 - fixed argv running real rust-canary
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "rust-canary",
+            "--project-dir",
+            str(ROOT / "plecto"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    after_plecto = snapshot_tree(ROOT / "plecto")
+    check(
+        "real rust-canary exits 0 on plecto",
+        res.returncode == 0,
+        f"rc={res.returncode}, stderr={res.stderr!r}",
+    )
+    check("plecto tree unchanged after rust-canary", before_plecto == after_plecto)
+
+# ---------------------------------------------------------------------------
+# Group D: Frontend canary tests (frontend-canary + frontend.sh)
+# ---------------------------------------------------------------------------
+sys.stdout.write("D1. Frontend frontend-canary wired in frontend.sh (healthy vs silent_pass)\n")
+for biome_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = pathlib.Path(td)
+        repo = td_path / "repo"
+        lint_dir = repo / "scripts" / "lint"
+        lint_dir.mkdir(parents=True)
+        shutil.copy2(FRONTEND_SH, lint_dir / "frontend.sh")
+        shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
+        shutil.copy2(RUN_SH, lint_dir / "run.sh")
+        fe = repo / "svc-fe"
+        (fe / "node_modules" / "@biomejs" / "biome").mkdir(parents=True)
+        (fe / "node_modules" / "svelte-check").mkdir(parents=True)
+        (fe / "node_modules" / ".bin").mkdir(parents=True)
+        (fe / "package.json").write_text('{"name":"svc-fe"}\n', encoding="utf-8")
+        (fe / "Dockerfile").write_text("FROM oven/bun:1.3.12-alpine AS base\n", encoding="utf-8")
+        (fe / "bun.lock").write_text(
+            '"@biomejs/biome": ["@biomejs/biome@2.5.2"]\n"svelte-check": ["svelte-check@4.7.6"]\n',
+            encoding="utf-8",
+        )
+        (fe / "node_modules" / "@biomejs" / "biome" / "package.json").write_text(
+            '{"version":"2.5.2"}\n', encoding="utf-8"
+        )
+        (fe / "node_modules" / "svelte-check" / "package.json").write_text(
+            '{"version":"4.7.6"}\n', encoding="utf-8"
+        )
+        biome_stub = f"""#!{sys.executable}
+import pathlib, sys
+
+mode = {biome_mode!r}
+args = sys.argv[1:]
+if mode == "silent_pass":
+    sys.stdout.write("Checked 1 file. No fixes applied.\\n")
+    sys.exit(0)
+for tok in args:
+    p = pathlib.Path(tok)
+    if p.is_file() and "debugger;" in p.read_text(encoding="utf-8"):
+        sys.stderr.write("lint/suspicious/noDebugger: This is an unexpected use of the debugger statement.\\n")
+        sys.exit(1)
+sys.exit(0)
+"""
+        make_executable(fe / "node_modules" / ".bin" / "biome", biome_stub)
+        bin_dir = td_path / "stub-bin"
+        bun_stub = f"""#!{sys.executable}
+import sys
+if sys.argv[1:] == ["--version"]:
+    sys.stdout.write("1.3.12\\n")
+sys.exit(0)
+"""
+        make_executable(bin_dir / "bun", bun_stub)
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+        res = subprocess.run(  # noqa: S603 - fixed argv running frontend.sh under test
+            [BASH_BIN, str(lint_dir / "frontend.sh"), "svc-fe"],
+            cwd=str(repo),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(
+            f"frontend.sh ({biome_mode}) exits {expected_rc}",
+            res.returncode == expected_rc,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        if expected_rc == 1:
+            check(
+                "frontend.sh (silent_pass) reports CANARY AUDIT FAILED",
+                "CANARY AUDIT FAILED" in res.stderr,
+                res.stderr,
+            )
+
+# ---------------------------------------------------------------------------
+# Group E: Deno canary tests (deno-canary + deno.sh)
+# ---------------------------------------------------------------------------
+sys.stdout.write("E1. Deno deno-canary wired in deno.sh (healthy vs silent_pass)\n")
+for deno_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = pathlib.Path(td)
+        repo = td_path / "repo"
+        lint_dir = repo / "scripts" / "lint"
+        lint_dir.mkdir(parents=True)
+        shutil.copy2(DENO_SH, lint_dir / "deno.sh")
+        shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
+        shutil.copy2(RUN_SH, lint_dir / "run.sh")
+        svc = repo / "svc-deno"
+        svc.mkdir(parents=True)
+        (svc / ".dvmrc").write_text("2.6.3\n", encoding="utf-8")
+        (svc / "deno.json").write_text("{}\n", encoding="utf-8")
+        (svc / "main.ts").write_text("export const ok = 1;\n", encoding="utf-8")
+        bin_dir = td_path / "stub-bin"
+        deno_stub = f"""#!{sys.executable}
+import pathlib, sys
+
+mode = {deno_mode!r}
+args = sys.argv[1:]
+if args == ["--version"]:
+    sys.stdout.write("deno 2.6.3 (stub)\\n")
+    sys.exit(0)
+if args and args[0] == "lint":
+    if mode == "silent_pass":
+        sys.stdout.write("Checked 1 file\\n")
+        sys.exit(0)
+    for tok in args[1:]:
+        p = pathlib.Path(tok)
+        if p.is_file() and "debugger;" in p.read_text(encoding="utf-8"):
+            sys.stderr.write("error[no-debugger]: `debugger` statement is not allowed\\n")
+            sys.exit(1)
+sys.exit(0)
+"""
+        make_executable(bin_dir / "deno", deno_stub)
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+        res = subprocess.run(  # noqa: S603 - fixed argv running deno.sh under test
+            [BASH_BIN, str(lint_dir / "deno.sh"), "svc-deno"],
+            cwd=str(repo),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(
+            f"deno.sh ({deno_mode}) exits {expected_rc}",
+            res.returncode == expected_rc,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        if expected_rc == 1:
+            check(
+                "deno.sh (silent_pass) reports CANARY AUDIT FAILED",
+                "CANARY AUDIT FAILED" in res.stderr,
+                res.stderr,
+            )
+
+cached_deno = cache_root / "alt-lint" / "deno" / "2.6.3" / "deno"
+if cached_deno.is_file():
+    res = subprocess.run(  # noqa: S603 - fixed argv running real deno-canary
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "deno-canary",
+            "--project-dir",
+            str(ROOT / "auth-token-manager"),
+            "--deno-bin",
+            str(cached_deno),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "real deno-canary exits 0 with cached deno 2.6.3",
+        res.returncode == 0,
+        f"rc={res.returncode}, stderr={res.stderr!r}",
+    )
+
+# ---------------------------------------------------------------------------
+# Group F: Proto canary tests (proto-canary + proto.sh)
+# ---------------------------------------------------------------------------
+sys.stdout.write("F1. Proto proto-canary wired in proto.sh (healthy vs silent_pass)\n")
+for buf_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = pathlib.Path(td)
+        repo = td_path / "repo"
+        lint_dir = repo / "scripts" / "lint"
+        lint_dir.mkdir(parents=True)
+        shutil.copy2(PROTO_SH, lint_dir / "proto.sh")
+        shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
+        shutil.copy2(RUN_SH, lint_dir / "run.sh")
+        proto_dir = repo / "proto"
+        (proto_dir / "tools" / "protovis").mkdir(parents=True)
+        (proto_dir / "buf.yaml").write_text("version: v2\n", encoding="utf-8")
+        # Stub allowlist files and minimal protovis that writes identical files
+        (repo / "alt-butterfly-facade" / "internal" / "server").mkdir(parents=True)
+        (repo / "alt-frontend-sv" / "src" / "lib" / "gen").mkdir(parents=True)
+        (repo / "alt-butterfly-facade" / "internal" / "server" / "allowlist_gen.go").write_text(
+            "package server\n", encoding="utf-8"
+        )
+        (repo / "alt-frontend-sv" / "src" / "lib" / "gen" / "allowlist.ts").write_text(
+            "export const ALLOW = [];\n", encoding="utf-8"
+        )
+        bin_dir = td_path / "stub-bin"
+        buf_stub = f"""#!{sys.executable}
+import pathlib, sys
+
+mode = {buf_mode!r}
+args = sys.argv[1:]
+if args == ["--version"]:
+    sys.stdout.write("1.48.0\\n")
+    sys.exit(0)
+if args and args[0] == "lint":
+    canary_proto = pathlib.Path.cwd() / "canary.proto"
+    if canary_proto.is_file() and mode == "healthy":
+        sys.stdout.write("canary.proto:3:6:Enum name \\"bad_enum\\" should be PascalCase.\\n")
+        sys.exit(100)
+    sys.exit(0)
+if args and args[0] == "build":
+    for i, tok in enumerate(args):
+        if tok == "-o" and i + 1 < len(args):
+            pathlib.Path(args[i + 1]).write_bytes(b"stub")
+    sys.exit(0)
+sys.exit(0)
+"""
+        go_stub = f"""#!{sys.executable}
+import pathlib, sys
+
+args = sys.argv[1:]
+root_out = None
+for i, tok in enumerate(args):
+    if tok == "-root" and i + 1 < len(args):
+        root_out = pathlib.Path(args[i + 1])
+if root_out is not None:
+    p1 = root_out / "alt-butterfly-facade" / "internal" / "server" / "allowlist_gen.go"
+    p2 = root_out / "alt-frontend-sv" / "src" / "lib" / "gen" / "allowlist.ts"
+    p1.parent.mkdir(parents=True, exist_ok=True)
+    p2.parent.mkdir(parents=True, exist_ok=True)
+    p1.write_text("package server\\n", encoding="utf-8")
+    p2.write_text("export const ALLOW = [];\\n", encoding="utf-8")
+sys.exit(0)
+"""
+        make_executable(bin_dir / "buf", buf_stub)
+        make_executable(bin_dir / "go", go_stub)
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+        res = subprocess.run(  # noqa: S603 - fixed argv running proto.sh under test
+            [BASH_BIN, str(lint_dir / "proto.sh"), "proto"],
+            cwd=str(repo),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(
+            f"proto.sh ({buf_mode}) exits {expected_rc}",
+            res.returncode == expected_rc,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        if expected_rc == 1:
+            check(
+                "proto.sh (silent_pass) reports CANARY AUDIT FAILED",
+                "CANARY AUDIT FAILED" in res.stderr,
+                res.stderr,
+            )
+
+if BUF_BIN is not None:
+    res = subprocess.run(  # noqa: S603 - fixed argv running real proto-canary
+        [sys.executable, str(CANARY_AUDIT_PY), "proto-canary", "--buf-bin", BUF_BIN],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "real proto-canary exits 0 with buf",
+        res.returncode == 0,
+        f"rc={res.returncode}, stderr={res.stderr!r}",
+    )
+
+# ---------------------------------------------------------------------------
+# Group G: Actionlint canary tests (actionlint-canary)
+# ---------------------------------------------------------------------------
+sys.stdout.write("G1. Actionlint actionlint-canary (stub healthy/silent_pass + real)\n")
+for al_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = pathlib.Path(td)
+        al_stub = td_path / "actionlint"
+        make_executable(
+            al_stub,
+            f"""#!{sys.executable}
+import pathlib, sys
+
+mode = {al_mode!r}
+if mode == "silent_pass":
+    sys.exit(0)
+for tok in sys.argv[1:]:
+    p = pathlib.Path(tok)
+    if p.is_file() and "invalid_context" in p.read_text(encoding="utf-8"):
+        sys.stdout.write(f"{{p}}:7:23: undefined variable \\"invalid_context\\" [expression]\\n")
+        sys.exit(1)
+sys.exit(0)
+""",
+        )
+        res = subprocess.run(  # noqa: S603 - fixed argv running actionlint-canary under test
+            [
+                sys.executable,
+                str(CANARY_AUDIT_PY),
+                "actionlint-canary",
+                "--actionlint-bin",
+                str(al_stub),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(
+            f"actionlint-canary ({al_mode}) exits {expected_rc}",
+            res.returncode == expected_rc,
+            f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+        )
+        if expected_rc == 1:
+            check(
+                "actionlint-canary (silent_pass) reports CANARY AUDIT FAILED",
+                "CANARY AUDIT FAILED" in res.stderr,
+                res.stderr,
+            )
+
+res_real_al = subprocess.run(  # noqa: S603 - fixed argv running real actionlint-canary
+    [sys.executable, str(CANARY_AUDIT_PY), "actionlint-canary"],
+    cwd=str(ROOT),
+    capture_output=True,
+    text=True,
+    check=False,
+)
+check(
+    "real actionlint-canary exits 0",
+    res_real_al.returncode == 0,
+    f"rc={res_real_al.returncode}, stderr={res_real_al.stderr!r}",
+)
+
+# ---------------------------------------------------------------------------
+# Group H: 45-target canary coverage ledger verification
+# ---------------------------------------------------------------------------
+sys.stdout.write("H1. 45-target canary coverage ledger (real + negative drift tests)\n")
+res_ledger = subprocess.run(  # noqa: S603 - fixed argv running verify-ledger on real repo
+    [sys.executable, str(CANARY_AUDIT_PY), "verify-ledger", "--repo-root", str(ROOT)],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+check(
+    "real repo verify-ledger exits 0",
+    res_ledger.returncode == 0,
+    f"rc={res_ledger.returncode}, stdout={res_ledger.stdout!r}, stderr={res_ledger.stderr!r}",
+)
+check(
+    "real repo verify-ledger accounts for all 45 targets",
+    "45" in res_ledger.stdout,
+    res_ledger.stdout,
+)
+
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    mini_repo = td_path / "mini-repo"
+    (mini_repo / "scripts" / "lint").mkdir(parents=True)
+    shutil.copy2(RUN_SH, mini_repo / "scripts" / "lint" / "run.sh")
+    (mini_repo / "svc-a").mkdir()
+    (mini_repo / "svc-a" / "go.mod").write_text("module svc-a\n\ngo 1.27.4\n", encoding="utf-8")
+    (mini_repo / "svc-a" / "main.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+    (mini_repo / "svc-py").mkdir()
+    (mini_repo / "svc-py" / "pyproject.toml").write_text(
+        '[project]\nname = "svc-py"\n[dependency-groups]\ndev = ["ruff>=0.15.0", "bandit>=1.8.0", "pyrefly>=0.42.0"]\n',
+        encoding="utf-8",
+    )
+
+    # 1) Missing target in ledger fails
+    missing_ledger = td_path / "missing.toml"
+    missing_ledger.write_text(
+        'version = 1\n[targets."svc-a"]\nkind = "go"\n'
+        '[targets."svc-a".scanners.golangci-lint]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.gosec]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.govulncheck]\nstatus = "canary"\ncanary = "go-verify-govulncheck"\n',
+        encoding="utf-8",
+    )
+    res_missing = subprocess.run(  # noqa: S603 - fixed argv running verify-ledger negative test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(missing_ledger),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "verify-ledger fails when a target from run.sh --list is missing",
+        res_missing.returncode == 1 and "svc-py" in res_missing.stderr,
+        f"rc={res_missing.returncode}, stderr={res_missing.stderr!r}",
+    )
+
+    # 2) Empty reason on exempt/not-applicable fails
+    empty_reason_ledger = td_path / "empty-reason.toml"
+    empty_reason_ledger.write_text(
+        "version = 1\n"
+        '[targets."svc-a"]\nkind = "go"\n'
+        '[targets."svc-a".scanners.golangci-lint]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.gosec]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.govulncheck]\nstatus = "canary"\ncanary = "go-verify-govulncheck"\n'
+        '[targets."svc-a".scanners.gofmt]\nstatus = "exempt"\nreason = ""\n'
+        '[targets."svc-py"]\nkind = "python"\n'
+        '[targets."svc-py".scanners.ruff]\nstatus = "canary"\ncanary = "python-canary"\n'
+        '[targets."svc-py".scanners.bandit]\nstatus = "canary"\ncanary = "python-canary"\n'
+        '[targets."svc-py".scanners.pyrefly]\nstatus = "canary"\ncanary = "python-canary"\n',
+        encoding="utf-8",
+    )
+    res_empty_reason = subprocess.run(  # noqa: S603 - fixed argv running verify-ledger negative test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(empty_reason_ledger),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "verify-ledger fails when exempt scanner has empty reason",
+        res_empty_reason.returncode == 1 and "reason" in res_empty_reason.stderr.lower(),
+        f"rc={res_empty_reason.returncode}, stderr={res_empty_reason.stderr!r}",
+    )
+
+    # 3) Python target declares bandit/pyrefly but ledger says not-applicable -> fails
+    drift_ledger = td_path / "drift.toml"
+    drift_ledger.write_text(
+        "version = 1\n"
+        '[targets."svc-a"]\nkind = "go"\n'
+        '[targets."svc-a".scanners.golangci-lint]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.gosec]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.govulncheck]\nstatus = "canary"\ncanary = "go-verify-govulncheck"\n'
+        '[targets."svc-py"]\nkind = "python"\n'
+        '[targets."svc-py".scanners.ruff]\nstatus = "canary"\ncanary = "python-canary"\n'
+        '[targets."svc-py".scanners.bandit]\nstatus = "not-applicable"\nreason = "falsely marked not applicable"\n'
+        '[targets."svc-py".scanners.pyrefly]\nstatus = "canary"\ncanary = "python-canary"\n',
+        encoding="utf-8",
+    )
+    res_drift = subprocess.run(  # noqa: S603 - fixed argv running verify-ledger negative test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(drift_ledger),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "verify-ledger fails when Python pyproject declares bandit but ledger marks not-applicable",
+        res_drift.returncode == 1 and "bandit" in res_drift.stderr,
+        f"rc={res_drift.returncode}, stderr={res_drift.stderr!r}",
+    )
 
 sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
 sys.exit(1 if RESULTS.failed else 0)

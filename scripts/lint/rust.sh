@@ -68,6 +68,19 @@ if [ "$active_version" != "$expected_channel" ]; then
   exit 1
 fi
 
+canary_audit_script="${script_dir}/canary_audit.py"
+if [ -f "${canary_audit_script}" ]; then
+  echo "==> [${project_rel}] canary audit (cargo clippy)"
+  if ! python3 "${canary_audit_script}" rust-canary \
+    --project-dir "${project_dir}" \
+    --toolchain-file "${toolchain_file}"; then
+    exit 1
+  fi
+elif [ -f "${repo_root}/scripts/lint/run.sh" ]; then
+  echo "error: missing canary audit helper: ${canary_audit_script}" >&2
+  exit 1
+fi
+
 fmt_status="pass"
 clippy_status="pass"
 rc=0
