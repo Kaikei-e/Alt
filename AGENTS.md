@@ -128,28 +128,25 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `scr
 - Import rules, the placement flow, and per-service exceptions live in `.agents/skills/clean-architecture/SKILL.md` (the same files as `.claude/skills/clean-architecture/`). Read it before adding an endpoint, usecase, port, gateway, or driver.
 - After editing Go or Python layer code, run `bash .agents/skills/clean-architecture/scripts/check_layers.sh --changed` and fix every `VIOLATION`; each one comes with a `FIX` line. `KNOWN` lines are recorded debt, not part of your task, and must not grow. They are printed only by the whole-service form, `check_layers.sh <service-dir>`.
 
+## Rule Ledger (CHECK-07)
+- Every engineering rule in this playbook, `CLAUDE.md`, and `.agents/rules/` is paired with its concrete mechanical check (or marked `判断`) in [`.agents/rules/rule-ledger.md`](.agents/rules/rule-ledger.md).
+- `python3 scripts/agent-harness/harness_selfcheck.py` (H11) validates all referenced scripts, `ast-grep:<id>` rules, corpus/ADR citations, and enforces a monotonic `max_judgment_rules` ratchet so prose rules migrate toward mechanical checks rather than accumulating unchecked.
+- Worktree hygiene (`scripts/lint/check_worktree_hygiene.py`) and disk-space / policy guards (`scripts/lint/run.sh`) are enforced mechanically; prefer updating the ledger over duplicating prose rules here.
+
 ## Testing Matrix
 - Frontend unit/component – `cd alt-frontend-sv && bun run test`
 - Frontend lint/format – `cd alt-frontend-sv && bun run lint`, `bun run format`
 - Frontend E2E – `cd alt-frontend-sv && bun run test:e2e` (requires stack)
-- Backend Go suites – `cd alt-backend/app && go test ./...`
-- Go side services – `go test ./...` in respective directories (add `-tags=integration` when noted)
+- Backend & Go services – `go test ./...` in the module directory (add `-tags=integration` when noted)
 - Python services – `cd <service>/app && uv run pytest`, `uv run pyrefly check`, `uv run ruff check`
-- Rust services – `cargo test` (optionally `cargo bench`/`criterion`)
-- Deno service – `deno test`
+- Rust / Deno services – `cargo test` / `deno test`
 
 ## Security & Secrets
-- Never commit real credentials. Base env files on `.env.template` and keep `.env` local.
-- auth-hub, pre-processor, and news-creator rely on structured JSON logs—preserve redaction helpers.
-- Sanitize LLM outputs; test against prompt-injection vectors (OWASP Top 10 for LLMs).
-- Use provided SSL helpers (`make dev-ssl-setup`, `make dev-ssl-test`, `make dev-clean-ssl`) when working with local TLS.
+- Never commit credentials (`.env` / `secrets` / keys are guarded by `guard_protected_paths.py`); preserve structured JSON log redaction in `auth-hub`, `pre-processor`, and `news-creator`, sanitize LLM outputs, and use `make dev-ssl-setup` for local TLS.
 
 ## Delivery Checklist
-- Plan updated; all steps completed or clearly marked.
-- Changes minimal, relevant, and verified through the canonical lint gate (`./scripts/lint/run.sh <target>` or `./scripts/lint/run.sh all`).
-- Appropriate tests executed and reported.
-- No Compose/Kubernetes drift—legacy assets under `stopped-using-k8s/` untouched.
-- Final message includes short rationale, file references, test evidence, and suggested next steps when applicable.
+- Plan updated; changes minimal and verified via `./scripts/lint/run.sh <target>`, `python3 scripts/lint/check_worktree_hygiene.py`, and affected tests.
+- `stopped-using-k8s/` untouched; final report includes rationale, file references, test evidence, and next steps.
 
 ## Quick References
 - Root context: `CLAUDE.md`

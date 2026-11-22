@@ -15,8 +15,37 @@ secrets
 # ============================================
 # Go
 # ============================================
-# Binary output (service-specific)
-alt-backend/app/alt-backend-optimized
+# Binary output (anchored to each Go module root so directories of the same name are never matched)
+/alt-backend/app/alt
+/alt-backend/app/alt-backend
+/alt-backend/app/alt-backend-optimized
+/alt-backend/app/backend
+/alt-backend/app/datahub
+/alt-backend/app/fix_article_titles
+/alt-backend/app/harvester
+/alt-backend/app/notifier
+/alt-backend/app/rag_owner_backfill
+/alt-backend/sidecar-proxy/sidecar-proxy
+/alt-butterfly-facade/alt-butterfly-facade
+/alt-perf/k6/mock-rss-server/mock-rss-server
+/altctl/altctl
+/auth-hub/auth-hub
+/docker/inference-proxy/inference-proxy
+/docker/otel-relay/otel-relay
+/docker/readonly-proxy/readonly-proxy
+/knowledge-sovereign/app/knowledge-sovereign
+/mq-hub/app/mq-hub
+/pki-agent/pki-agent
+/pre-processor/app/pre-processor
+/pre-processor/app/backfill-language
+/pre-processor-sidecar/app/pre-processor-sidecar
+/pre-processor-sidecar/cmd/credential-health-checker/credential-health-checker
+/proto/tools/protovis/protovis
+/rag-orchestrator/rag-orchestrator
+/rag-orchestrator/backfill
+/rag-orchestrator/eval-connections
+/rag-orchestrator/server
+/search-indexer/app/search-indexer
 
 # ============================================
 # Rust
@@ -190,7 +219,6 @@ scripts/rollout-knowledge-loop-evidence.sh
 secrets.bak*
 # Pact verification evidence — regenerated per pact-check.sh run, never committed
 .pact-evidence/
-altctl/altctl
 # Augur eval cases mined from the live corpus — real queries, titles and article ids
 rag-orchestrator/eval/testdata/golden_cases.local.json
 .mcp.json

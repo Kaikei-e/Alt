@@ -275,6 +275,31 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
             "| proto | FP-02 |\n"
         ),
     )
+    write_and_track(
+        repo,
+        "scripts/lint/ast-grep/rules/go-no-raw-http-server.yml",
+        "id: go-no-raw-http-server\nlanguage: go\n",
+    )
+    write_and_track(
+        repo,
+        "scripts/harness/corpus/C-01/meta.toml",
+        'id = "C-01"\n',
+    )
+    write_and_track(
+        repo,
+        ".agents/rules/rule-ledger.md",
+        (
+            "---\n"
+            "max_judgment_rules: 1\n"
+            "---\n\n"
+            "# Rule Ledger\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Projectors must use event time | `scripts/agent-harness/guard_event_time.py` | ADR-000928 |\n"
+            "| R-02 | Use canonical HTTP server helper | `ast-grep:go-no-raw-http-server` | C-01 |\n"
+            "| R-03 | Follow TDD RED-GREEN-REFACTOR | 判断（プロセス規律） | AGENTS.md |\n"
+        ),
+    )
     git(repo, "commit", "-m", "initial clean fixture")
     return repo
 
@@ -1239,6 +1264,220 @@ with tempfile.TemporaryDirectory() as tmp:
         and len(lines) == 1
         and "FP-02" in lines[0]
         and "does not appear" in lines[0],
+        res.stdout,
+    )
+
+# ---------------------------------------------------------------------------
+# 4b. Selfcheck H11 fixtures (Rule Ledger & judgment-rule ratchet)
+# ---------------------------------------------------------------------------
+sys.stdout.write("harness_selfcheck: H11 rule ledger fixtures\n")
+
+RULE_LEDGER_REL = ".agents/rules/rule-ledger.md"
+
+
+def h11_findings(stdout: str) -> list[str]:
+    return [ln for ln in stdout.splitlines() if ln.startswith("H11 ")]
+
+
+def write_rule_ledger(repo: pathlib.Path, content: str) -> None:
+    write_and_track(repo, RULE_LEDGER_REL, content)
+    git(repo, "commit", "--allow-empty", "-m", "update rule ledger fixture")
+
+
+# H11: clean fixture passes
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check("H11 clean rule ledger passes", res.returncode == 0, res.stdout + res.stderr)
+
+# H11: missing .agents/rules/rule-ledger.md
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    (repo / RULE_LEDGER_REL).unlink()
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing rule-ledger.md",
+        res.returncode == 1 and len(lines) == 1 and "rule-ledger.md" in lines[0],
+        res.stdout,
+    )
+
+# H11: missing max_judgment_rules metadata
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "# Rule Ledger\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Sample | `scripts/agent-harness/guard_event_time.py` | ADR-000928 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing max_judgment_rules metadata",
+        res.returncode == 1 and any("max_judgment_rules" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: missing table / wrong columns
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "# Rule Ledger\n\n"
+            "| ID | Rule | How |\n"
+            "|---|---|---|\n"
+            "| R-01 | Sample | `scripts/agent-harness/guard_event_time.py` |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing canonical 4-column table",
+        res.returncode == 1 and len(lines) >= 1,
+        res.stdout,
+    )
+
+# H11: missing script path in 強制手段
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Missing script | `scripts/lint/does_not_exist.py` | ADR-000928 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing script path in 強制手段",
+        res.returncode == 1 and any("scripts/lint/does_not_exist.py" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: missing ast-grep rule ID in 強制手段
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Missing ast-grep | `ast-grep:no-such-rule` | C-01 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing ast-grep rule ID in 強制手段",
+        res.returncode == 1 and any("no-such-rule" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: non-判断 row without any backticked repo path or ast-grep ID
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Vague enforcement | CI checks it somehow | AGENTS.md |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects non-判断 row without concrete path or ast-grep ID",
+        res.returncode == 1 and any("R-01" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: missing corpus C-99 and missing ADR-000999 in 由来
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 0\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Bad refs | `scripts/agent-harness/guard_event_time.py` | C-99 / ADR-000999 |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects missing corpus C-99 and ADR-000999 in 由来",
+        res.returncode == 1
+        and any("C-99" in ln for ln in lines)
+        and any("ADR-000999" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: judgment ratchet exceeded (judgment_rows > max_judgment_rules)
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 1\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | One | 判断 | AGENTS.md |\n"
+            "| R-02 | Two | 判断（レビュー） | AGENTS.md |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects judgment rows exceeding max_judgment_rules",
+        res.returncode == 1 and any("max_judgment_rules" in ln for ln in lines),
+        res.stdout,
+    )
+
+# H11: judgment ratchet not lowered when judgment_rows < max_judgment_rules
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_rule_ledger(
+        repo,
+        (
+            "---\n"
+            "max_judgment_rules: 2\n"
+            "---\n\n"
+            "| ID | 規則 | 強制手段 | 由来 |\n"
+            "|---|---|---|---|\n"
+            "| R-01 | Mechanized | `scripts/agent-harness/guard_event_time.py` | ADR-000928 |\n"
+            "| R-02 | One judgment | 判断 | AGENTS.md |\n"
+        ),
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h11_findings(res.stdout)
+    check(
+        "H11 detects unlowered max_judgment_rules when judgment rows decrease",
+        res.returncode == 1 and any("max_judgment_rules" in ln for ln in lines),
         res.stdout,
     )
 

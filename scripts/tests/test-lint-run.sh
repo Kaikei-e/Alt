@@ -485,4 +485,162 @@ assert_exit_and_err 1 "clippy: fail" \
   "rust.sh fails when declared wasm32-unknown-unknown target clippy fails" \
   env STUB_FAIL_WASM=1 PATH="$tmp_cargo_bin:$PATH" bash "$tmp_rust_repo/scripts/lint/rust.sh" wasm-crate
 
+# 5. Free disk space guard (CHECK-06)
+assert_exit_and_err 1 "ディスク空き容量不足" \
+  "run.sh exits 1 with Japanese error when available disk space is below threshold" \
+  env ALT_LINT_FAKE_FREE_KB=1024 bash "$tmp_repo/scripts/lint/run.sh" repo
+
+assert_exit_and_err 0 "ran:repo:repo:$tmp_repo" \
+  "run.sh passes disk check when available disk space meets threshold" \
+  env ALT_LINT_FAKE_FREE_KB=20971520 bash "$tmp_repo/scripts/lint/run.sh" repo
+
+assert_exit_and_err 0 "svc-go" \
+  "run.sh --list skips disk space check even when disk space is below threshold" \
+  env ALT_LINT_FAKE_FREE_KB=1024 bash "$tmp_list_repo/scripts/lint/run.sh" --list
+
+# 6. Policy mode (CHECK-02)
+tmp_policy_repo="$tmp_repo/policy-repo"
+mkdir -p "$tmp_policy_repo/scripts/lint"
+cp "$RUN_SH" "$tmp_policy_repo/scripts/lint/run.sh"
+printf '#!/usr/bin/env bash\necho "policy:${LINT_POLICY:-unset}:target:$1"\n' >"$tmp_policy_repo/scripts/lint/repo.sh"
+
+assert_exit_and_err 0 "policy:fix-existing:target:repo" \
+  "run.sh defaults LINT_POLICY to fix-existing" \
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+
+assert_exit_and_err 0 "policy:fix-existing:target:repo" \
+  "run.sh --policy fix-existing propagates LINT_POLICY=fix-existing" \
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy fix-existing repo
+
+assert_exit_and_err 0 "policy:block-new:target:repo" \
+  "run.sh --policy block-new propagates LINT_POLICY=block-new" \
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new repo
+
+assert_exit_and_err 0 "policy:block-new:target:repo" \
+  "run.sh respects LINT_POLICY=block-new environment variable" \
+  env LINT_POLICY=block-new bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+
+assert_exit_and_err 0 "policy:block-new:target:repo" \
+  "run.sh --policy block-new all propagates LINT_POLICY to every target" \
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new all
+
+assert_exit_and_err 2 "invalid lint policy" \
+  "run.sh --policy foo exits 2" \
+  bash "$tmp_policy_repo/scripts/lint/run.sh" --policy foo repo
+
+assert_exit_and_err 2 "invalid lint policy" \
+  "run.sh rejects invalid LINT_POLICY env value with exit 2" \
+  env LINT_POLICY=foo bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+
+assert_exit_and_err 2 "usage:" \
+  "run.sh --policy without target exits 2" \
+  bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new
+
+# 7. Dirty worktree resilience (CHECK-06)
+tmp_dirty_git="$tmp_repo/dirty-git"
+tmp_proto_bin="$tmp_repo/stub-proto-bin"
+mkdir -p \
+  "$tmp_dirty_git/scripts/lint" \
+  "$tmp_dirty_git/svc-go" \
+  "$tmp_dirty_git/proto/tools/protovis" \
+  "$tmp_dirty_git/alt-butterfly-facade/internal/server" \
+  "$tmp_dirty_git/alt-frontend-sv/src/lib/gen" \
+  "$tmp_proto_bin"
+cp "$RUN_SH" "$tmp_dirty_git/scripts/lint/run.sh"
+cp "$REPO_ROOT/scripts/lint/proto.sh" "$tmp_dirty_git/scripts/lint/proto.sh"
+cp "$REPO_ROOT/alt-frontend-sv/biome.json" "$tmp_dirty_git/alt-frontend-sv/biome.json"
+printf 'alt-frontend-sv/test-results/\n' >"$tmp_dirty_git/.gitignore"
+printf 'module svc-go\n' >"$tmp_dirty_git/svc-go/go.mod"
+printf 'package main\n' >"$tmp_dirty_git/svc-go/main.go"
+printf 'version: v2\n' >"$tmp_dirty_git/proto/buf.yaml"
+printf '// allowlist\n' >"$tmp_dirty_git/alt-butterfly-facade/internal/server/allowlist_gen.go"
+printf '// allowlist\n' >"$tmp_dirty_git/alt-frontend-sv/src/lib/gen/allowlist.ts"
+printf 'package main\n' >"$tmp_dirty_git/proto/tools/protovis/main.go"
+
+git -C "$tmp_dirty_git" init -b main >/dev/null
+git -C "$tmp_dirty_git" config user.name "Test"
+git -C "$tmp_dirty_git" config user.email "test@example.com"
+git -C "$tmp_dirty_git" add -A
+git -C "$tmp_dirty_git" commit -m "init dirty fixture" >/dev/null
+
+clean_dirty_list="$(bash "$tmp_dirty_git/scripts/lint/run.sh" --list)"
+
+# Dirty the worktree with untracked test-results artifact, uncommitted tracked change, and unrelated untracked file
+mkdir -p "$tmp_dirty_git/alt-frontend-sv/test-results"
+printf '{"status":"ok"}\n' >"$tmp_dirty_git/alt-frontend-sv/test-results/artifact.json"
+printf 'package main\n// dirty edit\n' >"$tmp_dirty_git/svc-go/main.go"
+printf 'unrelated scratch\n' >"$tmp_dirty_git/unrelated-dirty.txt"
+
+assert_exact_stdout 0 "$clean_dirty_list" \
+  "run.sh --list is unaffected by dirty worktree and untracked test-results artifacts" \
+  bash "$tmp_dirty_git/scripts/lint/run.sh" --list
+
+# Verify Biome VCS .gitignore config ignores test-results/ in real biome.json and real repo .gitignore
+assert_exit_and_err 0 "biome-vcs-ok" \
+  "alt-frontend-sv/biome.json enables vcs useIgnoreFile and excludes test-results" \
+  python3 -c '
+import json, pathlib, sys
+cfg = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert cfg["vcs"]["enabled"] is True
+assert cfg["vcs"]["clientKind"] == "git"
+assert cfg["vcs"]["useIgnoreFile"] is True
+assert "!test-results" in cfg["files"]["includes"]
+print("biome-vcs-ok")
+' "$REPO_ROOT/alt-frontend-sv/biome.json"
+
+assert_exit_and_err 0 "alt-frontend-sv/test-results/artifact.json" \
+  "real repo .gitignore ignores alt-frontend-sv/test-results/artifact.json" \
+  git -C "$REPO_ROOT" check-ignore --no-index "alt-frontend-sv/test-results/artifact.json"
+
+# Stub buf & go to verify proto.sh succeeds even when unrelated uncommitted files exist in worktree
+cat <<'EOF' >"$tmp_proto_bin/buf"
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version)
+    echo "1.48.0"
+    ;;
+  build)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "-o" ]; then
+        out="$2"
+        shift 2
+        continue
+      fi
+      shift
+    done
+    [ -n "$out" ] && : >"$out"
+    ;;
+  lint|breaking)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+cat <<'EOF' >"$tmp_proto_bin/go"
+#!/usr/bin/env bash
+out_root=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-root" ]; then
+    out_root="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+if [ -n "$out_root" ]; then
+  mkdir -p "$out_root/alt-butterfly-facade/internal/server" "$out_root/alt-frontend-sv/src/lib/gen"
+  printf '// allowlist\n' >"$out_root/alt-butterfly-facade/internal/server/allowlist_gen.go"
+  printf '// allowlist\n' >"$out_root/alt-frontend-sv/src/lib/gen/allowlist.ts"
+fi
+exit 0
+EOF
+chmod +x "$tmp_proto_bin/buf" "$tmp_proto_bin/go"
+
+assert_exit_and_err 0 "PASS: allowlist-drift" \
+  "proto.sh passes in dirty git worktree with unrelated uncommitted files" \
+  env PATH="$tmp_proto_bin:$PATH" bash "$tmp_dirty_git/scripts/lint/proto.sh" proto
+
 exit "$FAILS"
