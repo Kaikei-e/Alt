@@ -1,0 +1,19 @@
+id: python-no-direct-sys-modules-assign
+language: python
+severity: error
+message: >-
+  Do not mutate `sys.modules` directly with item assignment or `del`.
+  Use `monkeypatch.setitem(sys.modules, ...)` / `monkeypatch.delitem(sys.modules, ...)`
+  in pytest tests, or `with unittest.mock.patch.dict(sys.modules, ...):`
+  in standalone scripts so module state is restored automatically.
+rule:
+  any:
+    - pattern: sys.modules[$KEY] = $VAL
+    - pattern: del sys.modules[$KEY]
+    - pattern: sys.modules.update($$$)
+    - pattern: sys.modules.pop($$$)
+    - pattern: sys.modules.setdefault($$$)
+    - pattern: sys.modules.clear($$$)
+ignores:
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

@@ -8,7 +8,7 @@ import sys
 import urllib.request
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,10 +50,10 @@ async def _async_chunks(chunks: list[ChunkAudio]) -> AsyncIterator[ChunkAudio]:
 
 
 @pytest.fixture(autouse=True)
-def clean_main_module() -> Iterator[None]:
-    sys.modules.pop("tts_speaker.main", None)
-    yield
-    sys.modules.pop("tts_speaker.main", None)
+def clean_main_module(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with patch.dict(sys.modules):
+        monkeypatch.delitem(sys.modules, "tts_speaker.main", raising=False)
+        yield
 
 
 @pytest.fixture

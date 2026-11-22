@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +35,7 @@ func generateTestEd25519KeyPair(t *testing.T) (ed25519.PublicKey, ed25519.Privat
 func writeTestVerifyKeyFile(t *testing.T, content []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "backend_token_verify_key.pem")
-	require.NoError(t, os.WriteFile(path, content, 0o600))
+	require.NoError(t, os.WriteFile(path, content, fsperm.SecretFile))
 	return path
 }
 

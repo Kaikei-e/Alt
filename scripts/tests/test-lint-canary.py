@@ -48,7 +48,6 @@ CANARY_AUDIT_PY = LINT_DIR / "canary_audit.py"
 GOLANGCI_YML = ROOT / ".golangci.yml"
 
 GOLANGCI_LINT_VERSION = "v2.14.0"
-GOSEC_VERSION = "v2.30.0"
 GOVULNCHECK_VERSION = "v1.6.0"
 
 BASH_BIN = shutil.which("bash")
@@ -113,9 +112,8 @@ def build_go_test_repo(
     tmp: pathlib.Path,
     *,
     golangci_mode: str = "healthy",
-    gosec_mode: str = "healthy",
 ) -> tuple[pathlib.Path, pathlib.Path, dict[str, str]]:
-    """Build an isolated mini-repo and fake XDG_CACHE_HOME Go linter binaries."""
+    """Build an isolated mini-repo and fake XDG_CACHE_HOME Go linter binaries (no standalone gosec)."""
     repo = tmp / "repo"
     lint_dir = repo / "scripts" / "lint"
     lint_dir.mkdir(parents=True)
@@ -134,98 +132,129 @@ def build_go_test_repo(
     cache_base = cache_home / "alt-lint" / go_ver
 
     golangci_script = f"""#!{sys.executable}
-import pathlib, sys
+import json, pathlib, sys
 
 mode = {golangci_mode!r}
+args = sys.argv[1:]
+sarif_path = None
+for idx, arg in enumerate(args):
+    if arg == "--output.sarif.path" and idx + 1 < len(args):
+        sarif_path = pathlib.Path(args[idx + 1])
+    elif arg.startswith("--output.sarif.path="):
+        sarif_path = pathlib.Path(arg.split("=", 1)[1])
+
+def write_sarif(results: list[dict[str, object]]) -> None:
+    if sarif_path is None:
+        return
+    sarif_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {{
+        "version": "2.1.0",
+        "runs": [{{"tool": {{"driver": {{"name": "golangci-lint"}}}}, "results": results}}],
+    }}
+    sarif_path.write_text(json.dumps(payload), encoding="utf-8")
+
 if mode == "silent_pass":
+    write_sarif([])
     sys.stdout.write("0 issues.\\n")
     sys.exit(0)
 
 cwd = pathlib.Path.cwd()
-for go_file in sorted(cwd.rglob("*.go")):
-    text = go_file.read_text(encoding="utf-8")
-    if "InsecureSkipVerify: true" in text:
-        sys.stdout.write(
-            f"{{go_file.name}}:10:1: G402: TLS InsecureSkipVerify set to true. (gosec)\\n"
-        )
-        sys.exit(1)
-
-sys.stdout.write("0 issues.\\n")
-sys.exit(0)
-"""
-
-    gosec_script = f"""#!{sys.executable}
-import json, pathlib, sys
-
-mode = {gosec_mode!r}
-args = sys.argv[1:]
-out_path = None
-for idx, arg in enumerate(args):
-    if arg == "-out" and idx + 1 < len(args):
-        out_path = pathlib.Path(args[idx + 1])
-
-cwd = pathlib.Path.cwd()
-go_files = [
-    p for p in sorted(cwd.rglob("*.go"))
-    if "gen" not in p.relative_to(cwd).parts
-]
+go_files = sorted(cwd.rglob("*.go"))
 is_canary = any(
     "InsecureSkipVerify: true" in p.read_text(encoding="utf-8")
     for p in go_files
 )
 
-def write_sarif(results: list[dict[str, object]]) -> None:
-    if out_path is None:
-        return
-    payload = {{
-        "version": "2.1.0",
-        "runs": [{{"tool": {{"driver": {{"name": "gosec"}}}}, "results": results}}],
-    }}
-    out_path.write_text(json.dumps(payload), encoding="utf-8")
-
-if mode == "silent_pass":
-    write_sarif([])
-    sys.stdout.write("Summary:\\n  Files  : 1\\n  Issues : 0\\n")
-    sys.exit(0)
-
-if mode == "canary_crash_empty_sarif" and is_canary:
-    write_sarif([])
-    sys.stdout.write(
-        "Golang errors in file: [.]:\\n  > loading files from package\\n"
-        "Summary:\\n  Files  : 0\\n  Issues : 0\\n"
-    )
-    sys.exit(1)
+gosec_result = {{
+    "ruleId": "gosec",
+    "level": "error",
+    "message": {{"text": "G402: TLS InsecureSkipVerify set to true."}},
+    "fixes": [{{"description": {{"text": "Set InsecureSkipVerify to false"}}}}],
+    "locations": [{{
+        "physicalLocation": {{
+            "artifactLocation": {{"uri": "canary.go"}},
+            "region": {{"startLine": 9}},
+        }}
+    }}],
+}}
+ineffassign_result = {{
+    "ruleId": "ineffassign",
+    "level": "error",
+    "message": {{"text": "ineffectual assignment to x"}},
+    "locations": [{{
+        "physicalLocation": {{
+            "artifactLocation": {{"uri": "canary.go"}},
+            "region": {{"startLine": 6}},
+        }}
+    }}],
+}}
 
 if is_canary:
-    write_sarif([{{
-        "ruleId": "G402",
-        "level": "error",
-        "message": {{"text": "TLS InsecureSkipVerify set to true."}},
-        "locations": [{{
-            "physicalLocation": {{
-                "artifactLocation": {{"uri": "canary.go"}},
-                "region": {{"startLine": 10}},
-            }}
-        }}],
-    }}])
-    sys.stdout.write("Summary:\\n  Files  : 1\\n  Issues : 1\\n")
+    if mode == "canary_crash_empty_sarif":
+        write_sarif([])
+        sys.stderr.write("error: failed to load packages\\n")
+        sys.exit(1)
+    if mode == "canary_missing_gosec":
+        write_sarif([ineffassign_result])
+        sys.stdout.write("canary.go:6:2: ineffectual assignment to x (ineffassign)\\n")
+        sys.exit(1)
+    if mode == "canary_missing_ineffassign":
+        write_sarif([gosec_result])
+        sys.stdout.write("canary.go:9:41: G402: TLS InsecureSkipVerify set to true. (gosec)\\n")
+        sys.exit(1)
+    write_sarif([gosec_result, ineffassign_result])
+    sys.stdout.write(
+        "canary.go:9:41: G402: TLS InsecureSkipVerify set to true. (gosec)\\n"
+        "canary.go:6:2: ineffectual assignment to x (ineffassign)\\n"
+    )
     sys.exit(1)
 
-if mode == "zero_files":
-    write_sarif([])
-    sys.stdout.write("Summary:\\n  Files  : 0\\n  Lines  : 0\\n  Issues : 0\\n")
-    sys.exit(0)
-
-if mode == "zero_files_load_error":
-    write_sarif([])
+if mode == "mixed_findings":
+    write_sarif([
+        {{
+            "ruleId": "gosec",
+            "level": "error",
+            "message": {{"text": "G402: TLS InsecureSkipVerify set to true."}},
+            "fixes": [{{"description": {{"text": "remove"}}}}],
+            "locations": [{{
+                "physicalLocation": {{
+                    "artifactLocation": {{"uri": "main.go", "index": 0}},
+                    "region": {{"startLine": 3}},
+                }}
+            }}],
+        }},
+        {{
+            "ruleId": "gosec",
+            "level": "error",
+            "message": {{"text": "G402: TLS InsecureSkipVerify set to true.\\nsecond line"}},
+            "locations": [{{
+                "physicalLocation": {{
+                    "artifactLocation": {{"uri": "other.go", "index": 1}},
+                    "region": {{"startLine": 9}},
+                }}
+            }}],
+        }},
+        {{
+            "ruleId": "errcheck",
+            "level": "error",
+            "message": {{"text": "Error return value of `foo` is not checked"}},
+            "locations": [{{
+                "physicalLocation": {{
+                    "artifactLocation": {{"uri": "main.go", "index": 0}},
+                    "region": {{"startLine": 4}},
+                }}
+            }}],
+        }},
+    ])
     sys.stdout.write(
-        "Golang errors in file: [.]:\\n  > go.mod requires go >= 1.99.0\\n"
-        "Summary:\\n  Files  : 0\\n  Lines  : 0\\n  Issues : 0\\n"
+        "main.go:3:1: G402: TLS InsecureSkipVerify set to true. (gosec)\\n"
+        "other.go:9:1: G402: TLS InsecureSkipVerify set to true. (gosec)\\n"
+        "main.go:4:1: Error return value is not checked (errcheck)\\n"
     )
-    sys.exit(0)
+    sys.exit(1)
 
 write_sarif([])
-sys.stdout.write(f"Summary:\\n  Files  : {{len(go_files)}}\\n  Issues : 0\\n")
+sys.stdout.write("0 issues.\\n")
 sys.exit(0)
 """
 
@@ -241,10 +270,6 @@ sys.exit(0)
     make_executable(
         cache_base / f"golangci-lint-{GOLANGCI_LINT_VERSION}" / "golangci-lint",
         golangci_script,
-    )
-    make_executable(
-        cache_base / f"gosec-{GOSEC_VERSION}" / "gosec",
-        gosec_script,
     )
     make_executable(
         cache_base / f"govulncheck-{GOVULNCHECK_VERSION}" / "govulncheck",
@@ -452,28 +477,208 @@ def run_python_sh(
 # ---------------------------------------------------------------------------
 # Group A: Go tests
 # ---------------------------------------------------------------------------
-sys.stdout.write("A1. Go normal run passes canary + scan check with zero contamination\n")
+sys.stdout.write("A1. Go normal run (single-path golangci-lint) passes with zero contamination\n")
 with tempfile.TemporaryDirectory() as td:
     repo, svc, env = build_go_test_repo(pathlib.Path(td))
     res = run_go_sh(repo, "svc-go", env)
     sarif_path = svc / "_reports" / "gosec.sarif"
     sarif_data = json.loads(sarif_path.read_text(encoding="utf-8")) if sarif_path.is_file() else {}
     sarif_results = [item for run in sarif_data.get("runs", []) for item in run.get("results", [])]
+    driver_names = [
+        run.get("tool", {}).get("driver", {}).get("name") for run in sarif_data.get("runs", [])
+    ]
     files_after = snapshot_tree(svc)
     check("go.sh exits 0", res.returncode == 0, f"rc={res.returncode}, stderr={res.stderr!r}")
     check(
         "summary includes canary PASS", "canary" in res.stdout and "PASS" in res.stdout, res.stdout
     )
     check(
-        "no canary files left in project dir",
-        not any("canary" in p.lower() for p in files_after),
+        "no canary files or raw golangci-lint.sarif left in project dir",
+        not any("canary" in p.lower() for p in files_after)
+        and not (svc / "_reports" / "golangci-lint.sarif").exists(),
         f"files={sorted(files_after)}",
+    )
+    driver_rules = [
+        run.get("tool", {}).get("driver", {}).get("rules") for run in sarif_data.get("runs", [])
+    ]
+    check("gosec.sarif driver name is gosec", driver_names == ["gosec"], repr(driver_names))
+    check(
+        "gosec.sarif driver rules is empty list when 0 findings",
+        driver_rules == [[]],
+        repr(driver_rules),
     )
     check("gosec.sarif contains 0 canary findings", len(sarif_results) == 0, repr(sarif_results))
 
-sys.stdout.write("A2. Go broken gosec (silent exit 0 + empty SARIF) fails canary audit\n")
+sys.stdout.write("A2. Go mixed findings emits clean gosec-only SARIF with G<NNN> ruleId\n")
 with tempfile.TemporaryDirectory() as td:
-    repo, svc, env = build_go_test_repo(pathlib.Path(td), gosec_mode="silent_pass")
+    repo, svc, env = build_go_test_repo(pathlib.Path(td), golangci_mode="mixed_findings")
+    res = run_go_sh(repo, "svc-go", env)
+    sarif_path = svc / "_reports" / "gosec.sarif"
+    sarif_data = json.loads(sarif_path.read_text(encoding="utf-8")) if sarif_path.is_file() else {}
+    sarif_results = [item for run in sarif_data.get("runs", []) for item in run.get("results", [])]
+    driver_rules = sarif_data.get("runs", [{}])[0].get("tool", {}).get("driver", {}).get("rules")
+    has_artifact_index = any(
+        "index" in loc.get("physicalLocation", {}).get("artifactLocation", {})
+        for item in sarif_results
+        for loc in item.get("locations", [])
+    )
+    expected_gosec_results = 2
+    check("go.sh exits 1 on findings", res.returncode == 1, f"rc={res.returncode}")
+    check(
+        "gosec.sarif keeps only gosec results with G402 ruleId and no fixes",
+        len(sarif_results) == expected_gosec_results
+        and all(r.get("ruleId") == "G402" and "fixes" not in r for r in sarif_results),
+        repr(sarif_results),
+    )
+    check(
+        "gosec.sarif deduplicates tool.driver.rules with first-line shortDescription",
+        driver_rules
+        == [
+            {
+                "id": "G402",
+                "shortDescription": {"text": "G402: TLS InsecureSkipVerify set to true."},
+            }
+        ],
+        repr(driver_rules),
+    )
+    check(
+        "gosec.sarif strips artifactLocation.index when run.artifacts is absent",
+        not has_artifact_index,
+        repr(sarif_results),
+    )
+    check(
+        "golangci-lint.sarif removed after conversion",
+        not (svc / "_reports" / "golangci-lint.sarif").exists(),
+    )
+
+sys.stdout.write("A2b. go-verify-scan rejects SARIF 2.1.0 schema violations\n")
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    proj = td_path / "proj"
+    proj.mkdir()
+    (proj / "go.mod").write_text("module proj\n\ngo 1.27.4\n", encoding="utf-8")
+    (proj / "main.go").write_text("package main\n\nfunc main() {}\n", encoding="utf-8")
+
+    missing_rules_sarif = td_path / "missing-rules.sarif"
+    missing_rules_sarif.write_text(
+        json.dumps(
+            {
+                "version": "2.1.0",
+                "runs": [{"tool": {"driver": {"name": "gosec"}}, "results": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    res_missing_rules = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "go-verify-scan",
+            "--project-dir",
+            str(proj),
+            "--gosec-sarif",
+            str(missing_rules_sarif),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "go-verify-scan rejects SARIF missing tool.driver.rules",
+        res_missing_rules.returncode == 1,
+        f"rc={res_missing_rules.returncode}, stderr={res_missing_rules.stderr!r}",
+    )
+
+    uncovered_rule_sarif = td_path / "uncovered-rule.sarif"
+    uncovered_rule_sarif.write_text(
+        json.dumps(
+            {
+                "version": "2.1.0",
+                "runs": [
+                    {
+                        "tool": {"driver": {"name": "gosec", "rules": []}},
+                        "results": [{"ruleId": "G402", "message": {"text": "G402: bad"}}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    res_uncovered = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "go-verify-scan",
+            "--project-dir",
+            str(proj),
+            "--gosec-sarif",
+            str(uncovered_rule_sarif),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "go-verify-scan rejects SARIF with result ruleId absent from tool.driver.rules",
+        res_uncovered.returncode == 1,
+        f"rc={res_uncovered.returncode}, stderr={res_uncovered.stderr!r}",
+    )
+
+    dangling_index_sarif = td_path / "dangling-index.sarif"
+    dangling_index_sarif.write_text(
+        json.dumps(
+            {
+                "version": "2.1.0",
+                "runs": [
+                    {
+                        "tool": {
+                            "driver": {
+                                "name": "gosec",
+                                "rules": [{"id": "G402", "shortDescription": {"text": "G402"}}],
+                            }
+                        },
+                        "results": [
+                            {
+                                "ruleId": "G402",
+                                "message": {"text": "G402: bad"},
+                                "locations": [
+                                    {
+                                        "physicalLocation": {
+                                            "artifactLocation": {"uri": "main.go", "index": 0}
+                                        }
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    res_dangling = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "go-verify-scan",
+            "--project-dir",
+            str(proj),
+            "--gosec-sarif",
+            str(dangling_index_sarif),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "go-verify-scan rejects SARIF with artifactLocation.index when run.artifacts is absent",
+        res_dangling.returncode == 1,
+        f"rc={res_dangling.returncode}, stderr={res_dangling.stderr!r}",
+    )
+
+sys.stdout.write("A3. Go broken golangci-lint (silent exit 0) fails canary audit\n")
+with tempfile.TemporaryDirectory() as td:
+    repo, svc, env = build_go_test_repo(pathlib.Path(td), golangci_mode="silent_pass")
     res = run_go_sh(repo, "svc-go", env)
     files_after = snapshot_tree(svc)
     check("go.sh exits 1", res.returncode == 1, f"rc={res.returncode}, stdout={res.stdout!r}")
@@ -485,47 +690,101 @@ with tempfile.TemporaryDirectory() as td:
         f"files={sorted(files_after)}",
     )
 
-sys.stdout.write("A3. Go broken golangci-lint (silent exit 0) fails canary audit\n")
+sys.stdout.write("A4. Go canary missing G402 or ineffassign in SARIF fails canary audit\n")
+for mode_name in ("canary_crash_empty_sarif", "canary_missing_gosec", "canary_missing_ineffassign"):
+    with tempfile.TemporaryDirectory() as td:
+        repo, svc, env = build_go_test_repo(pathlib.Path(td), golangci_mode=mode_name)
+        res = run_go_sh(repo, "svc-go", env)
+        check(f"{mode_name}: go.sh exits 1", res.returncode == 1, f"rc={res.returncode}")
+        check(
+            f"{mode_name}: stderr reports CANARY AUDIT FAILED",
+            "CANARY AUDIT FAILED" in res.stderr,
+            res.stderr,
+        )
+
+sys.stdout.write("A5. Go single-path go-verify-scan fails when go list resolves 0 packages\n")
 with tempfile.TemporaryDirectory() as td:
-    repo, svc, env = build_go_test_repo(pathlib.Path(td), golangci_mode="silent_pass")
-    res = run_go_sh(repo, "svc-go", env)
-    files_after = snapshot_tree(svc)
-    check("go.sh exits 1", res.returncode == 1, f"rc={res.returncode}, stdout={res.stdout!r}")
-    check("stderr reports CANARY AUDIT FAILED", "CANARY AUDIT FAILED" in res.stderr, res.stderr)
-    check(
-        "no canary files left",
-        not any("canary" in p.lower() for p in files_after),
-        f"files={sorted(files_after)}",
+    td_path = pathlib.Path(td)
+    zero_pkg_mod = td_path / "zero-pkg"
+    zero_pkg_mod.mkdir()
+    (zero_pkg_mod / "go.mod").write_text("module zero-pkg\n\ngo 1.27.4\n", encoding="utf-8")
+    (zero_pkg_mod / "ignored.go").write_text(
+        "//go:build ignore\n\npackage main\n\nfunc main() {}\n",
+        encoding="utf-8",
     )
-
-sys.stdout.write("A4. Go gosec crashing on canary with empty SARIF fails canary audit\n")
-with tempfile.TemporaryDirectory() as td:
-    repo, svc, env = build_go_test_repo(pathlib.Path(td), gosec_mode="canary_crash_empty_sarif")
-    res = run_go_sh(repo, "svc-go", env)
-    check("go.sh exits 1", res.returncode == 1, f"rc={res.returncode}")
-    check("stderr reports CANARY AUDIT FAILED", "CANARY AUDIT FAILED" in res.stderr, res.stderr)
-
-sys.stdout.write("A5. Go gosec scanning 0 files on real module fails with exit 1\n")
-with tempfile.TemporaryDirectory() as td:
-    repo, svc, env = build_go_test_repo(pathlib.Path(td), gosec_mode="zero_files")
-    res = run_go_sh(repo, "svc-go", env)
-    check("go.sh exits 1", res.returncode == 1, f"rc={res.returncode}, stdout={res.stdout!r}")
+    gosec_sarif = td_path / "gosec.sarif"
+    gosec_sarif.write_text(
+        '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}',
+        encoding="utf-8",
+    )
+    res = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "go-verify-scan",
+            "--project-dir",
+            str(zero_pkg_mod),
+            "--gosec-sarif",
+            str(gosec_sarif),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "single-path go-verify-scan exits 1 on 0 Go packages",
+        res.returncode == 1,
+        f"rc={res.returncode}, stdout={res.stdout!r}",
+    )
     check(
         "stderr reports ZERO-FILE SCAN DETECTED",
         "ZERO-FILE SCAN DETECTED" in res.stderr,
         res.stderr,
     )
 
-sys.stdout.write("A6. Go gosec 0 files with package load errors fails with exit 1\n")
+sys.stdout.write("A6. Backward-compatible go-verify-scan --gosec-out detects Files : 0 (C-21)\n")
 with tempfile.TemporaryDirectory() as td:
-    repo, svc, env = build_go_test_repo(pathlib.Path(td), gosec_mode="zero_files_load_error")
-    res = run_go_sh(repo, "svc-go", env)
-    check("go.sh exits 1", res.returncode == 1, f"rc={res.returncode}")
-    check(
-        "stderr reports ZERO-FILE SCAN DETECTED",
-        "ZERO-FILE SCAN DETECTED" in res.stderr,
-        res.stderr,
+    td_path = pathlib.Path(td)
+    proj = td_path / "proj"
+    proj.mkdir()
+    (proj / "sample.go").write_text("package sample\n", encoding="utf-8")
+    gosec_sarif = td_path / "gosec.sarif"
+    gosec_sarif.write_text(
+        '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}',
+        encoding="utf-8",
     )
+    for label, content in (
+        ("zero_files", "Summary:\n  Files  : 0\n  Lines  : 0\n  Issues : 0\n"),
+        (
+            "zero_files_load_error",
+            "Golang errors in file: [.]:\n  > go.mod requires go >= 1.99.0\n"
+            "Summary:\n  Files  : 0\n  Lines  : 0\n  Issues : 0\n",
+        ),
+    ):
+        gosec_out = td_path / f"{label}.out"
+        gosec_out.write_text(content, encoding="utf-8")
+        res = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+            [
+                sys.executable,
+                str(CANARY_AUDIT_PY),
+                "go-verify-scan",
+                "--project-dir",
+                str(proj),
+                "--gosec-out",
+                str(gosec_out),
+                "--gosec-sarif",
+                str(gosec_sarif),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        check(f"{label}: exits 1", res.returncode == 1, f"rc={res.returncode}")
+        check(
+            f"{label}: stderr reports ZERO-FILE SCAN DETECTED",
+            "ZERO-FILE SCAN DETECTED" in res.stderr,
+            res.stderr,
+        )
 
 sys.stdout.write("A7. Go generated-only module does not false-fail 0-file scan check\n")
 with tempfile.TemporaryDirectory() as td:
@@ -539,8 +798,11 @@ with tempfile.TemporaryDirectory() as td:
     gosec_out = pathlib.Path(td) / "gosec.out"
     gosec_out.write_text("Summary:\n  Files  : 0\n  Issues : 0\n", encoding="utf-8")
     gosec_sarif = pathlib.Path(td) / "gosec.sarif"
-    gosec_sarif.write_text('{"version":"2.1.0","runs":[{"results":[]}]}', encoding="utf-8")
-    res = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+    gosec_sarif.write_text(
+        '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}',
+        encoding="utf-8",
+    )
+    res_legacy = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
         [
             sys.executable,
             str(CANARY_AUDIT_PY),
@@ -556,15 +818,39 @@ with tempfile.TemporaryDirectory() as td:
         text=True,
         check=False,
     )
-    check("go-verify-scan exits 0 for generated-only module", res.returncode == 0, res.stderr)
+    check(
+        "go-verify-scan (legacy --gosec-out) exits 0 for generated-only module",
+        res_legacy.returncode == 0,
+        res_legacy.stderr,
+    )
+    res_single = subprocess.run(  # noqa: S603 - fixed argv running canary_audit.py under test
+        [
+            sys.executable,
+            str(CANARY_AUDIT_PY),
+            "go-verify-scan",
+            "--project-dir",
+            str(gen_mod),
+            "--gosec-sarif",
+            str(gosec_sarif),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(
+        "go-verify-scan (single-path) exits 0 for generated-only module",
+        res_single.returncode == 0,
+        res_single.stderr,
+    )
 
-sys.stdout.write("A8. Real Go scanners pass isolated canary audit against pki-agent\n")
+sys.stdout.write(
+    "A8. Real golangci-lint passes isolated go-canary (without --gosec-bin) on pki-agent\n"
+)
 go_ver = detect_go_toolchain_version()
 cache_root = pathlib.Path(os.environ.get("XDG_CACHE_HOME", pathlib.Path.home() / ".cache"))
 real_cache_base = cache_root / "alt-lint" / go_ver
 real_golangci = real_cache_base / f"golangci-lint-{GOLANGCI_LINT_VERSION}" / "golangci-lint"
-real_gosec = real_cache_base / f"gosec-{GOSEC_VERSION}" / "gosec"
-if real_golangci.is_file() and real_gosec.is_file():
+if real_golangci.is_file():
     pki_dir = ROOT / "pki-agent"
     before_pki = snapshot_tree(pki_dir)
     res = subprocess.run(  # noqa: S603 - fixed argv running real canary audit
@@ -578,8 +864,6 @@ if real_golangci.is_file() and real_gosec.is_file():
             str(GOLANGCI_YML),
             "--golangci-lint-bin",
             str(real_golangci),
-            "--gosec-bin",
-            str(real_gosec),
         ],
         capture_output=True,
         text=True,
@@ -591,7 +875,7 @@ if real_golangci.is_file() and real_gosec.is_file():
     )
     check("pki-agent tree unchanged after canary", before_pki == after_pki)
 else:
-    check("real Go scanner binaries cached (skipped if absent)", True)
+    check("real golangci-lint binary cached (skipped if absent)", True)
 
 # ---------------------------------------------------------------------------
 # Group B: Python tests

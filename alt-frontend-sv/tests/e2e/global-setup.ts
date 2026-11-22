@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { startMockServers, waitForMockServersReady } from "./infra/mock-server";
 
-const STORAGE_STATE_PATH = "tests/e2e/.auth/storage.json";
+export const STORAGE_STATE_PATH = path.resolve(
+	import.meta.dirname,
+	"../../test-results/.auth/storage.json",
+);
 const KRATOS_SESSION_COOKIE_NAME = "ory_kratos_session";
 const KRATOS_SESSION_COOKIE_VALUE = "e2e-session";
 
@@ -16,7 +19,7 @@ const KRATOS_SESSION_COOKIE_VALUE = "e2e-session";
  * global setup fail in environments where the browser binary is not the one
  * Playwright would download for itself.
  */
-const STORAGE_STATE = {
+export const STORAGE_STATE = {
 	cookies: [
 		{
 			name: KRATOS_SESSION_COOKIE_NAME,
@@ -32,6 +35,26 @@ const STORAGE_STATE = {
 	origins: [],
 };
 
+export function writeStorageState(
+	storageStatePath = STORAGE_STATE_PATH,
+): string {
+	fs.mkdirSync(path.dirname(storageStatePath), { recursive: true });
+	fs.writeFileSync(
+		storageStatePath,
+		`${JSON.stringify(STORAGE_STATE, null, 2)}\n`,
+	);
+	return storageStatePath;
+}
+
+export function ensureStorageState(
+	storageStatePath = STORAGE_STATE_PATH,
+): string {
+	if (!fs.existsSync(storageStatePath)) {
+		writeStorageState(storageStatePath);
+	}
+	return storageStatePath;
+}
+
 async function globalSetup() {
 	console.log("Starting global mock servers...");
 	await startMockServers();
@@ -40,11 +63,7 @@ async function globalSetup() {
 	console.log("Waiting for mock servers to be ready...");
 	await waitForMockServersReady();
 
-	fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
-	fs.writeFileSync(
-		STORAGE_STATE_PATH,
-		`${JSON.stringify(STORAGE_STATE, null, 2)}\n`,
-	);
+	writeStorageState(STORAGE_STATE_PATH);
 
 	console.log(`Storage state saved to ${STORAGE_STATE_PATH}`);
 	console.log("Global setup completed.");

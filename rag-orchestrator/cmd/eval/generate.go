@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rag-orchestrator/eval"
+	"rag-orchestrator/internal/fsperm"
 )
 
 // The golden case generator mines the live rag-db read-only and writes an
@@ -119,7 +120,7 @@ func runGenerate(ctx context.Context, cfg generateConfig, logger *slog.Logger) e
 	if err != nil {
 		return fmt.Errorf("marshal generated cases: %w", err)
 	}
-	if err := os.WriteFile(cfg.OutputPath, append(data, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(cfg.OutputPath, append(data, '\n'), fsperm.SecretFile); err != nil {
 		return fmt.Errorf("write %s: %w", cfg.OutputPath, err)
 	}
 

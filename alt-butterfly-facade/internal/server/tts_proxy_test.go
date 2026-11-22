@@ -25,6 +25,8 @@ import (
 
 	"alt-butterfly-facade/internal/tlsutil"
 
+	"alt-butterfly-facade/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -468,9 +470,9 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 	certFile := filepath.Join(tmpDir, "client.pem")
 	keyFile := filepath.Join(tmpDir, "client.key")
 
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
-	require.NoError(t, os.WriteFile(certFile, clientCertPEM, 0600))
-	require.NoError(t, os.WriteFile(keyFile, clientKeyPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(certFile, clientCertPEM, fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(keyFile, clientKeyPEM, fsperm.SecretFile))
 
 	caPool := x509.NewCertPool()
 	require.True(t, caPool.AppendCertsFromPEM(caPEM))

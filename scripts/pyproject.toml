@@ -2,7 +2,7 @@
 name = "alt-scripts"
 version = "0.1.0"
 description = "Utility scripts for Alt project analytics and data processing"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
   # Database connectivity
   "psycopg2-binary>=2.9.12",
@@ -29,7 +29,6 @@ dev = [
 constraint-dependencies = ["certifi>=2026.10.19", "urllib3>=2.8.0"]
 
 [tool.ruff]
-target-version = "py312"
 line-length = 100
 exclude = [".git", "__pycache__", ".venv", "build", "dist", "harness/corpus"]
 

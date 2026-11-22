@@ -1,0 +1,166 @@
+"""Composition-root hook: fail-fast enroll, then a non-daemon renewal thread."""
+
+from __future__ import annotations
+
+import logging
+import threading
+from dataclasses import dataclass
+
+from prometheus_client import CollectorRegistry
+
+from {{PKG_PREFIX}}.certfile import CertFile
+from {{PKG_PREFIX}}.config import (
+    MODE_ENABLED,
+    Config,
+    load_config,
+)
+from {{PKG_PREFIX}}.ctx import CancelledError, Ctx
+from {{PKG_PREFIX}}.manager import (
+    Issuer,
+    Manager,
+    NopObserver,
+    Observer,
+)
+from {{PKG_PREFIX}}.metrics import PromObserver
+from {{PKG_PREFIX}}.native_issuer import NativeStepCAIssuer
+from {{PKG_PREFIX}}.ops import OpsHandle, start_ops
+
+logger = logging.getLogger(__name__)
+
+_JOIN_SLACK_SECONDS = 5.0
+_DEFAULT_ISSUE_TIMEOUT = 15.0
+
+
+@dataclass(frozen=True, slots=True)
+class _HandleOptions:
+    issuer: Issuer | None = None
+    ops: OpsHandle | None = None
+    registry: CollectorRegistry | None = None
+    join_timeout: float = _DEFAULT_ISSUE_TIMEOUT + _JOIN_SLACK_SECONDS
+    cert_path: str = ""
+    key_path: str = ""
+
+
+class Handle:
+    """Running enrollment loop + ops listener, stopped on process shutdown."""
+
+    def __init__(
+        self,
+        ctx: Ctx,
+        thread: threading.Thread,
+        options: _HandleOptions | None = None,
+    ) -> None:
+        opts = options or _HandleOptions()
+        self._ctx = ctx
+        self._thread = thread
+        self._issuer = opts.issuer
+        self._ops = opts.ops
+        self.registry = opts.registry
+        self.ops_addr = opts.ops.addr if opts.ops is not None else None
+        self.cert_path = opts.cert_path
+        self.key_path = opts.key_path
+        self._join_timeout = opts.join_timeout
+        self._once = threading.Lock()
+        self._stopped = False
+
+    def stop(self) -> None:
+        with self._once:
+            if self._stopped:
+                return
+            self._stopped = True
+            self._ctx.cancel()
+            closer = getattr(self._issuer, "close_idle_connections", None)
+            if callable(closer):
+                closer()
+        self._thread.join(timeout=self._join_timeout)
+        if self._thread.is_alive():
+            msg = "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
+            raise RuntimeError(msg)
+        if self._ops is not None:
+            self._ops.aclose_sync()
+
+
+def start(service_name: str) -> Handle | None:
+    """Load config, log enabled/disabled, fail-fast enroll, run the loop off the event loop."""
+    cfg = load_config(service_name)
+    if cfg.mode != MODE_ENABLED:
+        return start_with(cfg, None)
+    registry = CollectorRegistry()
+    observer = PromObserver(cfg.subject, registry)
+    return start_with_observer(cfg, None, observer, registry=registry)
+
+
+def start_with(cfg: Config, issuer: Issuer | None) -> Handle | None:
+    return start_with_observer(cfg, issuer, NopObserver())
+
+
+def start_with_observer(
+    cfg: Config,
+    issuer: Issuer | None,
+    observer: Observer,
+    *,
+    registry: CollectorRegistry | None = None,
+) -> Handle | None:
+    if cfg.mode != MODE_ENABLED:
+        logger.info(
+            "pki_enrollment_disabled service=%s mode=%s reason=%s",
+            cfg.subject,
+            cfg.mode,
+            "PKI_ENROLLMENT is not enabled; another writer must own the cert files",
+        )
+        return None
+    logger.info(
+        "pki_enrollment_enabled service=%s provisioner=%s password_file=%s cert_path=%s",
+        cfg.subject,
+        cfg.provisioner,
+        cfg.password_file,
+        cfg.cert_path,
+    )
+    minted = issuer
+    if minted is None:
+        minted = NativeStepCAIssuer(
+            ca_url=cfg.ca_url,
+            root_file=cfg.root_file,
+            provisioner=cfg.provisioner,
+            password_file=cfg.password_file,
+        )
+    mgr = Manager(
+        cfg=cfg,
+        issuer=minted,
+        files=CertFile(cfg.cert_path, cfg.key_path),
+        observer=observer,
+    )
+    ctx = Ctx()
+    mgr.enroll(ctx)
+    # Bind before the non-daemon thread exists: a bind error must exit the
+    # process, not leave the renewal thread holding it open.
+    ops: OpsHandle | None = None
+    if registry is not None:
+        ops = start_ops(cfg.subject, registry)
+    thread = threading.Thread(
+        target=_run_loop,
+        args=(mgr, ctx),
+        name=f"pki-enrollment-{cfg.subject}",
+        daemon=False,
+    )
+    thread.start()
+    raw_timeout = getattr(minted, "timeout", _DEFAULT_ISSUE_TIMEOUT)
+    timeout = float(raw_timeout or _DEFAULT_ISSUE_TIMEOUT)
+    opts = _HandleOptions(
+        issuer=minted,
+        ops=ops,
+        registry=registry,
+        join_timeout=timeout + _JOIN_SLACK_SECONDS,
+        cert_path=cfg.cert_path,
+        key_path=cfg.key_path,
+    )
+    return Handle(ctx, thread, opts)
+
+
+def _run_loop(mgr: Manager, ctx: Ctx) -> None:
+    try:
+        mgr.run(ctx)
+    except CancelledError:
+        return
+    except Exception:
+        logger.exception("pki_enrollment_loop_crashed subject=%s", mgr.cfg.subject)

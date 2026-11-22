@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/alt-project/altctl/internal/stack"
 )
 
@@ -120,7 +121,7 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 	// Create backup directory with timestamp
 	backupDir := BackupDir(opts.OutputDir)
 	if !m.dryRun {
-		if err := os.MkdirAll(backupDir, 0700); err != nil {
+		if err := os.MkdirAll(backupDir, fsperm.SecretDir); err != nil {
 			return nil, fmt.Errorf("creating backup directory: %w", err)
 		}
 	}
@@ -137,7 +138,7 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 	// Create volumes subdirectory
 	volumesDir := filepath.Join(backupDir, "volumes")
 	if !m.dryRun {
-		if err := os.MkdirAll(volumesDir, 0700); err != nil {
+		if err := os.MkdirAll(volumesDir, fsperm.SecretDir); err != nil {
 			return nil, fmt.Errorf("creating volumes directory: %w", err)
 		}
 	}

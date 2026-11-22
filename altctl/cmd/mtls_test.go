@@ -14,6 +14,7 @@ import (
 
 	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/alt-project/altctl/internal/mtlsedge"
 	"github.com/alt-project/altctl/internal/output"
 )
@@ -211,14 +212,14 @@ func setupMTLSCommandProject(t *testing.T) (string, string, []byte, []byte, map[
 	t.Helper()
 	root := t.TempDir()
 	liveEnv := []byte("POSTGRES_PASSWORD=" + cmdSentinelDB + "\n")
-	if err := os.WriteFile(filepath.Join(root, ".env"), liveEnv, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".env"), liveEnv, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	compDir := filepath.Join(root, "compose")
-	if err := os.MkdirAll(compDir, 0o750); err != nil {
+	if err := os.MkdirAll(compDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("../.env", filepath.Join(compDir, ".env")); err != nil {
@@ -229,14 +230,14 @@ func setupMTLSCommandProject(t *testing.T) (string, string, []byte, []byte, map[
 		"ai.yaml":      []byte("services:\n  pre-processor:\n    image: repo/pre:${IMAGE_TAG:-main}\n    environment:\n      - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}\n  news-creator:\n    environment:\n      - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-pre-processor}\n"),
 	}
 	for name, b := range composeFiles {
-		if err := os.WriteFile(filepath.Join(compDir, name), b, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(compDir, name), b, fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	candBytes := []byte("POSTGRES_PASSWORD=" + cmdSentinelEnv + "\n")
 	cand := filepath.Join(t.TempDir(), "candidate.env")
-	if err := os.WriteFile(cand, candBytes, 0o600); err != nil {
+	if err := os.WriteFile(cand, candBytes, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 

@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // PostgresBackuper handles pg_dump/pg_restore based backup operations
@@ -55,7 +57,7 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 	}
 
 	// Ensure output directory exists with restricted permissions
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), fsperm.SecretDir); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 

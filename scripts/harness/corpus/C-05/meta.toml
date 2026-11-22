@@ -21,7 +21,7 @@ notes = "Running ruff format with target-version = py314 on scripts/ stripped pa
 
 [detection]
 planned_checks = ["ARCH-03"]
-active_checks = []
-currently_caught = false
-current_method = "スクリプトのテスト"
-expected_signal = ""
+active_checks = ["ARCH-03"]
+currently_caught = true
+current_method = "ARCH-03"
+expected_signal = "config.python.ruff-target-version-forbidden"

@@ -31,3 +31,9 @@ settings.json
 # Vitest browser test artefacts (Playwright provider screenshots / attachments)
 .vitest-attachments/
 src/**/__screenshots__/
+
+# Playwright runtime outputs and auth state
+test-results/
+playwright-report/
+blob-report/
+tests/e2e/.auth/

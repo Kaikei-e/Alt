@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -63,8 +64,6 @@ async def test_start_with_observer_wires_prom_when_enabled(tmp_path: Path, monke
 
     handle = await start_enrollment_with(cfg, _Issuer(), observer=PromObserver(cfg.subject, reg))
     assert handle is not None
-    try:
+    async with contextlib.aclosing(handle):
         body = generate_latest(reg).decode()
         assert 'pki_enrollment_healthy{subject="acolyte-orchestrator-metrics"} 1.0' in body
-    finally:
-        await handle.aclose()

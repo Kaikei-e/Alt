@@ -1,6 +1,7 @@
 package config
 
 import (
+	"alt/internal/fsperm"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,7 +129,7 @@ func applyOperatorAuthEnv(t *testing.T, envVars map[string]string) {
 func writeOperatorTokenFile(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "operator_token")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write operator token file: %v", err)
 	}
 	return path

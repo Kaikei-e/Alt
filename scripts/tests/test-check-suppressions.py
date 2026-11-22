@@ -22,6 +22,7 @@ import tempfile
 import types
 from collections.abc import Sequence
 from typing import Protocol
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "lint" / "check_suppressions.py"
@@ -78,8 +79,8 @@ def load_checker() -> types.ModuleType:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules["check_suppressions"] = module
-    spec.loader.exec_module(module)
+    with mock.patch.dict(sys.modules, {"check_suppressions": module}):
+        spec.loader.exec_module(module)
     return module
 
 
@@ -585,7 +586,7 @@ package foo
 func f() {
     _ = a() //nolint
     _ = b() //nolint:all // suppress everything
-    _ = c() //nolint:gosec,all // suppress everything
+    _ = c() //nolint:errcheck,all // suppress everything
 }
 """
         errs = checker.check_go_source("svc/a.go", bad_blanket, repo)
@@ -594,6 +595,64 @@ func f() {
             errs,
             expected_count=3,
             expected_rules={"source.broad.missing-adr"},
+        )
+
+        bad_nolint_gosec = """\
+package foo
+
+func f() {
+    _ = a() //nolint:gosec // reason text here
+    _ = b() //nolint:errcheck,gosec // reason text here
+    _ = c() /*nolint:gosec // reason text here*/
+    _ = d() //nolint:GOSEC // uppercase gosec linter name
+    _ = e() //nolint: gosec // spaced after colon
+    _ = f2() // nolint: gosec // spaced after slash and colon
+    _ = g() //nolint:errcheck, gosec // spaced after comma
+}
+"""
+        errs = checker.check_go_source("svc/a.go", bad_nolint_gosec, repo)
+        check_violations(
+            "inline/block //nolint:gosec (case-insensitive, spaced, single or multi) is forbidden",
+            errs,
+            expected_count=7,
+            expected_rules={"source.go.nolint-gosec-forbidden"},
+        )
+        check(
+            "nolint-gosec-forbidden message guides author to // #nosec G<NNN> -- <reason>",
+            all("#nosec" in v.message for v in errs),
+            repr(errs),
+        )
+
+        bad_file_nolint_gosec = "//nolint:gosec // file-level suppression\npackage foo\n"
+        errs = checker.check_go_source("svc/a.go", bad_file_nolint_gosec, repo)
+        check_violations(
+            "file-level //nolint:gosec before package is forbidden",
+            errs,
+            expected_count=1,
+            expected_rules={"source.go.nolint-gosec-forbidden"},
+        )
+
+        bad_file_spaced_nolint_gosec = (
+            "//nolint: gosec // spaced file-level suppression\npackage foo\n"
+        )
+        errs = checker.check_go_source("svc/a.go", bad_file_spaced_nolint_gosec, repo)
+        check_violations(
+            "file-level spaced //nolint: gosec before package is forbidden",
+            errs,
+            expected_count=1,
+            expected_rules={"source.go.nolint-gosec-forbidden"},
+        )
+
+        bad_file_nolint_gosec_with_adr = (
+            "// ADR-000979: attempted file-level gosec nolint with ADR\n"
+            "//nolint:gosec\npackage foo\n"
+        )
+        errs = checker.check_go_source("svc/a.go", bad_file_nolint_gosec_with_adr, repo)
+        check_violations(
+            "file-level //nolint:gosec before package is forbidden even with ADR",
+            errs,
+            expected_count=1,
+            expected_rules={"source.go.nolint-gosec-forbidden"},
         )
 
         bad_inline_nolint = """\

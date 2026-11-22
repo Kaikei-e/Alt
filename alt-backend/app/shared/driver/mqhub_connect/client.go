@@ -14,6 +14,7 @@ import (
 
 	mqhubv1 "alt/gen/proto/services/mqhub/v1"
 	"alt/gen/proto/services/mqhub/v1/mqhubv1connect"
+	"alt/internal/connectguard"
 )
 
 // traceMetadata builds the event Metadata map from the OTel span context riding
@@ -114,6 +115,7 @@ func NewClient(baseURL string, enabled bool, authToken ...string) *Client {
 	client := mqhubv1connect.NewMQHubServiceClient(
 		httpClient,
 		baseURL,
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &Client{
 		client:  client,

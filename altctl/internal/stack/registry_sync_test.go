@@ -6,13 +6,15 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // writeComposeFixture creates dir/name with the given YAML body and returns
 // the file's stem-relative helpers useful in table-driven assertions.
 func writeComposeFixture(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), fsperm.SecretFile); err != nil {
 		t.Fatalf("writing fixture %s: %v", name, err)
 	}
 }

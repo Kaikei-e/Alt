@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"alt-butterfly-facade/config"
+	"alt-butterfly-facade/internal/httpserver"
 	"alt-butterfly-facade/internal/logger"
 	"alt-butterfly-facade/internal/pki"
 	"alt-butterfly-facade/internal/server"
@@ -201,13 +202,13 @@ func main() {
 	)
 
 	address := fmt.Sprintf(":%s", cfg.Port)
-	srv := &http.Server{
+	srv := httpserver.New(httpserver.Config{
 		Addr:         address,
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: cfg.StreamingTimeout + 10*time.Second,
 		IdleTimeout:  120 * time.Second,
-	}
+	})
 	// Go 1.24+: stdlib unencrypted HTTP/2 replaces deprecated x/net/http2/h2c.
 	server.EnableCleartextHTTP2(srv)
 

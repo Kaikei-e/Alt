@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"rag-orchestrator/internal/fsperm"
 	"rag-orchestrator/internal/usecase"
 )
 
@@ -43,7 +44,7 @@ func TestLoadSovereignEventToken(t *testing.T) {
 
 	t.Run("empty file returns error", func(t *testing.T) {
 		emptyFile := filepath.Join(t.TempDir(), "empty_token")
-		require.NoError(t, os.WriteFile(emptyFile, []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(emptyFile, []byte(""), fsperm.SecretFile))
 		_, err := LoadSovereignEventToken(emptyFile, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must be at least 24 characters")
@@ -51,7 +52,7 @@ func TestLoadSovereignEventToken(t *testing.T) {
 
 	t.Run("whitespace-only file returns error", func(t *testing.T) {
 		wsFile := filepath.Join(t.TempDir(), "whitespace_token")
-		require.NoError(t, os.WriteFile(wsFile, []byte("   \n\t  "), 0o600))
+		require.NoError(t, os.WriteFile(wsFile, []byte("   \n\t  "), fsperm.SecretFile))
 		_, err := LoadSovereignEventToken(wsFile, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must be at least 24 characters")
@@ -59,7 +60,7 @@ func TestLoadSovereignEventToken(t *testing.T) {
 
 	t.Run("short token file (< 24 chars) returns error", func(t *testing.T) {
 		shortFile := filepath.Join(t.TempDir(), "short_token")
-		require.NoError(t, os.WriteFile(shortFile, []byte("short-token"), 0o600))
+		require.NoError(t, os.WriteFile(shortFile, []byte("short-token"), fsperm.SecretFile))
 		_, err := LoadSovereignEventToken(shortFile, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must be at least 24 characters")
@@ -81,7 +82,7 @@ func TestLoadSovereignEventToken(t *testing.T) {
 
 	t.Run("valid file returns trimmed token", func(t *testing.T) {
 		validFile := filepath.Join(t.TempDir(), "valid_token")
-		require.NoError(t, os.WriteFile(validFile, []byte("my-secret-sovereign-token\n"), 0o600))
+		require.NoError(t, os.WriteFile(validFile, []byte("my-secret-sovereign-token\n"), fsperm.SecretFile))
 		token, err := LoadSovereignEventToken(validFile, "")
 		require.NoError(t, err)
 		assert.Equal(t, "my-secret-sovereign-token", token)

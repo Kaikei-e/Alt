@@ -21,7 +21,7 @@ notes = "Fixing PLC0415 by hoisting `import auth_service` to module top level co
 
 [detection]
 planned_checks = ["ARCH-06"]
-active_checks = []
-currently_caught = false
-current_method = "全体実行"
-expected_signal = ""
+active_checks = ["ARCH-06"]
+currently_caught = true
+current_method = "ARCH-06"
+expected_signal = "python-no-direct-sys-modules-assign"

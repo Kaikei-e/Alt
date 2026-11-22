@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -295,7 +297,7 @@ func wireClientCert(t *testing.T, caKey *ecdsa.PrivateKey, caCert *x509.Certific
 func wireWritePEM(t *testing.T, dir, name string, data []byte) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, data, fsperm.SecretFile); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 	return path

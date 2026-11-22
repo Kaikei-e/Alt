@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"alt-butterfly-facade/internal/fsperm"
 	"errors"
 	"os"
 	"path/filepath"
@@ -119,7 +120,7 @@ func TestLoadConfig_EnrollmentFileMissingErrors(t *testing.T) {
 
 func TestLoadConfig_EnrollmentFileEmptyErrors(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "empty-enrollment")
-	if err := os.WriteFile(p, []byte(" \n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(" \n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PKI_ENROLLMENT_FILE", p)

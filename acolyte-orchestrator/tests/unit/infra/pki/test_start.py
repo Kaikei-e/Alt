@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import socket
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -99,11 +100,9 @@ async def test_start_with_enabled_enrolls_and_stops(tmp_path: Path, monkeypatch:
     log = _Log()
     handle = await start_enrollment_with(cfg, _FakeIssuer(), logger=log)
     assert handle is not None
-    try:
-        assert Path(cfg.cert_path).is_file()  # noqa: ASYNC240
+    async with contextlib.aclosing(handle):
+        assert Path(cfg.cert_path).is_file()  # noqa: ASYNC240 - local tmp_path assertion in test
         assert "pki_enrollment_enabled" in log.events
-    finally:
-        await handle.aclose()
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"alt-butterfly-facade/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +65,7 @@ func TestNewConfig_InvalidDuration_UsesDefault(t *testing.T) {
 func writeKeyFile(t *testing.T, blockType string, der []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "key.pem")
-	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}), 0o600))
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}), fsperm.SecretFile))
 	return path
 }
 
@@ -98,7 +100,7 @@ func TestConfig_LoadBackendTokenVerifyKey_RSARejected(t *testing.T) {
 
 func TestConfig_LoadBackendTokenVerifyKey_NotPEM(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "key.pem")
-	require.NoError(t, os.WriteFile(path, []byte("not a pem file"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("not a pem file"), fsperm.SecretFile))
 	require.NoError(t, os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", path))
 	defer os.Clearenv()
 

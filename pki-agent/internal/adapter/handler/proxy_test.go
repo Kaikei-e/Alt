@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"pki-agent/internal/fsperm"
 	"testing"
 	"time"
 )
@@ -42,10 +43,10 @@ func selfSignedPair(t *testing.T, cn string) (certPEM, keyPEM []byte) {
 
 func writeCert(t *testing.T, dir, certName, keyName string, certPEM, keyPEM []byte) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, certName), certPEM, 0o400); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, certName), certPEM, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, keyName), keyPEM, 0o400); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, keyName), keyPEM, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,7 +57,7 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 	clientCert, clientKey := selfSignedPair(t, "test-client")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	_ = os.WriteFile(caBundlePath, clientCert, 0o400) // client cert is self-signed CA
+	_ = os.WriteFile(caBundlePath, clientCert, fsperm.ReadOnlySecretFile) // client cert is self-signed CA
 
 	var gotPeerIdentity string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +127,7 @@ func startProxyForUpstream(t *testing.T, upstreamURL string, responseHeaderTimeo
 	clientCert, clientKey := selfSignedPair(t, "test-client")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	if err := os.WriteFile(caBundlePath, clientCert, 0o400); err != nil {
+	if err := os.WriteFile(caBundlePath, clientCert, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -259,7 +260,7 @@ func TestNewTLSProxy_RejectsUnauthenticatedClient(t *testing.T) {
 	serverCert, serverKey := selfSignedPair(t, "test-server")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	_ = os.WriteFile(caBundlePath, serverCert, 0o400)
+	_ = os.WriteFile(caBundlePath, serverCert, fsperm.ReadOnlySecretFile)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("upstream should not be reached")

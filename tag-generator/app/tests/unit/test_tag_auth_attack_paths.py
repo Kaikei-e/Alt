@@ -88,8 +88,7 @@ def test_valid_recap_worker_mtls_passes_without_extra_token(
     """Valid recap-worker identity passes to inference without needing any extra token."""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
-    if "auth_service" in sys.modules:
-        del sys.modules["auth_service"]
+    monkeypatch.delitem(sys.modules, "auth_service", raising=False)
     from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     with patch("auth_service._background_tag_service") as mock_service:
@@ -109,8 +108,7 @@ def test_valid_recap_worker_mtls_passes_without_extra_token(
 def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock) -> None:
     """Request with TLS client_cn 'recap-worker' in ASGI scope extension passes without extra token."""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
-    if "auth_service" in sys.modules:
-        del sys.modules["auth_service"]
+    monkeypatch.delitem(sys.modules, "auth_service", raising=False)
     from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     with patch("auth_service._background_tag_service") as mock_service:

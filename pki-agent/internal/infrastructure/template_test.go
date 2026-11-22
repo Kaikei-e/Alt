@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"pki-agent/internal/fsperm"
 	"strings"
 	"testing"
 	"text/template"
@@ -118,14 +119,14 @@ func findRepoRoot() (string, error) {
 func TestFindRepoRootPortableWithoutCompose(t *testing.T) {
 	root := t.TempDir()
 	scriptsDir := filepath.Join(root, "pki-agent", "scripts")
-	if err := os.MkdirAll(scriptsDir, 0700); err != nil {
+	if err := os.MkdirAll(scriptsDir, fsperm.SecretDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(scriptsDir, "bootstrap-pki-provisioner.sh"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(scriptsDir, "bootstrap-pki-provisioner.sh"), nil, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	packageDir := filepath.Join(root, "pki-agent", "internal", "infrastructure")
-	if err := os.MkdirAll(packageDir, 0700); err != nil {
+	if err := os.MkdirAll(packageDir, fsperm.SecretDir); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(packageDir)

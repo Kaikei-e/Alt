@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 func TestManifest_Save_IsOwnerOnlyUnderPermissiveUmask(t *testing.T) {
@@ -39,7 +41,7 @@ func TestMigrator_Backup_CreatesOnlyOwnerOnlyPathsAndNoArgvSecrets(t *testing.T)
 	script := "#!/usr/bin/env sh\necho \"$@\" >> " + argvLog + "\n" +
 		"if [ \"$1\" = \"exec\" ]; then printf 'PGDMP-fake-content'; exit 0; fi\nexit 1\n"
 	// #nosec G306 -- executable fake docker script for test PATH
-	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(script), fsperm.OwnerExecFile); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))

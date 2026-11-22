@@ -171,13 +171,19 @@ class TestRunExtractionFallbackThreshold:
                 "Machine learning and artificial intelligence are transforming software engineering.",
             )
 
-    def test_extract_tags_with_metrics_propagates_japanese_keybert_runtime_error(self) -> None:
+    def test_extract_tags_with_metrics_propagates_japanese_keybert_runtime_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Runtime faults in KeyBERT.extract_keywords (Japanese) must propagate rather than fall back to frequency."""
         if "sklearn" not in sys.modules:
             mock_sklearn = MagicMock()
-            sys.modules["sklearn"] = mock_sklearn
-            sys.modules["sklearn.feature_extraction"] = mock_sklearn.feature_extraction
-            sys.modules["sklearn.feature_extraction.text"] = mock_sklearn.feature_extraction.text
+            monkeypatch.setitem(sys.modules, "sklearn", mock_sklearn)
+            monkeypatch.setitem(sys.modules, "sklearn.feature_extraction", mock_sklearn.feature_extraction)
+            monkeypatch.setitem(
+                sys.modules,
+                "sklearn.feature_extraction.text",
+                mock_sklearn.feature_extraction.text,
+            )
 
         config = TagExtractionConfig(use_onnx_runtime=False, use_japanese_semantic=True)
         mock_keybert = MagicMock()

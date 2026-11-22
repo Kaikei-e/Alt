@@ -12,7 +12,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -21,6 +20,8 @@ import (
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/middleware"
 	"rag-orchestrator/internal/usecase"
+
+	"rag-orchestrator/internal/httpserver"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -87,9 +88,9 @@ func startRagProviderServer(t *testing.T) int {
 
 	port := l.Addr().(*net.TCPAddr).Port
 
-	server := &http.Server{
+	server := httpserver.New(httpserver.Config{
 		Handler: e,
-	}
+	})
 
 	go func() {
 		_ = server.Serve(l)

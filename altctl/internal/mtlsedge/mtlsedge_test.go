@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/compose"
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -291,21 +292,21 @@ func setupFakeProject(t *testing.T) (projectDir string, candidateEnvPath string,
 	projectDir = t.TempDir()
 
 	liveEnvBytes = []byte("LIVE_ENV_ONLY=1\nDB_PASSWORD=" + sentinelSecretDB + "\n")
-	if err := os.WriteFile(filepath.Join(projectDir, ".env"), liveEnvBytes, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".env"), liveEnvBytes, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(projectDir, "scripts"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(projectDir, "scripts"), fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, "scripts", "marker.txt"), []byte("marker"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, "scripts", "marker.txt"), []byte("marker"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o750); err != nil {
+	if err := os.MkdirAll(composeDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("../.env", filepath.Join(composeDir, ".env")); err != nil {
@@ -344,14 +345,14 @@ func setupFakeProject(t *testing.T) (projectDir string, candidateEnvPath string,
 		"ai.yaml":      aiYAML,
 	}
 	for name, content := range composeFiles {
-		if err := os.WriteFile(filepath.Join(composeDir, name), content, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(composeDir, name), content, fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	candidateBytes = []byte("POSTGRES_PASSWORD=" + sentinelSecretEnv + "\nPRE_PROCESSOR_MTLS_ENFORCE=true\n")
 	candidateEnvPath = filepath.Join(t.TempDir(), "candidate.env")
-	if err := os.WriteFile(candidateEnvPath, candidateBytes, 0o600); err != nil {
+	if err := os.WriteFile(candidateEnvPath, candidateBytes, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1094,16 +1095,16 @@ services:
   seq_svc:
     image: repo/img:$UNBRACED_VAR
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(incFile, []byte(incYAML), 0o600); err != nil {
+		if err := os.WriteFile(incFile, []byte(incYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(singleFile, []byte(singleYAML), 0o600); err != nil {
+		if err := os.WriteFile(singleFile, []byte(singleYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(seqFile, []byte(seqYAML), 0o600); err != nil {
+		if err := os.WriteFile(seqFile, []byte(seqYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1132,7 +1133,7 @@ include:
   - unknown_key: other.yaml
 services: {}
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := CollectComposeReferencedVars(rootFile); err == nil {
@@ -1151,10 +1152,10 @@ include:
       - nested: invalid
 services: {}
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(okFile, []byte("services: {}\n"), 0o600); err != nil {
+		if err := os.WriteFile(okFile, []byte("services: {}\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := CollectComposeReferencedVars(rootFile); err == nil {
@@ -1167,7 +1168,7 @@ services: {}
 		rootFile := filepath.Join(dir, "compose.yaml")
 		incFile := filepath.Join(dir, "inc.yaml")
 		extFile := filepath.Join(dir, "ext.yaml")
-		if err := os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - inc.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - inc.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 		incYAML := `services:
@@ -1176,10 +1177,10 @@ services: {}
       file: ext.yaml
       service: ext_svc
 `
-		if err := os.WriteFile(incFile, []byte(incYAML), 0o600); err != nil {
+		if err := os.WriteFile(incFile, []byte(incYAML), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(extFile, []byte("services:\n  ext_svc:\n    image: repo/img:latest\n"), 0o600); err != nil {
+		if err := os.WriteFile(extFile, []byte("services:\n  ext_svc:\n    image: repo/img:latest\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 		_, err := CollectComposeReferencedVars(rootFile)
@@ -1194,10 +1195,10 @@ services: {}
 	t.Run("include escaping compose root fails closed", func(t *testing.T) {
 		parent := t.TempDir()
 		composeDir := filepath.Join(parent, "compose")
-		require.NoError(t, os.MkdirAll(composeDir, 0o750))
-		require.NoError(t, os.WriteFile(filepath.Join(parent, "outside.yaml"), []byte("services: {}\n"), 0o600))
+		require.NoError(t, os.MkdirAll(composeDir, fsperm.PrivateDir))
+		require.NoError(t, os.WriteFile(filepath.Join(parent, "outside.yaml"), []byte("services: {}\n"), fsperm.SecretFile))
 		rootFile := filepath.Join(composeDir, "compose.yaml")
-		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - ../outside.yaml\n"), 0o600))
+		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - ../outside.yaml\n"), fsperm.SecretFile))
 
 		_, err := CollectComposeReferencedVars(rootFile)
 		require.Error(t, err)
@@ -1209,9 +1210,9 @@ services: {}
 	t.Run("absolute include path fails closed", func(t *testing.T) {
 		dir := t.TempDir()
 		outside := filepath.Join(t.TempDir(), "outside.yaml")
-		require.NoError(t, os.WriteFile(outside, []byte("services: {}\n"), 0o600))
+		require.NoError(t, os.WriteFile(outside, []byte("services: {}\n"), fsperm.SecretFile))
 		rootFile := filepath.Join(dir, "compose.yaml")
-		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - "+outside+"\n"), 0o600))
+		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - "+outside+"\n"), fsperm.SecretFile))
 
 		_, err := CollectComposeReferencedVars(rootFile)
 		require.Error(t, err)

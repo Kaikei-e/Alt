@@ -13,6 +13,8 @@ import (
 
 	"knowledge-sovereign/driver/sovereign_db"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/google/uuid"
 )
 
@@ -55,7 +57,7 @@ func buildRetentionLogEntry(action retentionAction, dryRun bool, err error, refT
 
 // exportPartition exports a partition table to a gzipped JSONL file with SHA-256 verification.
 func (h *RetentionHandler) exportPartition(ctx context.Context, partitionName string, refTime time.Time) (string, int64, string, error) {
-	if err := os.MkdirAll(h.archiveDir, 0o750); err != nil {
+	if err := os.MkdirAll(h.archiveDir, fsperm.PrivateDir); err != nil {
 		return "", 0, "", fmt.Errorf("create archive dir: %w", err)
 	}
 

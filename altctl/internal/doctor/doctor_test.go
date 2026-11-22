@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/alt-project/altctl/internal/stack"
 )
 
@@ -74,7 +75,7 @@ func buildTestRegistry(t *testing.T) (*stack.Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
 	composeDir := filepath.Join(dir, "compose")
-	if err := os.MkdirAll(composeDir, 0o750); err != nil {
+	if err := os.MkdirAll(composeDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -87,7 +88,7 @@ func buildTestRegistry(t *testing.T) (*stack.Registry, string) {
 		"dev.yaml":     "name: alt\ninclude:\n  - base.yaml\nservices:\n  dev-tool:\n    image: dev:latest\n",
 	}
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(composeDir, name), []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(composeDir, name), []byte(content), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -497,7 +498,7 @@ func writeSocketProxyCompose(t *testing.T, user string) string {
 	t.Helper()
 	composeDir := t.TempDir()
 	body := "services:\n  docker-socket-proxy-ro:\n    image: proxy:latest\n    user: \"" + user + "\"\n"
-	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte(body), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	return composeDir
@@ -508,7 +509,7 @@ func writeSocketProxyCompose(t *testing.T, user string) string {
 func fakeSocket(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "docker.sock")
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := os.WriteFile(path, nil, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -563,7 +564,7 @@ func TestDockerSocketGroupFinding_MissingSocketIsReported(t *testing.T) {
 
 func TestDockerSocketGroupFinding_NoSocketProxyMeansNothingToCheck(t *testing.T) {
 	composeDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte("services:\n  log-forwarder:\n    image: forwarder:latest\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte("services:\n  log-forwarder:\n    image: forwarder:latest\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -607,14 +608,14 @@ func TestRenderText_DockerUnreachable(t *testing.T) {
 
 func writeEnvAndSecrets(t *testing.T, projectDir string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(projectDir, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".env"), []byte("FOO=bar\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	secretsDir := filepath.Join(projectDir, "secrets")
-	if err := os.MkdirAll(secretsDir, 0o750); err != nil {
+	if err := os.MkdirAll(secretsDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(secretsDir, "db_password.txt"), []byte("x"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(secretsDir, "db_password.txt"), []byte("x"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 }

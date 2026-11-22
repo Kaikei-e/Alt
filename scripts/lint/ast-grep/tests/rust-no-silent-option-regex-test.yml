@@ -1,0 +1,29 @@
+id: rust-no-silent-option-regex
+valid:
+  # C-17/before.rs: Result propagation at startup
+  - |
+    use regex::Regex;
+
+    pub struct MaskSet {
+        bearer_header: Regex,
+    }
+
+    impl MaskSet {
+        pub fn compile() -> Result<Self, regex::Error> {
+            Ok(Self {
+                bearer_header: Regex::new(r"Bearer\s+[A-Za-z0-9._-]+")?,
+            })
+        }
+    }
+invalid:
+  # C-17/after.rs: Option<Regex> with .ok() silently skips redaction
+  - |
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    static MASK_RE: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"Bearer\s+[A-Za-z0-9._-]+").ok());
+  - |
+    fn compile_loose() -> Option<regex::Regex> {
+        regex::Regex::new(r"secret=\S+").ok()
+    }

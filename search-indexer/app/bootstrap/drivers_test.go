@@ -14,6 +14,8 @@ import (
 	"search-indexer/driver"
 	"search-indexer/gateway"
 
+	"search-indexer/internal/fsperm"
+
 	"github.com/meilisearch/meilisearch-go"
 )
 
@@ -206,7 +208,7 @@ func TestInitMeilisearchClients_FailsFastOnInvalidSecretFileOrMissingSearchKey(t
 	t.Cleanup(srv.Close)
 
 	emptyFile := filepath.Join(t.TempDir(), "empty_key")
-	if err := os.WriteFile(emptyFile, []byte("  \n\t "), 0o600); err != nil {
+	if err := os.WriteFile(emptyFile, []byte("  \n\t "), fsperm.SecretFile); err != nil {
 		t.Fatalf("write empty file: %v", err)
 	}
 	missingFile := filepath.Join(t.TempDir(), "nonexistent_key")

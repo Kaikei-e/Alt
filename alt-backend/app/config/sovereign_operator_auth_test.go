@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"alt/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +15,7 @@ func writeTempTokenFile(t *testing.T, filename, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, filename)
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(content), fsperm.SecretFile))
 	return path
 }
 

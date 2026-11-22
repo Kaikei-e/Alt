@@ -48,6 +48,8 @@ mod tests {
     use regex::Regex;
 
     #[test]
+    // Unit test explicitly constructs a regex::Error from an invalid literal.
+    #[allow(clippy::disallowed_methods)]
     fn test_compilation_failed_fallback_strategy() {
         let invalid_pattern = r"[invalid regex pattern";
         let result = Regex::new(invalid_pattern);

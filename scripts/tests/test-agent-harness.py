@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import types
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
@@ -55,8 +56,8 @@ def load_module(name: str, path: pathlib.Path) -> types.ModuleType:
     assert spec is not None, f"missing module: {path}"
     assert spec.loader is not None, f"missing module: {path}"
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
+    with unittest.mock.patch.dict(sys.modules, {name: mod}):
+        spec.loader.exec_module(mod)
     return mod
 
 

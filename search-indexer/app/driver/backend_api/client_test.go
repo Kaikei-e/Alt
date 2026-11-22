@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,5 +176,25 @@ func TestClient_GetArticleByID_OtherCodesAreNotSentinel(t *testing.T) {
 	}
 	if errors.Is(err, driver.ErrNotFound) {
 		t.Fatalf("GetArticleByID() error = %v, must not be ErrNotFound for a non-NotFound failure", err)
+	}
+}
+
+func TestClient_NilResponseMessageFailsFast(t *testing.T) {
+	t.Parallel()
+
+	nilMsgInterceptor := connect.UnaryInterceptorFunc(func(_ connect.UnaryFunc) connect.UnaryFunc {
+		return func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+			var nilMsg *datahubv1.ListArticlesWithTagsResponse
+			return connect.NewResponse(nilMsg), nil
+		}
+	})
+
+	c := newClientWithOptions("http://127.0.0.1:1", nil, connect.WithInterceptors(nilMsgInterceptor))
+	_, _, _, err := c.GetArticlesWithTags(context.Background(), nil, "", 10)
+	if err == nil {
+		t.Fatal("GetArticlesWithTags() error = nil, want nil response message error")
+	}
+	if !strings.Contains(err.Error(), "nil response message") {
+		t.Fatalf("GetArticlesWithTags() error = %v, want substring %q", err, "nil response message")
 	}
 }

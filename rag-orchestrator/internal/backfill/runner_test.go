@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -454,7 +456,7 @@ func TestLoadAPIToken(t *testing.T) {
 		t.Setenv("RAG_API_TOKEN", "")
 		validToken := "this-is-a-valid-token-from-file-at-least-24-chars"
 		tmpFile := filepath.Join(t.TempDir(), "token.txt")
-		require.NoError(t, os.WriteFile(tmpFile, []byte(validToken+"\n"), 0600))
+		require.NoError(t, os.WriteFile(tmpFile, []byte(validToken+"\n"), fsperm.SecretFile))
 		t.Setenv("RAG_API_TOKEN_FILE", tmpFile)
 		token, err := LoadAPIToken()
 		require.NoError(t, err)

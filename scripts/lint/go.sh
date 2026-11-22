@@ -2,11 +2,9 @@
 set -euo pipefail
 
 readonly GOLANGCI_LINT_VERSION="v2.14.0"
-readonly GOSEC_VERSION="v2.30.0"
 readonly GOVULNCHECK_VERSION="v1.6.0"
 
 readonly GOLANGCI_LINT_MODULE="github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
-readonly GOSEC_MODULE="github.com/securego/gosec/v2/cmd/gosec"
 readonly GOVULNCHECK_MODULE="golang.org/x/vuln/cmd/govulncheck"
 
 if [ "$#" -ne 1 ] || [ -z "$1" ] || [[ "$1" = /* ]]; then
@@ -57,11 +55,9 @@ ensure_tool() {
 }
 
 ensure_tool "golangci-lint" "${GOLANGCI_LINT_MODULE}" "${GOLANGCI_LINT_VERSION}"
-ensure_tool "gosec" "${GOSEC_MODULE}" "${GOSEC_VERSION}"
 ensure_tool "govulncheck" "${GOVULNCHECK_MODULE}" "${GOVULNCHECK_VERSION}"
 
 GOLANGCI_LINT_BIN="${CACHE_BASE}/golangci-lint-${GOLANGCI_LINT_VERSION}/golangci-lint"
-GOSEC_BIN="${CACHE_BASE}/gosec-${GOSEC_VERSION}/gosec"
 GOVULNCHECK_BIN="${CACHE_BASE}/govulncheck-${GOVULNCHECK_VERSION}/govulncheck"
 
 cd "${PROJECT_DIR}"
@@ -87,12 +83,11 @@ cleanup_canary() {
 }
 trap cleanup_canary EXIT
 
-echo "==> [${PROJECT_REL}] canary audit (golangci-lint, gosec)"
+echo "==> [${PROJECT_REL}] canary audit (golangci-lint incl. gosec SARIF)"
 if ! python3 "${CANARY_AUDIT_SCRIPT}" go-canary \
   --project-dir "${PROJECT_DIR}" \
   --config "${CONFIG_FILE}" \
   --golangci-lint-bin "${GOLANGCI_LINT_BIN}" \
-  --gosec-bin "${GOSEC_BIN}" \
   --work-dir "${canary_dir}"; then
   exit 1
 fi
@@ -117,8 +112,14 @@ if ! go vet ./...; then
   overall_rc=1
 fi
 
-echo "==> [${PROJECT_REL}] golangci-lint"
-if "${GOLANGCI_LINT_BIN}" run --config "${CONFIG_FILE}"; then
+mkdir -p ./_reports
+rm -f ./_reports/golangci-lint.sarif ./_reports/gosec.sarif ./_reports/gosec.sarif.tmp \
+      ./_reports/govulncheck.sarif ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.stderr
+
+echo "==> [${PROJECT_REL}] golangci-lint (incl. gosec SARIF)"
+if "${GOLANGCI_LINT_BIN}" run --config "${CONFIG_FILE}" \
+  --output.text.path stdout \
+  --output.sarif.path "${PROJECT_DIR}/_reports/golangci-lint.sarif"; then
   golangci_rc=0
 else
   golangci_rc=$?
@@ -127,50 +128,61 @@ if [ "${golangci_rc}" -eq 1 ]; then
   status_golangci="FAIL"
   overall_rc=1
 elif [ "${golangci_rc}" -ne 0 ]; then
+  rm -f ./_reports/golangci-lint.sarif
   echo "ERROR: golangci-lint failed to run (exit code ${golangci_rc})" >&2
   exit "${golangci_rc}"
 fi
 
-mkdir -p ./_reports
-rm -f ./_reports/gosec.sarif ./_reports/gosec.sarif.tmp ./_reports/gosec.out \
-      ./_reports/govulncheck.sarif ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.stderr
-
-echo "==> [${PROJECT_REL}] gosec (SARIF)"
-if "${GOSEC_BIN}" -severity high -confidence high -exclude-dir='(^|/)gen(/|$)' -fmt sarif -out ./_reports/gosec.sarif -stdout -verbose text ./... > ./_reports/gosec.out 2>&1; then
-  gosec_rc=0
-else
-  gosec_rc=$?
-fi
-if [ ! -s ./_reports/gosec.sarif ]; then
-  [ -s ./_reports/gosec.out ] && cat ./_reports/gosec.out >&2
-  rm -f ./_reports/gosec.out
-  echo "ERROR: gosec did not produce ./_reports/gosec.sarif (exit code ${gosec_rc})" >&2
+if [ ! -s ./_reports/golangci-lint.sarif ]; then
+  rm -f ./_reports/golangci-lint.sarif
+  echo "ERROR: golangci-lint did not produce ./_reports/golangci-lint.sarif (exit code ${golangci_rc})" >&2
   exit 1
 fi
-jq '(.runs[]?.results[]?) |= del(.fixes)' ./_reports/gosec.sarif > ./_reports/gosec.sarif.tmp
+
+jq '
+  .runs = ((.runs // []) | map(
+    (.artifacts == null) as $no_artifacts
+    | .tool.driver.name = "gosec"
+    | .results = ((.results // []) | map(
+        select(.ruleId == "gosec")
+        | .ruleId = (try (.message.text // "" | capture("^(?<id>G[0-9]{3}):").id) catch "gosec")
+        | del(.fixes)
+        | if $no_artifacts and (.locations | type == "array") then
+            .locations |= map(
+              if (.physicalLocation.artifactLocation | type == "object") then
+                del(.physicalLocation.artifactLocation.index)
+              else .
+              end
+            )
+          else .
+          end
+      ))
+    | .tool.driver.rules = (
+        .results
+        | map({
+            id: .ruleId,
+            shortDescription: {
+              text: ((.message.text // .ruleId) | split("\n")[0])
+            }
+          })
+        | unique_by(.id)
+      )
+  ))
+' ./_reports/golangci-lint.sarif > ./_reports/gosec.sarif.tmp
 mv ./_reports/gosec.sarif.tmp ./_reports/gosec.sarif
+rm -f ./_reports/golangci-lint.sarif
 
 if ! python3 "${CANARY_AUDIT_SCRIPT}" go-verify-scan \
   --project-dir "${PROJECT_DIR}" \
-  --gosec-out ./_reports/gosec.out \
   --gosec-sarif ./_reports/gosec.sarif; then
-  [ -s ./_reports/gosec.out ] && cat ./_reports/gosec.out >&2
-  rm -f ./_reports/gosec.out
   exit 1
 fi
 
 gosec_issue_count="$(jq '[.runs[]?.results[]?] | length' ./_reports/gosec.sarif)"
 if [ "${gosec_issue_count}" -gt 0 ]; then
-  jq -r '.runs[]?.results[]? | "ERROR: gosec \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri // "unknown"):\(.locations[0].physicalLocation.region.startLine // 1): \(.message.text)"' ./_reports/gosec.sarif >&2
   status_gosec="FAIL"
   overall_rc=1
-elif [ "${gosec_rc}" -ne 0 ]; then
-  [ -s ./_reports/gosec.out ] && cat ./_reports/gosec.out >&2
-  rm -f ./_reports/gosec.out
-  echo "ERROR: gosec exited with code ${gosec_rc} despite zero SARIF findings" >&2
-  exit 1
 fi
-rm -f ./_reports/gosec.out
 
 echo "==> [${PROJECT_REL}] govulncheck (SARIF)"
 if ! "${GOVULNCHECK_BIN}" -format=sarif ./... > ./_reports/govulncheck.sarif 2>./_reports/govulncheck.stderr; then

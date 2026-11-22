@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"pki-agent/internal/httpserver"
 	"strings"
 	"sync"
 	"time"
@@ -203,12 +204,12 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 // healthcheck-probe EOFs (see tls_error_log.go) while preserving genuine TLS
 // failures.
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          newProxyErrorLog(),
-	}
+	})
 }

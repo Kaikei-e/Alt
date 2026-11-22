@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"search-indexer/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,7 +97,7 @@ func TestLoad_SecretFileUnreadableFailsFast(t *testing.T) {
 func TestLoad_SecretFileReadable(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "meili_master_key")
-	if err := os.WriteFile(keyPath, []byte("  super-secret-key\n"), 0o600); err != nil {
+	if err := os.WriteFile(keyPath, []byte("  super-secret-key\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("BACKEND_API_URL", "http://alt-backend:9101")
@@ -140,7 +142,7 @@ func unsetEnv(t *testing.T, key string) {
 func writeInferenceToken(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "inference_service_token")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	return path

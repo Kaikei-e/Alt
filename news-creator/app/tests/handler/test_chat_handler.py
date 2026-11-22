@@ -3,6 +3,7 @@
 import gc
 import json
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from http import HTTPStatus
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -200,24 +201,24 @@ class TestChatEndpointStreaming:
         gc_was_enabled = gc.isenabled()
         gc.disable()
         try:
-            resp = await chat_route.endpoint(
-                ChatRequest(
-                    model="gemma4-e4b-12k",
-                    messages=[ChatMessage(role="user", content="hi")],
-                    stream=True,
+            async with aclosing(inner_gen):
+                resp = await chat_route.endpoint(
+                    ChatRequest(
+                        model="gemma4-e4b-12k",
+                        messages=[ChatMessage(role="user", content="hi")],
+                        stream=True,
+                    )
                 )
-            )
-            first_line = await anext(resp.body_iterator)
-            assert json.loads(first_line)["message"]["content"] == "Hello"
-            assert not inner_closed
-            await resp.body_iterator.aclose()
-            assert inner_closed, (
-                "Inner gateway.chat_stream generator must be closed immediately when ndjson_generator is closed"
-            )
+                first_line = await anext(resp.body_iterator)
+                assert json.loads(first_line)["message"]["content"] == "Hello"
+                assert not inner_closed
+                await resp.body_iterator.aclose()
+                assert inner_closed, (
+                    "Inner gateway.chat_stream generator must be closed immediately when ndjson_generator is closed"
+                )
         finally:
             if gc_was_enabled:
                 gc.enable()
-            await inner_gen.aclose()
 
 
 class TestChatEndpointValidation:

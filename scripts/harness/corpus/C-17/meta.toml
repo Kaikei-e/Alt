@@ -17,7 +17,7 @@ notes = "In rask-log-forwarder/app/src/domain/redact.rs (4a877d2f9 / 669bb6fa5),
 
 [detection]
 planned_checks = ["ARCH-02", "CHECK-01"]
-active_checks = []
-currently_caught = false
-current_method = "差分読みのみ"
-expected_signal = ""
+active_checks = ["ARCH-02"]
+currently_caught = true
+current_method = "ARCH-02"
+expected_signal = "rust-no-silent-option-regex"

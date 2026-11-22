@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // CreateEnvFile copies .env.example to .env in the given project root.
@@ -31,7 +33,7 @@ func CreateEnvFile(projectRoot string, force bool) (bool, error) {
 	}
 
 	// #nosec G703 -- envPath joins operator-configured projectRoot with constant ".env"
-	if err := os.WriteFile(envPath, content, 0o600); err != nil {
+	if err := os.WriteFile(envPath, content, fsperm.SecretFile); err != nil {
 		return false, fmt.Errorf("writing .env: %w", err)
 	}
 

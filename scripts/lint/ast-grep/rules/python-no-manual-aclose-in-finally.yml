@@ -1,0 +1,16 @@
+id: python-no-manual-aclose-in-finally
+language: python
+severity: error
+message: >-
+  Do not call `await <obj>.aclose()` manually inside a `finally:` block.
+  Wrap the stream or resource with `async with contextlib.aclosing(...)`
+  (or use `news_creator.handler.sse_stream` for SSE/NDJSON streams) so an
+  exception in `aclose()` cannot skip subsequent cleanup or terminal sentinels.
+rule:
+  pattern: await $OBJ.aclose()
+  inside:
+    kind: finally_clause
+    stopBy: end
+ignores:
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

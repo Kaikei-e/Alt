@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"rag-orchestrator/internal/connectguard"
 
 	"connectrpc.com/connect"
 )
@@ -20,8 +21,14 @@ import (
 // unverifiable — the same trap documented on sovereign_client's client.
 //
 // httpClient carries the mutual TLS: alt-data-hub authenticates callers by
-// peer certificate and nothing else, so there is no interceptor here and no
-// credential in the request.
+// peer certificate and nothing else, so there is no auth interceptor here and no
+// credential in the request. connectguard.NewUnaryNilResponseInterceptor
+// enforces non-nil unary response messages.
 func NewDataHubServiceClient(httpClient *http.Client, baseURL string) datahubv1connect.DataHubServiceClient {
-	return datahubv1connect.NewDataHubServiceClient(httpClient, baseURL, connect.WithProtoJSON())
+	return datahubv1connect.NewDataHubServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	)
 }

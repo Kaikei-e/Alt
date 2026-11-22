@@ -24,6 +24,8 @@ import (
 	// Import new scheduler package
 	"encoding/json"
 
+	"pre-processor-sidecar/internal/httpserver"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -467,12 +469,12 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		}
 	}))
 
-	adminServer := &http.Server{
+	adminServer := httpserver.New(httpserver.Config{
 		Addr:         ":8080",
 		Handler:      adminMux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
-	}
+	})
 
 	// Admin APIサーバーをgoroutineで起動
 	var adminServerWG sync.WaitGroup

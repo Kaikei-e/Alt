@@ -15,6 +15,8 @@ import (
 
 	"knowledge-sovereign/driver/sovereign_db"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/google/uuid"
 )
 
@@ -124,7 +126,7 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 	dateStr := now.Format("20060102_150405")
 	baseDir := filepath.Join(h.snapshotDir, fmt.Sprintf("snapshot_%s", dateStr))
 
-	if err := os.MkdirAll(baseDir, 0o750); err != nil {
+	if err := os.MkdirAll(baseDir, fsperm.PrivateDir); err != nil {
 		return nil, fmt.Errorf("create snapshot dir: %w", err)
 	}
 

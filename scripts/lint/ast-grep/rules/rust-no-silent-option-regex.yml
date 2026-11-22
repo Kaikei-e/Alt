@@ -1,0 +1,21 @@
+id: rust-no-silent-option-regex
+language: rust
+severity: error
+message: >-
+  Do not wrap compiled regexes in `Option<Regex>` or swallow `Regex::new(...)`
+  errors with `.ok()`. Compile patterns through `domain::redact::compile_patterns()`
+  (or `StaticRegexSet`) returning `Result<_, regex::Error>` and propagate with `?`
+  on the startup path.
+rule:
+  any:
+    - pattern:
+        context: "type _ = Option<Regex>;"
+        selector: generic_type
+    - pattern:
+        context: "type _ = Option<regex::Regex>;"
+        selector: generic_type
+    - pattern: Regex::new($$$).ok()
+    - pattern: regex::Regex::new($$$).ok()
+ignores:
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from contextlib import asynccontextmanager, suppress
+from contextlib import aclosing, asynccontextmanager, suppress
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -377,22 +377,22 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
             # super-step writes through the connection pool create_checkpointer
             # owns; draining after that context exits would hand a pipeline its
             # grace window with nothing left to write the terminal checkpoint to.
-            if settings.checkpoint_enabled:
-                async with create_checkpointer(_dsn) as checkpointer:
-                    connect_service.set_graph(_compile_graph(checkpointer=checkpointer))
-                    logger.info("LangGraph checkpointing enabled")
+            async with aclosing(_http_client):
+                if settings.checkpoint_enabled:
+                    async with create_checkpointer(_dsn) as checkpointer:
+                        connect_service.set_graph(_compile_graph(checkpointer=checkpointer))
+                        logger.info("LangGraph checkpointing enabled")
+                        try:
+                            yield
+                        finally:
+                            await _drain()
+                else:
+                    logger.info("LangGraph checkpointing disabled")
                     try:
                         yield
                     finally:
                         await _drain()
-            else:
-                logger.info("LangGraph checkpointing disabled")
-                try:
-                    yield
-                finally:
-                    await _drain()
         finally:
-            await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")
             _otel_handle.shutdown()

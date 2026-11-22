@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -97,7 +98,10 @@ export default defineConfig({
 		testIdAttribute: "data-testid",
 
 		baseURL: `${previewOrigin}/`,
-		storageState: "tests/e2e/.auth/storage.json",
+		storageState: path.resolve(
+			import.meta.dirname,
+			"test-results/.auth/storage.json",
+		),
 		...(forwardedProto
 			? { extraHTTPHeaders: { "x-forwarded-proto": forwardedProto } }
 			: {}),

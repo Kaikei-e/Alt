@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import ssl
 import tempfile
@@ -502,7 +503,7 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
     assert handle.ops_addr is not None
     assert handle.registry is not None
     assert handle.registry is not DEFAULT_REGISTRY
-    try:
+    async with contextlib.aclosing(handle):
         async with httpx.AsyncClient() as client:
             health = await client.get(f"http://{handle.ops_addr}/health")
             metrics = await client.get(f"http://{handle.ops_addr}/metrics")
@@ -512,8 +513,6 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
         assert "pki_enrollment_healthy" in metrics.text
         leaked = generate_latest(DEFAULT_REGISTRY).decode()
         assert 'subject="acolyte-orchestrator"' not in leaked or "pki_enrollment_healthy" not in leaked
-    finally:
-        await handle.aclose()
 
 
 def test_pbes2_constant_is_step_ca_default() -> None:

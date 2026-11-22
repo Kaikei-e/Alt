@@ -1,2 +1,5 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+disallowed-methods = [
+    { path = "regex::Regex::new", reason = "Compile regex patterns via domain::redact::compile_patterns (or parser::regex_patterns::StaticRegexSet) returning Result so invalid patterns fail startup instead of falling back silently" },
+]

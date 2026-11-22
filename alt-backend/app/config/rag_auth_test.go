@@ -1,6 +1,7 @@
 package config
 
 import (
+	"alt/internal/fsperm"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,12 +11,12 @@ import (
 func TestLoadRAGAuth(t *testing.T) {
 	dir := t.TempDir()
 	goodTokenFile := filepath.Join(dir, "good.txt")
-	if err := os.WriteFile(goodTokenFile, []byte("  a-valid-rag-api-token-that-is-long-enough\n"), 0o600); err != nil {
+	if err := os.WriteFile(goodTokenFile, []byte("  a-valid-rag-api-token-that-is-long-enough\n"), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write test token file: %v", err)
 	}
 
 	shortTokenFile := filepath.Join(dir, "short.txt")
-	if err := os.WriteFile(shortTokenFile, []byte("too-short\n"), 0o600); err != nil {
+	if err := os.WriteFile(shortTokenFile, []byte("too-short\n"), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write short token file: %v", err)
 	}
 
@@ -111,12 +112,12 @@ func TestLoadRAGAuth(t *testing.T) {
 func TestValidateRAGAuthConfig(t *testing.T) {
 	dir := t.TempDir()
 	goodTokenFile := filepath.Join(dir, "good.txt")
-	if err := os.WriteFile(goodTokenFile, []byte("a-valid-rag-api-token-that-is-long-enough"), 0o600); err != nil {
+	if err := os.WriteFile(goodTokenFile, []byte("a-valid-rag-api-token-that-is-long-enough"), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write test token file: %v", err)
 	}
 
 	shortTokenFile := filepath.Join(dir, "short.txt")
-	if err := os.WriteFile(shortTokenFile, []byte("too-short"), 0o600); err != nil {
+	if err := os.WriteFile(shortTokenFile, []byte("too-short"), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write short token file: %v", err)
 	}
 

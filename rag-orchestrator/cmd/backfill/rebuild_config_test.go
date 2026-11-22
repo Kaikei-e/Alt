@@ -9,6 +9,8 @@ import (
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -117,7 +119,7 @@ func TestSingleEmbedderVersion(t *testing.T) {
 func writeInferenceToken(t *testing.T, token string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "inference_service_token")
-	require.NoError(t, os.WriteFile(path, []byte(token+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(token+"\n"), fsperm.SecretFile))
 	return path
 }
 

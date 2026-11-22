@@ -26,6 +26,8 @@ import (
 	"auth-hub/utils/logger"
 	"auth-hub/utils/otel"
 
+	"auth-hub/internal/httpserver"
+
 	echootel "github.com/labstack/echo-otel/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -334,11 +336,11 @@ func main() {
 	devPlaintextAllowed := os.Getenv("AUTH_HUB_DEV_PLAINTEXT") == "true"
 	plaintextHandler := buildPlaintextHandler(e, devPlaintextAllowed && !frontendTLSEnabled)
 
-	plaintextServer := &http.Server{
+	plaintextServer := httpserver.New(httpserver.Config{
 		Addr:              address,
 		Handler:           plaintextHandler,
 		ReadHeaderTimeout: 10 * time.Second,
-	}
+	})
 
 	g.Go(func() error {
 		if err := plaintextServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

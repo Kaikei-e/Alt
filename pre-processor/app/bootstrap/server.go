@@ -13,6 +13,8 @@ import (
 	appmiddleware "pre-processor/middleware"
 	"pre-processor/tlsutil"
 
+	"pre-processor/internal/httpserver"
+
 	echootel "github.com/labstack/echo-otel/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -113,11 +115,11 @@ func StartHTTPServer(e *echo.Echo, log *slog.Logger, errCh chan<- error) *http.S
 		port = httpPort
 	}
 	addr := fmt.Sprintf(":%s", port)
-	srv := &http.Server{
+	srv := httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           e,
 		ReadHeaderTimeout: 10 * time.Second,
-	}
+	})
 	go func() {
 		log.Info("Starting HTTP server", "port", port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -152,7 +154,7 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error, echoServers ...*
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	server := &http.Server{
+	server := httpserver.New(httpserver.Config{
 		Addr:        addr,
 		Handler:     connectHandler,
 		Protocols:   protocols,
@@ -164,7 +166,7 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error, echoServers ...*
 		// Per-RPC deadlines are handled via context.WithTimeout instead.
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
-	}
+	})
 	go func() {
 		deps.Logger.Info("Starting Connect-RPC server", "port", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

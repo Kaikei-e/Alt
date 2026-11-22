@@ -31,6 +31,7 @@ import (
 	"pki-agent/config"
 	"pki-agent/internal/adapter/handler"
 	"pki-agent/internal/domain"
+	"pki-agent/internal/httpserver"
 	"pki-agent/internal/infrastructure"
 	"pki-agent/internal/usecase"
 )
@@ -100,11 +101,11 @@ func main() {
 	// package doc) so Docker restart-unless-stopped respawns the container.
 	serverErr := make(chan error, 2)
 
-	srv := &http.Server{
+	srv := httpserver.New(httpserver.Config{
 		Addr:              cfg.MetricsAddr,
 		Handler:           handler.NewMux(obs),
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	})
 	go func() {
 		slog.Info("metrics server listening", "addr", cfg.MetricsAddr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

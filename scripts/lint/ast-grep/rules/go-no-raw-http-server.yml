@@ -1,0 +1,14 @@
+id: go-no-raw-http-server
+language: go
+severity: error
+message: >-
+  Do not construct http.Server directly; use httpserver.New(httpserver.Config{...})
+  from internal/httpserver so timeouts and listener fields stay explicit and reviewable.
+rule:
+  any:
+    - pattern: http.Server{$$$}
+    - pattern: new(http.Server)
+ignores:
+  - "**/httpserver/**"
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

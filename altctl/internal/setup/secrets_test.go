@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // repoBaseComposeFile resolves compose/base.yaml from this test file's own
@@ -311,7 +313,7 @@ secrets:
   postgres_password:
     file: ../secrets/postgres_password.txt
 `
-	if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -329,7 +331,7 @@ func TestDeriveSecretSpecs_RejectsInvalidSecretBasename(t *testing.T) {
 		t.Run(badFile, func(t *testing.T) {
 			fakeBase := filepath.Join(t.TempDir(), "base.yaml")
 			content := "secrets:\n  bad:\n    file: " + badFile + "\n"
-			if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
+			if err := os.WriteFile(fakeBase, []byte(content), fsperm.SecretFile); err != nil {
 				t.Fatal(err)
 			}
 			_, err := DeriveSecretSpecs(fakeBase)
@@ -348,7 +350,7 @@ secrets:
   pki-agent-some-new-service-jwk:
     file: ../secrets/pki-agent-some-new-service-jwk.txt
 `
-	if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -389,7 +391,7 @@ func TestDefaultSecretSpecs_ErrorsWhenBaseComposeFileNotFound(t *testing.T) {
 func TestDeriveSecretSpecs_MissingSecretsBlock(t *testing.T) {
 	dir := t.TempDir()
 	fakeBase := filepath.Join(dir, "base.yaml")
-	if err := os.WriteFile(fakeBase, []byte("name: alt\nnetworks:\n  alt-network:\n"), 0o600); err != nil {
+	if err := os.WriteFile(fakeBase, []byte("name: alt\nnetworks:\n  alt-network:\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -578,7 +580,7 @@ func TestGenerateSecrets_ForceLeavesNonRandomSecretsAlone(t *testing.T) {
 		"pki-agent-alt-backend-jwk.txt": "registered-provisioner-password",
 	}
 	for name, value := range keep {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -622,7 +624,7 @@ func TestGenerateSecrets_CreatesGroupReadableDirectory(t *testing.T) {
 func TestGenerateSecrets_TightensExistingDirectoryTo0750(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "secrets")
 	// #nosec G301 -- test intentionally creates 0755 dir to verify tightening to 0750
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, fsperm.GeneratedDir); err != nil {
 		t.Fatal(err)
 	}
 	// #nosec G302 -- test intentionally sets 0755 dir mode to verify tightening to 0750
@@ -661,7 +663,7 @@ func TestFindPendingSecrets(t *testing.T) {
 		"generated_password.txt":     "random",
 	}
 	for name, value := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -772,13 +774,13 @@ func TestKratosEntrypoint_RejectsInsecureOrShortSecrets(t *testing.T) {
 			cipherFile := filepath.Join(dir, "cipher_secret")
 			outConfig := filepath.Join(dir, "kratos.yml")
 
-			if err := os.WriteFile(dbPassFile, []byte("db-password-for-test\n"), 0o600); err != nil {
+			if err := os.WriteFile(dbPassFile, []byte("db-password-for-test\n"), fsperm.SecretFile); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(cookieFile, []byte(tc.cookieSecret+"\n"), 0o600); err != nil {
+			if err := os.WriteFile(cookieFile, []byte(tc.cookieSecret+"\n"), fsperm.SecretFile); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(cipherFile, []byte(tc.cipherSecret+"\n"), 0o600); err != nil {
+			if err := os.WriteFile(cipherFile, []byte(tc.cipherSecret+"\n"), fsperm.SecretFile); err != nil {
 				t.Fatal(err)
 			}
 
@@ -850,7 +852,7 @@ func readKeyPair(t *testing.T, dir string) (ed25519.PrivateKey, ed25519.PublicKe
 func TestDeriveSecretSpecs_BackendTokenKeyPair(t *testing.T) {
 	fakeBase := filepath.Join(t.TempDir(), "base.yaml")
 	body := "secrets:\n  a:\n    file: ../secrets/" + backendTokenSigningKeyFile + "\n  b:\n    file: ../secrets/" + backendTokenVerifyKeyFile + "\n"
-	if err := os.WriteFile(fakeBase, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(body), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	specs, err := DeriveSecretSpecs(fakeBase)
@@ -924,7 +926,7 @@ func TestGenerateSecrets_HalfPresentKeyPairIsAnError(t *testing.T) {
 		t.Run(present, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, present)
-			if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte("existing"), fsperm.SecretFile); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := GenerateSecrets(dir, keyPairSpecs(), false); err == nil {

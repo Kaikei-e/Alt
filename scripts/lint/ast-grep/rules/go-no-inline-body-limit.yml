@@ -1,0 +1,26 @@
+id: go-no-inline-body-limit
+language: go
+severity: error
+message: >-
+  Do not pass inline literals or unitless expressions to BodyLimit; pass a named
+  byte-unit constant ending in Bytes (e.g., apiBodyLimitBytes, config.MaxRequestBodyBytes)
+  with a boundary test.
+rule:
+  any:
+    - pattern:
+        context: "func _() { $PKG.BodyLimit($ARG) }"
+        selector: call_expression
+    - pattern:
+        context: "func _() { BodyLimit($ARG) }"
+        selector: call_expression
+constraints:
+  ARG:
+    not:
+      any:
+        - kind: identifier
+          regex: "Bytes$"
+        - kind: selector_expression
+          regex: "Bytes$"
+ignores:
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

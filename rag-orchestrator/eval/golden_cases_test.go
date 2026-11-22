@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"testing"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -135,7 +137,7 @@ func TestResolveGoldenCasesPath(t *testing.T) {
 
 func TestLoadGoldenCases_EmptyFileIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.json")
-	require.NoError(t, os.WriteFile(path, []byte("[]"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("[]"), fsperm.SecretFile))
 	_, err := LoadGoldenCases(path)
 	assert.Error(t, err)
 }

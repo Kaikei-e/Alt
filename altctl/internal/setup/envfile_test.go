@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +24,7 @@ func TestCreateEnvFile_CreatesFromExample(t *testing.T) {
 
 	// Create .env.example
 	example := "POSTGRES_DB=alt\nPOSTGRES_USER=alt_user\n"
-	if err := os.WriteFile(filepath.Join(dir, ".env.example"), []byte(example), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env.example"), []byte(example), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,8 +46,8 @@ func TestCreateEnvFile_SkipsExisting(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create .env.example and existing .env
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), fsperm.SecretFile))
 
 	created, err := CreateEnvFile(dir, false)
 	if err != nil {
@@ -66,8 +67,8 @@ func TestCreateEnvFile_SkipsExisting(t *testing.T) {
 func TestCreateEnvFile_ForceOverwrites(t *testing.T) {
 	dir := t.TempDir()
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), fsperm.SecretFile))
 
 	created, err := CreateEnvFile(dir, true)
 	if err != nil {

@@ -108,7 +108,7 @@ PY_NOQA_CODES_RE = re.compile(
 PY_TRAILING_BAD_CODE_RE = re.compile(r",\s*(?:ALL|\*)", re.IGNORECASE)
 
 GO_NOLINT_RE = re.compile(
-    r"^(?://|/\*)\s*nolint(?::([A-Za-z0-9_,\-]+))?(?=$|[\s*/])(.*)$",
+    r"^(?://|/\*)\s*nolint(?::\s*([A-Za-z0-9_\-]+(?:\s*,\s*[A-Za-z0-9_\-]+)*)\s*,?)?(?=$|[\s*/])(.*)$",
     re.DOTALL,
 )
 GO_NOSEC_RE = re.compile(r"^(?://|/\*)\s*#nosec\b(.*)$", re.DOTALL)
@@ -977,6 +977,16 @@ def _check_go_nolint_comment(
         if linters_raw
         else []
     )
+    if "gosec" in linter_names:
+        return [
+            Violation(
+                ctx.rel_path,
+                ctx.line_no,
+                "source.go.nolint-gosec-forbidden",
+                "use '// #nosec G<NNN> -- <reason>' instead of '//nolint:gosec' "
+                "(ARCH-01 single gosec suppression format)",
+            )
+        ]
     if ctx.before_package or not linter_names or "all" in linter_names:
         reason_part = _extract_go_nolint_reason(rest, ctx.trailing)
         combined = f"{ctx.preceding}\n{reason_part}".strip()

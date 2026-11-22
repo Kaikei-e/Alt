@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"pki-agent/internal/domain"
+	"pki-agent/internal/fsperm"
 )
 
 // fakeStepBin writes a shell script to dir that mimics the minimal step CLI
@@ -47,7 +48,7 @@ case "$2" in
 esac
 `
 	// #nosec G306 -- fake step-cli test script requires owner execute bit (0700)
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(path, []byte(script), fsperm.OwnerExecFile); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -58,11 +59,11 @@ func TestStepCACLI_Issue(t *testing.T) {
 	bin := fakeStepBin(t, dir)
 	// password file must exist.
 	pw := filepath.Join(dir, "pw.txt")
-	if err := os.WriteFile(pw, []byte("hunter2"), 0o400); err != nil {
+	if err := os.WriteFile(pw, []byte("hunter2"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	rootCA := filepath.Join(dir, "root.pem")
-	if err := os.WriteFile(rootCA, []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"), 0o400); err != nil {
+	if err := os.WriteFile(rootCA, []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +91,7 @@ func TestStepCACLI_Issue_TokenFailure_DoesNotLogPasswordFile(t *testing.T) {
 	dir := t.TempDir()
 	bin := fakeStepBin(t, dir)
 	pw := filepath.Join(dir, "pki-agent-alt-backend-jwk")
-	if err := os.WriteFile(pw, []byte("hunter2"), 0o400); err != nil {
+	if err := os.WriteFile(pw, []byte("hunter2"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,7 +116,7 @@ func TestStepCACLI_Issue_TokenFailure(t *testing.T) {
 	dir := t.TempDir()
 	bin := fakeStepBin(t, dir)
 	pw := filepath.Join(dir, "pw.txt")
-	_ = os.WriteFile(pw, []byte("x"), 0o400)
+	_ = os.WriteFile(pw, []byte("x"), fsperm.ReadOnlySecretFile)
 
 	s := &StepCACLI{StepBinary: bin, PasswordFile: pw, CAURL: "u", RootFile: pw, Provisioner: "p"}
 	t.Setenv("STEPFAIL", "1")
@@ -129,11 +130,11 @@ func TestStepCACLI_Issue_RemovesKeyWhenTempDirSet(t *testing.T) {
 	dir := t.TempDir()
 	bin := fakeStepBin(t, dir)
 	pw := filepath.Join(dir, "pw.txt")
-	if err := os.WriteFile(pw, []byte("hunter2"), 0o400); err != nil {
+	if err := os.WriteFile(pw, []byte("hunter2"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	rootCA := filepath.Join(dir, "root.pem")
-	if err := os.WriteFile(rootCA, []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"), 0o400); err != nil {
+	if err := os.WriteFile(rootCA, []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	issueDir := filepath.Join(dir, "issue")
@@ -164,7 +165,7 @@ func TestStepCACLI_Issue_RejectsFlagInjectionInSubjectOrSAN(t *testing.T) {
 	bin := filepath.Join(dir, "step")
 	script := "#!/usr/bin/env sh\ntouch " + marker + "\nexit 0\n"
 	// #nosec G306 -- fake step-cli test script requires owner execute bit (0700)
-	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(bin, []byte(script), fsperm.OwnerExecFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -217,7 +218,7 @@ case "$2" in
 esac
 `
 	// #nosec G306 -- fake step-cli test script requires owner execute bit (0700)
-	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(bin, []byte(script), fsperm.OwnerExecFile); err != nil {
 		t.Fatal(err)
 	}
 	issueDir := filepath.Join(dir, "issue")

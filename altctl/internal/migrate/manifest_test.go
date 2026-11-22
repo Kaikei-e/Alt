@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 func TestNewManifest(t *testing.T) {
@@ -171,7 +173,7 @@ func TestFileChecksum(t *testing.T) {
 
 	// Create test file
 	content := []byte("hello world")
-	if err := os.WriteFile(testFile, content, 0o600); err != nil {
+	if err := os.WriteFile(testFile, content, fsperm.SecretFile); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -186,7 +188,7 @@ func TestFileChecksum(t *testing.T) {
 
 	// Same content should produce same checksum
 	testFile2 := filepath.Join(tmpDir, "test2.txt")
-	if err := os.WriteFile(testFile2, content, 0o600); err != nil {
+	if err := os.WriteFile(testFile2, content, fsperm.SecretFile); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -205,13 +207,13 @@ func TestManifest_Verify(t *testing.T) {
 
 	// Create a test file
 	postgresDir := filepath.Join(tmpDir, "postgres")
-	if err := os.MkdirAll(postgresDir, 0o750); err != nil {
+	if err := os.MkdirAll(postgresDir, fsperm.PrivateDir); err != nil {
 		t.Fatalf("Failed to create directory: %v", err)
 	}
 
 	testFile := filepath.Join(postgresDir, "test.dump")
 	content := []byte("test backup data")
-	if err := os.WriteFile(testFile, content, 0o600); err != nil {
+	if err := os.WriteFile(testFile, content, fsperm.SecretFile); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -238,7 +240,7 @@ func TestManifest_Verify(t *testing.T) {
 	}
 
 	// Modify file - verify should fail
-	if err := os.WriteFile(testFile, []byte("modified"), 0o600); err != nil {
+	if err := os.WriteFile(testFile, []byte("modified"), fsperm.SecretFile); err != nil {
 		t.Fatalf("Failed to modify file: %v", err)
 	}
 

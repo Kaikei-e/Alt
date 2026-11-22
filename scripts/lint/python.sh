@@ -146,6 +146,16 @@ fi
 steps+=("source files")
 statuses+=("pass")
 
+python_versions_script="${script_dir}/check_python_versions.py"
+if [[ -f "${python_versions_script}" ]]; then
+  run_step "python versions" python3 "${python_versions_script}" \
+    --repo-root "${repo_root}" \
+    --project-dir "${project_dir}"
+elif [[ -f "${repo_root}/scripts/lint/run.sh" ]]; then
+  echo "Error: missing python version validator: ${python_versions_script}" >&2
+  exit 1
+fi
+
 run_step "ruff check" uv run --frozen --only-group dev ruff check .
 run_step "ruff format" uv run --frozen --only-group dev ruff format --check .
 
@@ -180,8 +190,9 @@ run_optional_dev_step pyrefly "pyrefly" \
   uv run --frozen --all-extras --group dev pyrefly check
 
 if [[ "$project_dir" == "scripts" ]]; then
+  run_step "python3 compileall" python3 -m compileall -q -x '(\.venv|__pycache__|harness/corpus)' .
   shopt -s nullglob
-  helper_tests=(tests/test-*-helpers.py tests/test-genre-report-on-error-stop.py tests/test-lint-canary.py)
+  helper_tests=(tests/test-*-helpers.py tests/test-genre-report-on-error-stop.py tests/test-lint-canary.py tests/test-check-python-versions.py)
   shopt -u nullglob
   if [[ ${#helper_tests[@]} -eq 0 ]]; then
     echo "error: no helper tests matched under scripts/tests/" >&2

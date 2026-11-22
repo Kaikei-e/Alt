@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/fsperm"
 	"rag-orchestrator/internal/port"
 	"rag-orchestrator/internal/usecase"
 )
@@ -552,7 +553,7 @@ func (r *SampleRunner) Run(ctx context.Context, opts SampleOptions) (*SampleOutp
 		})
 	}
 
-	if err := os.MkdirAll(opts.OutDir, 0o750); err != nil {
+	if err := os.MkdirAll(opts.OutDir, fsperm.PrivateDir); err != nil {
 		return nil, fmt.Errorf("create output directory %s: %w", opts.OutDir, err)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	pathpkg "path"
+	"readonly-proxy/internal/httpserver"
 	"regexp"
 	"strings"
 	"time"
@@ -223,7 +224,7 @@ func projectFromEnv(getenv func(string) string) (string, error) {
 
 // Only the header read is bounded: a write timeout would cut long-lived log follow streams.
 func newServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	return httpserver.New(httpserver.Config{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second})
 }
 
 func main() {

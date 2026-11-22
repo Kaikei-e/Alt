@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"rag-orchestrator/internal/fsperm"
 	"syscall"
 	"time"
 )
@@ -129,7 +130,7 @@ func (m *CursorManager) Save(cursor Cursor) error {
 	// Write to temporary file
 	tmpPath := m.filePath + ".tmp"
 	// #nosec G306 -- cursor file is not sensitive
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, fsperm.GeneratedFile); err != nil {
 		return fmt.Errorf("write temp cursor file: %w", err)
 	}
 

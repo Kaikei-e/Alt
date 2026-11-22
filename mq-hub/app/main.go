@@ -20,6 +20,7 @@ import (
 	"mq-hub/driver"
 	"mq-hub/gateway"
 	mqhubv1connect "mq-hub/gen/proto/services/mqhub/v1/mqhubv1connect"
+	"mq-hub/internal/httpserver"
 	"mq-hub/port"
 	"mq-hub/usecase"
 	"mq-hub/utils/logger"
@@ -186,7 +187,7 @@ func run() error {
 }
 
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -195,7 +196,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		WriteTimeout:   time.Duration(usecase.MaxTagGenerationTimeoutMs)*time.Millisecond + 10*time.Second,
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20,
-	}
+	})
 }
 
 // startStreamTrimLoop runs the stream-length backstop until ctx is cancelled.

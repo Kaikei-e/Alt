@@ -1,0 +1,48 @@
+id: go-no-manual-connect-msg-nil-guard
+valid:
+  - |
+    package handler
+
+    func handle(req *Request) error {
+    	if req.Msg == nil {
+    		return errInvalid
+    	}
+    	return nil
+    }
+  - |
+    package client
+
+    func call(resp *Response) error {
+    	if resp.Msg.GetArticle() == nil {
+    		return nil
+    	}
+    	return nil
+    }
+invalid:
+  - |
+    package client
+
+    func call(resp *Response) error {
+    	if resp.Msg == nil {
+    		return errNil
+    	}
+    	return nil
+    }
+  - |
+    package client
+
+    func call(resp *Response) error {
+    	if resp == nil || resp.Msg == nil {
+    		return errNil
+    	}
+    	return nil
+    }
+  - |
+    package client
+
+    func call(res *Response) error {
+    	if nil == res.Msg {
+    		return errNil
+    	}
+    	return nil
+    }

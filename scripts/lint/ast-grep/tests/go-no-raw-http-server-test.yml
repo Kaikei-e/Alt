@@ -1,0 +1,54 @@
+id: go-no-raw-http-server
+valid:
+  - |
+    package main
+
+    import (
+    	"net/http"
+    	"time"
+
+    	"alt/httpserver"
+    )
+
+    func newPlaintextServer(addr string, h http.Handler) *http.Server {
+    	return httpserver.New(httpserver.Config{
+    		Addr:              addr,
+    		Handler:           h,
+    		ReadHeaderTimeout: 5 * time.Second,
+    	})
+    }
+invalid:
+  # C-11: unrequested IdleTimeout added alongside G112 ReadHeaderTimeout fix
+  - |
+    package main
+
+    import (
+    	"net/http"
+    	"time"
+    )
+
+    func newPlaintextServer(addr string, h http.Handler) *http.Server {
+    	srv := &http.Server{
+    		Addr:              addr,
+    		Handler:           h,
+    		ReadHeaderTimeout: 5 * time.Second,
+    		IdleTimeout:       60 * time.Second,
+    	}
+    	return srv
+    }
+  - |
+    package main
+
+    import "net/http"
+
+    func newVal() http.Server {
+    	return http.Server{Addr: ":8080"}
+    }
+  - |
+    package main
+
+    import "net/http"
+
+    func newAlloc() *http.Server {
+    	return new(http.Server)
+    }

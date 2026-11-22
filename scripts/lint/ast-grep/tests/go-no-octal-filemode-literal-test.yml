@@ -1,0 +1,86 @@
+id: go-no-octal-filemode-literal
+valid:
+  # C-12 before: explicit named os.FileMode constants
+  - |
+    package main
+
+    import (
+    	"os"
+    	"path/filepath"
+    )
+
+    const (
+    	generatedDirMode  os.FileMode = 0o755
+    	generatedFileMode os.FileMode = 0o644
+    )
+
+    func writeArtifact(path string, content []byte) error {
+    	if err := os.MkdirAll(filepath.Dir(path), generatedDirMode); err != nil {
+    		return err
+    	}
+    	return os.WriteFile(path, content, generatedFileMode)
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeSecret(dir, path string, data []byte) error {
+    	if err := os.MkdirAll(dir, fsperm.PrivateDir); err != nil {
+    		return err
+    	}
+    	return os.WriteFile(path, data, fsperm.SecretFile)
+    }
+invalid:
+  # C-12 after: mechanical octal literals in os.MkdirAll and os.WriteFile
+  - |
+    package main
+
+    import (
+    	"os"
+    	"path/filepath"
+    )
+
+    func writeArtifact(path string, content []byte) error {
+    	return os.MkdirAll(filepath.Dir(path), 0o750)
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeArtifact(path string, content []byte) error {
+    	return os.WriteFile(path, content, 0o600)
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeLegacy(path string, content []byte) error {
+    	return os.WriteFile(path, content, 0644)
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeConverted(path string, content []byte) error {
+    	return os.WriteFile(path, content, os.FileMode(0o644))
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeParen(path string, content []byte) error {
+    	return os.WriteFile(path, content, (0o600))
+    }
+  - |
+    package main
+
+    import "os"
+
+    func writeBitwise(path string, content []byte) error {
+    	return os.WriteFile(path, content, 0o600|0o044)
+    }

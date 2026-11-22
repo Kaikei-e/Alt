@@ -3,7 +3,7 @@
 import logging
 import sys
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
@@ -88,10 +88,8 @@ usecase = SynthesizeUsecase(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    try:
+    async with aclosing(client):
         yield
-    finally:
-        await client.aclose()
 
 
 app = create_app(usecase=usecase, lifespan=lifespan)

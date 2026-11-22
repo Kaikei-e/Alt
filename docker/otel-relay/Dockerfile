@@ -2,6 +2,7 @@ FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb910
 WORKDIR /app
 COPY go.mod .
 COPY main.go .
+COPY internal/ ./internal/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o otel-relay .
 
 FROM scratch

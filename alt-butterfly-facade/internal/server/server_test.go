@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"alt-butterfly-facade/internal/handler"
+	"alt-butterfly-facade/internal/httpserver"
 )
 
 func TestNewServer(t *testing.T) {
@@ -33,7 +34,7 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestEnableCleartextHTTP2(t *testing.T) {
-	srv := &http.Server{ReadHeaderTimeout: time.Second}
+	srv := httpserver.New(httpserver.Config{ReadHeaderTimeout: time.Second})
 	EnableCleartextHTTP2(srv)
 	require.NotNil(t, srv.Protocols)
 	assert.True(t, srv.Protocols.HTTP1())

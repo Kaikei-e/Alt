@@ -23,6 +23,8 @@ import (
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/tlsutil"
 
+	"alt/internal/fsperm"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,11 +66,11 @@ func writeTestPKI(t *testing.T, dir string) (certPath, keyPath, caPath string) {
 	keyPath = filepath.Join(dir, "svc-key.pem")
 	caPath = filepath.Join(dir, "ca-bundle.pem")
 
-	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}), 0o600))
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}), fsperm.SecretFile))
 	leafKeyDER, err := x509.MarshalECPrivateKey(leafKey)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: leafKeyDER}), 0o600))
-	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: leafKeyDER}), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), fsperm.SecretFile))
 
 	return certPath, keyPath, caPath
 }
@@ -154,7 +156,7 @@ func TestNewRAGClient_EndToEndMTLSAndBearerAuth(t *testing.T) {
 
 	const testToken = "rag-secret-token-at-least-24-chars"
 	tokenFile := filepath.Join(dir, "rag_api_token")
-	require.NoError(t, os.WriteFile(tokenFile, []byte(testToken+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(tokenFile, []byte(testToken+"\n"), fsperm.SecretFile))
 
 	t.Setenv("MTLS_CERT_FILE", certPath)
 	t.Setenv("MTLS_KEY_FILE", keyPath)
@@ -203,7 +205,7 @@ func TestNewRAGClient_EndToEndMTLSAndBearerAuth(t *testing.T) {
 
 func TestLoadDBPassword_ReadsAndTrimsPasswordFile(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "postgres_password")
-	require.NoError(t, os.WriteFile(secretFile, []byte("  s3cr3t-from-file\n\t "), 0o600))
+	require.NoError(t, os.WriteFile(secretFile, []byte("  s3cr3t-from-file\n\t "), fsperm.SecretFile))
 
 	t.Setenv("DB_PASSWORD_FILE", secretFile)
 	t.Setenv("DB_PASSWORD", "fallback-ignored")
@@ -235,7 +237,7 @@ func TestLoadDBPassword_ErrorCases(t *testing.T) {
 
 	t.Run("empty DB_PASSWORD_FILE", func(t *testing.T) {
 		emptyFile := filepath.Join(t.TempDir(), "empty_password")
-		require.NoError(t, os.WriteFile(emptyFile, []byte("  \n\t "), 0o600))
+		require.NoError(t, os.WriteFile(emptyFile, []byte("  \n\t "), fsperm.SecretFile))
 
 		t.Setenv("DB_PASSWORD_FILE", emptyFile)
 		t.Setenv("DB_PASSWORD", "fallback-not-used")

@@ -7,6 +7,7 @@ import (
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
+	"alt/internal/connectguard"
 	"alt/orchestrator/port/rag_stream_port"
 
 	"connectrpc.com/connect"
@@ -32,6 +33,7 @@ func NewClient(httpClient *http.Client, baseURL string, logger *slog.Logger) *Cl
 		httpClient,
 		baseURL,
 		connect.WithGRPC(),
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &Client{
 		augurClient: client,

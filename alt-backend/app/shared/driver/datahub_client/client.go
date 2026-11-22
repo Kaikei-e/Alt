@@ -22,6 +22,7 @@ import (
 
 	"alt/config"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/internal/connectguard"
 	"alt/tlsutil"
 
 	"connectrpc.com/connect"
@@ -106,10 +107,16 @@ func NewHTTPClient(cfg *config.DataHubClientConfig, timeout time.Duration) (*htt
 // pact interactions unverifiable — the same trap the rag-orchestrator and
 // sovereign clients document.
 //
-// There is no interceptor and no credential in the request: alt-data-hub
+// There is no auth interceptor and no credential in the request: alt-data-hub
 // authenticates callers by peer certificate and nothing else.
+// connectguard.NewUnaryNilResponseInterceptor enforces non-nil unary response messages.
 func NewServiceClient(httpClient *http.Client, baseURL string) datahubv1connect.DataHubServiceClient {
-	return datahubv1connect.NewDataHubServiceClient(httpClient, baseURL, connect.WithProtoJSON())
+	return datahubv1connect.NewDataHubServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	)
 }
 
 // New is the composition-root entry point: configuration in, ready client out.

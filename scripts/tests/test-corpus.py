@@ -32,6 +32,7 @@ import sys
 import tempfile
 import types
 from dataclasses import dataclass
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORPUS_SCRIPT = ROOT / "scripts" / "harness" / "corpus.py"
@@ -275,8 +276,8 @@ def add_repo02_case(corpus_dir: pathlib.Path, case_id: str) -> None:
             "sample.go": "package main\n\nfunc main() {}\n",
             "before.txt": "Summary:\n  Files  : 1\n  Issues : 0\n",
             "after.txt": "Summary:\n  Files  : 0\n  Issues : 0\n",
-            "before.sarif": '{"version":"2.1.0","runs":[{"results":[]}]}\n',
-            "after.sarif": '{"version":"2.1.0","runs":[{"results":[]}]}\n',
+            "before.sarif": '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}\n',
+            "after.sarif": '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}\n',
         },
     )
 
@@ -784,8 +785,8 @@ def load_corpus_module() -> types.ModuleType:
     assert spec is not None
     assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["corpus_engine_under_test"] = mod
-    spec.loader.exec_module(mod)
+    with mock.patch.dict(sys.modules, {"corpus_engine_under_test": mod}):
+        spec.loader.exec_module(mod)
     return mod
 
 
@@ -1073,6 +1074,263 @@ def test_directory_symlinks_and_timeout() -> None:
                 os.environ["PYREFLY_BIN"] = prev_env
 
 
+def test_arch02_arch03_arch06_runners() -> None:
+    sys.stdout.write("ARCH-02, ARCH-03, and ARCH-06 check runners\n")
+    corpus_mod = load_corpus_module()
+
+    expected_arch = frozenset({"ARCH-01", "ARCH-02", "ARCH-03", "ARCH-04", "ARCH-05", "ARCH-06"})
+    check(
+        "ARCH-01..ARCH-06 are in IMPLEMENTED_CHECKS and removed from UNIMPLEMENTED_CORPUS_CHECKS",
+        expected_arch <= getattr(corpus_mod, "IMPLEMENTED_CHECKS", frozenset())
+        and expected_arch.isdisjoint(
+            getattr(corpus_mod, "UNIMPLEMENTED_CORPUS_CHECKS", frozenset())
+        ),
+        f"impl={getattr(corpus_mod, 'IMPLEMENTED_CHECKS', None)!r}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+
+        # 1. ARCH-02 Go (raw http.Server)
+        c_go = tmp / "arch02-go"
+        write_case(
+            c_go,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="raw http.Server constructor violates ARCH-02",
+                    category="unrequested-behavior-change",
+                    language="go",
+                    before_file="before.go",
+                    after_file="after.go",
+                    evaluation_mode="after",
+                    origin_files=("auth-hub/cmd/auth-hub/main.go",),
+                    planned_checks=("ARCH-02",),
+                    active_checks=("ARCH-02",),
+                    currently_caught=True,
+                    current_method="ARCH-02",
+                    expected_signal="go-no-raw-http-server",
+                )
+            ),
+            files={
+                "before.go": (
+                    "package main\n\n"
+                    'import "alt/httpserver"\n\n'
+                    "func mk() any { return httpserver.New(httpserver.Config{}) }\n"
+                ),
+                "after.go": (
+                    "package main\n\n"
+                    'import "net/http"\n\n'
+                    'func mk() *http.Server { return &http.Server{Addr: ":8080"} }\n'
+                ),
+            },
+        )
+        res = run_corpus_cli(c_go, min_cases=1)
+        check(
+            "ARCH-02 Go runner catches raw http.Server via ast-grep",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 2. ARCH-02 fail-closed when AST_GREP_BIN points to a nonexistent path
+        res_missing = run_corpus_cli(
+            c_go,
+            min_cases=1,
+            extra_env={"AST_GREP_BIN": str(tmp / "no-such-ast-grep")},
+        )
+        check(
+            "ARCH-02 fails closed when AST_GREP_BIN does not exist",
+            res_missing.returncode == EXIT_FAIL and "runner-error" in res_missing.stdout,
+            f"rc={res_missing.returncode}\nstdout={res_missing.stdout}\nstderr={res_missing.stderr}",
+        )
+
+        # 3. ARCH-02 Python (manual aclose in finally)
+        c_py = tmp / "arch02-py"
+        write_case(
+            c_py,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="manual aclose inside finally violates ARCH-02",
+                    category="type-check-evasion",
+                    language="python",
+                    before_file="before.py",
+                    after_file="after.py",
+                    evaluation_mode="after",
+                    origin_files=("news-creator/app/handler.py",),
+                    planned_checks=("ARCH-02",),
+                    active_checks=("ARCH-02",),
+                    currently_caught=True,
+                    current_method="ARCH-02",
+                    expected_signal="python-no-manual-aclose-in-finally",
+                )
+            ),
+            files={
+                "before.py": (
+                    "from contextlib import aclosing\n\n"
+                    "async def f(s):\n"
+                    "    async with aclosing(s):\n"
+                    "        pass\n"
+                ),
+                "after.py": (
+                    "async def f(s):\n"
+                    "    try:\n"
+                    "        pass\n"
+                    "    finally:\n"
+                    "        await s.aclose()\n"
+                ),
+            },
+        )
+        res = run_corpus_cli(c_py, min_cases=1)
+        check(
+            "ARCH-02 Python runner catches manual aclose in finally",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 4. ARCH-02 Rust (Option<Regex> / Regex::new().ok())
+        c_rs = tmp / "arch02-rs"
+        write_case(
+            c_rs,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="Regex::new().ok() violates ARCH-02",
+                    category="silent-error-swallow",
+                    language="rust",
+                    before_file="before.rs",
+                    after_file="after.rs",
+                    evaluation_mode="after",
+                    origin_files=("rask-log-forwarder/app/src/domain/redact.rs",),
+                    planned_checks=("ARCH-02",),
+                    active_checks=("ARCH-02",),
+                    currently_caught=True,
+                    current_method="ARCH-02",
+                    expected_signal="rust-no-silent-option-regex",
+                )
+            ),
+            files={
+                "before.rs": 'pub fn ok() -> Result<Regex, regex::Error> { Regex::new("a") }\n',
+                "after.rs": 'pub fn bad() -> Option<Regex> { Regex::new("a").ok() }\n',
+            },
+        )
+        res = run_corpus_cli(c_rs, min_cases=1)
+        check(
+            "ARCH-02 Rust runner catches Option<Regex> / Regex::new().ok()",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 5. ARCH-03 (check_python_versions.py with phase-matched pyproject.toml + source)
+        c_arch03 = tmp / "arch03-py"
+        write_case(
+            c_arch03,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="ruff target-version + PEP 758 syntax violates ARCH-03",
+                    category="autofix-logic-corruption",
+                    language="python",
+                    before_file="before.py",
+                    after_file="after.py",
+                    support_files=("before.pyproject.toml", "after.pyproject.toml"),
+                    evaluation_mode="after",
+                    origin_files=("scripts/pyproject.toml",),
+                    planned_checks=("ARCH-03",),
+                    active_checks=("ARCH-03",),
+                    currently_caught=True,
+                    current_method="ARCH-03",
+                    expected_signal="config.python.ruff-target-version-forbidden",
+                )
+            ),
+            files={
+                "before.py": (
+                    "def f(x: str) -> int:\n"
+                    "    try:\n"
+                    "        return int(x)\n"
+                    "    except (ValueError, KeyError):\n"
+                    "        return 0\n"
+                ),
+                "after.py": (
+                    "def f(x: str) -> int:\n"
+                    "    try:\n"
+                    "        return int(x)\n"
+                    "    except ValueError, KeyError:\n"
+                    "        return 0\n"
+                ),
+                "before.pyproject.toml": (
+                    '[project]\nname = "s"\nversion = "0.1.0"\nrequires-python = ">=3.13"\n'
+                ),
+                "after.pyproject.toml": (
+                    '[project]\nname = "s"\nversion = "0.1.0"\nrequires-python = ">=3.13"\n'
+                    '[tool.ruff]\ntarget-version = "py314"\n'
+                ),
+            },
+        )
+        res = run_corpus_cli(c_arch03, min_cases=1)
+        check(
+            "ARCH-03 runner catches target-version and PEP 758 syntax via check_python_versions.py",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 6. ARCH-06 (direct sys.modules assignment)
+        c_arch06 = tmp / "arch06-py"
+        write_case(
+            c_arch06,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="direct sys.modules assignment violates ARCH-06",
+                    category="test-isolation-hazard",
+                    language="python",
+                    before_file="before.py",
+                    after_file="after.py",
+                    evaluation_mode="after",
+                    origin_files=("tag-generator/app/tests/test_a.py",),
+                    planned_checks=("ARCH-06",),
+                    active_checks=("ARCH-06",),
+                    currently_caught=True,
+                    current_method="ARCH-06",
+                    expected_signal="python-no-direct-sys-modules-assign",
+                )
+            ),
+            files={
+                "before.py": (
+                    "import sys\n"
+                    "def test_ok(monkeypatch) -> None:\n"
+                    '    monkeypatch.setitem(sys.modules, "foo", object())\n'
+                ),
+                "after.py": (
+                    'import sys\ndef test_bad() -> None:\n    sys.modules["foo"] = object()\n'
+                ),
+            },
+        )
+        res = run_corpus_cli(c_arch06, min_cases=1)
+        check(
+            "ARCH-06 runner catches direct sys.modules mutation via ast-grep",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 7. ARCH-06 fail-closed when AST_GREP_BIN points to a nonexistent path
+        res_missing_06 = run_corpus_cli(
+            c_arch06,
+            min_cases=1,
+            extra_env={"AST_GREP_BIN": str(tmp / "no-such-ast-grep")},
+        )
+        check(
+            "ARCH-06 fails closed when AST_GREP_BIN does not exist",
+            res_missing_06.returncode == EXIT_FAIL and "runner-error" in res_missing_06.stdout,
+            f"rc={res_missing_06.returncode}\nstdout={res_missing_06.stdout}\nstderr={res_missing_06.stderr}",
+        )
+
+
 def test_real_corpus(*, allow_missing_corpus_dir: bool) -> None:
     sys.stdout.write("real repository corpus verification\n")
     has_cases = REAL_CORPUS_DIR.is_dir() and any(REAL_CORPUS_DIR.iterdir())
@@ -1128,6 +1386,7 @@ def main(argv: list[str] | None = None) -> int:
     test_repo03_config_and_multi_check()
     test_diff_mode_runner()
     test_directory_symlinks_and_timeout()
+    test_arch02_arch03_arch06_runners()
     test_real_corpus(allow_missing_corpus_dir=args.allow_missing_corpus_dir)
 
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")

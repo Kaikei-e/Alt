@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 
+	"alt/internal/fsperm"
+
 	rssFeed "github.com/mmcdole/gofeed"
 )
 
@@ -25,7 +27,7 @@ func WriteFeedsToFile(feeds []*rssFeed.Feed) error {
 	if err != nil {
 		return fmt.Errorf("clean feeds file path: %w", err)
 	}
-	err = os.WriteFile(cleanedPath, jsonData, 0o600)
+	err = os.WriteFile(cleanedPath, jsonData, fsperm.SecretFile)
 	if err != nil {
 		return fmt.Errorf("write feeds file: %w", err)
 	}

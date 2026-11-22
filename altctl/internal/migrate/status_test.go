@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 func TestGetBackupStatus_NoBackups(t *testing.T) {
@@ -33,7 +35,7 @@ func TestGetBackupStatus_Healthy(t *testing.T) {
 	// Create a backup directory with valid manifest
 	backupDir := filepath.Join(dir, "20260206_030000")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
+	if err := os.MkdirAll(volumesDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,7 +51,7 @@ func TestGetBackupStatus_Healthy(t *testing.T) {
 	for _, spec := range registry.All() {
 		filename := spec.Name + ".tar.gz"
 		filePath := filepath.Join(volumesDir, filename)
-		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), 0o600); err != nil {
+		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -69,7 +71,7 @@ func TestGetBackupStatus_Healthy(t *testing.T) {
 	manifest.Finalize()
 	manifestPath := filepath.Join(backupDir, ManifestFilename)
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
+	if err := os.WriteFile(manifestPath, data, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,7 +103,7 @@ func TestGetBackupStatus_StaleBackup(t *testing.T) {
 	// Create a backup directory with old timestamp
 	backupDir := filepath.Join(dir, "20260101_030000")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
+	if err := os.MkdirAll(volumesDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,7 +117,7 @@ func TestGetBackupStatus_StaleBackup(t *testing.T) {
 	// Add just one volume
 	filename := "db_data_17.tar.gz"
 	filePath := filepath.Join(volumesDir, filename)
-	if err := os.WriteFile(filePath, []byte("test-data"), 0o600); err != nil {
+	if err := os.WriteFile(filePath, []byte("test-data"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	checksum, _ := FileChecksum(filePath)
@@ -132,7 +134,7 @@ func TestGetBackupStatus_StaleBackup(t *testing.T) {
 	manifest.Finalize()
 
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +161,7 @@ func TestGetBackupStatus_MissingVolumes(t *testing.T) {
 
 	backupDir := filepath.Join(dir, "20260206_020000")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
+	if err := os.MkdirAll(volumesDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -174,7 +176,7 @@ func TestGetBackupStatus_MissingVolumes(t *testing.T) {
 	for _, name := range []string{"db_data_17", "meili_data"} {
 		filename := name + ".tar.gz"
 		filePath := filepath.Join(volumesDir, filename)
-		if err := os.WriteFile(filePath, []byte("test-data-"+name), 0o600); err != nil {
+		if err := os.WriteFile(filePath, []byte("test-data-"+name), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 		checksum, _ := FileChecksum(filePath)
@@ -192,7 +194,7 @@ func TestGetBackupStatus_MissingVolumes(t *testing.T) {
 	manifest.Finalize()
 
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 

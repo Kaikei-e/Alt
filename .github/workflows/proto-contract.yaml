@@ -173,7 +173,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/alt-lint
-          key: alt-lint-go-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-v2.14.0-gosec-v2.30.0-govulncheck-v1.6.0
+          key: alt-lint-go-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-v2.14.0-govulncheck-v1.6.0
 
       - name: protovis unit tests
         working-directory: proto/tools/protovis

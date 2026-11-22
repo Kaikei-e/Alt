@@ -6,19 +6,17 @@ acquire a HIGH PRIORITY slot before reaching Ollama, preventing GPU starvation
 by batch summarization jobs.
 """
 
-import json
 import logging
 import re
-from collections.abc import AsyncIterator
-from contextlib import aclosing
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.errors import QueueFullError
+from news_creator.handler.sse_stream import create_ndjson_response
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.context_logger import (
     clear_context,
@@ -116,21 +114,7 @@ async def _handle_chat_request(
 
         payload = _build_chat_payload(request, stream=True)
         stream_iter = await gateway.chat_stream(payload=payload)
-
-        async def ndjson_generator() -> AsyncIterator[str]:
-            async with aclosing(stream_iter):
-                async for chunk in stream_iter:
-                    yield json.dumps(chunk, ensure_ascii=False) + "\n"
-
-        return StreamingResponse(
-            ndjson_generator(),
-            media_type="application/x-ndjson",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+        return create_ndjson_response(stream_iter)
 
     except QueueFullError:
         logger.warning("Chat proxy: queue full, returning 429")

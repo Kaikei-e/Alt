@@ -21,6 +21,7 @@ import (
 
 	"search-indexer/config"
 	"search-indexer/domain"
+	"search-indexer/internal/fsperm"
 	"search-indexer/usecase"
 )
 
@@ -185,10 +186,10 @@ func setRecapBootstrapEnv(t *testing.T, meiliURL string, recapWorkerURL string) 
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "cert.pem")
 	keyPath := filepath.Join(dir, "key.pem")
-	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 

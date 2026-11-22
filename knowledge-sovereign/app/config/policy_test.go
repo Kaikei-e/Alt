@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +28,7 @@ func writeTempTokenFile(t *testing.T, filename, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, filename)
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(content), fsperm.SecretFile))
 	return path
 }
 
@@ -54,7 +56,7 @@ func setupTempMTLSCerts(t *testing.T) (certPath, keyPath, caPath string, caCertP
 
 	caCertPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
 	caPath = filepath.Join(dir, "ca-bundle.pem")
-	require.NoError(t, os.WriteFile(caPath, caCertPEM, 0o600))
+	require.NoError(t, os.WriteFile(caPath, caCertPEM, fsperm.SecretFile))
 
 	// Client certificate (knowledge-sovereign)
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -77,13 +79,13 @@ func setupTempMTLSCerts(t *testing.T) (certPath, keyPath, caPath string, caCertP
 
 	certPath = filepath.Join(dir, "svc-cert.pem")
 	clientCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientDER})
-	require.NoError(t, os.WriteFile(certPath, clientCertPEM, 0o600))
+	require.NoError(t, os.WriteFile(certPath, clientCertPEM, fsperm.SecretFile))
 
 	clientKeyBytes, err := x509.MarshalECPrivateKey(clientKey)
 	require.NoError(t, err)
 	keyPath = filepath.Join(dir, "svc-key.pem")
 	clientKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: clientKeyBytes})
-	require.NoError(t, os.WriteFile(keyPath, clientKeyPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, clientKeyPEM, fsperm.SecretFile))
 
 	// Server certificate (for mock auth-hub in tests)
 	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -189,12 +191,12 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 	datahubTok := filepath.Join(dir, "datahub_tok")
 	harvesterTok := filepath.Join(dir, "harvester_tok")
 
-	require.NoError(t, os.WriteFile(backendTok, []byte("backend-sovereign-token-length-24-plus"), 0o600))
-	require.NoError(t, os.WriteFile(operatorTok, []byte("operator-sovereign-token-24-plus-xyz"), 0o600))
-	require.NoError(t, os.WriteFile(recapTok, []byte("recap-sovereign-token-length-24-plus-xyz"), 0o600))
-	require.NoError(t, os.WriteFile(ragTok, []byte("rag-orchestrator-sovereign-token-24-plus"), 0o600))
-	require.NoError(t, os.WriteFile(datahubTok, []byte("datahub-sovereign-token-length-24-plus-1"), 0o600))
-	require.NoError(t, os.WriteFile(harvesterTok, []byte("harvester-sovereign-token-24-plus-xyz"), 0o600))
+	require.NoError(t, os.WriteFile(backendTok, []byte("backend-sovereign-token-length-24-plus"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(operatorTok, []byte("operator-sovereign-token-24-plus-xyz"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(recapTok, []byte("recap-sovereign-token-length-24-plus-xyz"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(ragTok, []byte("rag-orchestrator-sovereign-token-24-plus"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(datahubTok, []byte("datahub-sovereign-token-length-24-plus-1"), fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(harvesterTok, []byte("harvester-sovereign-token-24-plus-xyz"), fsperm.SecretFile))
 
 	// Replace the /run/secrets paths with test temp paths for validation
 	substituted := string(data)
@@ -207,7 +209,7 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 
 	testPolicyFile := filepath.Join(dir, "test_policy.json")
 	// #nosec G703 -- test writes temporary policy file inside t.TempDir()
-	require.NoError(t, os.WriteFile(testPolicyFile, []byte(substituted), 0o600))
+	require.NoError(t, os.WriteFile(testPolicyFile, []byte(substituted), fsperm.SecretFile))
 
 	pol, err := LoadPolicyFile(testPolicyFile)
 	require.NoError(t, err)

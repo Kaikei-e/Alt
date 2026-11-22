@@ -5,6 +5,7 @@
 package tlsutil
 
 import (
+	"alt/internal/httpserver"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -235,11 +236,11 @@ func NewMTLSClient(certPath, keyPath, caPath string) (*http.Client, error) {
 // reuse cannot outlive a 24h leaf certificate by more than a negligible
 // window — the renewer sidecar rotates at 8h remaining, giving a wide margin.
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
-	}
+	})
 }

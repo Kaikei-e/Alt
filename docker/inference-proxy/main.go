@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"inference-proxy/internal/httpserver"
 	"io"
 	"log"
 	"net"
@@ -175,14 +176,14 @@ func NewServer(addr string, handler http.Handler, readTimeout ...time.Duration) 
 	if len(readTimeout) > 0 && readTimeout[0] > 0 {
 		rt = readTimeout[0]
 	}
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: DefaultReadHeaderTimeout,
 		ReadTimeout:       rt,
 		WriteTimeout:      0, // Unbounded write timeout for streaming LLM responses
 		IdleTimeout:       120 * time.Second,
-	}
+	})
 }
 
 func main() {

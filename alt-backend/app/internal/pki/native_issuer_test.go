@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"alt/internal/fsperm"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -172,7 +173,7 @@ func TestNativeStepCAIssuer_WrongCARoot(t *testing.T) {
 	iss := newNativeIssuer(t, ca)
 	other, _ := generateTestCA(t)
 	wrongRoot := filepath.Join(t.TempDir(), "wrong.pem")
-	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), 0o444); err != nil {
+	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	iss.RootFile = wrongRoot

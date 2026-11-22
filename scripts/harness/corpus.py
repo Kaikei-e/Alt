@@ -2,9 +2,10 @@
 """CORPUS-01 failure corpus validator, check runner, and capture-rate reporter.
 
 Validates every failure case under `scripts/harness/corpus/<ID>/` (`C-01`..`C-NN`),
-executes active implemented checks (`pyrefly`, `REPO-02`, `REPO-03`) against each
-case's `before` (must pass) and `after` (must fail with `expected_signal`), counts
-unimplemented checks as `expected-miss`, and reports the canonical capture rate.
+executes active implemented checks (`pyrefly`, `REPO-02`, `REPO-03`, `ARCH-02`,
+`ARCH-03`, `ARCH-06`) against each case's `before` (must pass) and `after` (must
+fail with `expected_signal`), counts unimplemented checks as `expected-miss`, and
+reports the canonical capture rate.
 
 Run:
     python3 scripts/harness/corpus.py
@@ -59,16 +60,22 @@ VALID_CATEGORIES = frozenset(
 VALID_LANGUAGES = frozenset({"go", "python", "rust", "typescript", "shell", "binary"})
 VALID_EVALUATION_MODES = frozenset({"after", "diff"})
 
-IMPLEMENTED_CHECKS = frozenset({"pyrefly", "REPO-02", "REPO-03"})
-DIFF_CHECKS: frozenset[str] = frozenset()
-UNIMPLEMENTED_CORPUS_CHECKS = frozenset(
+IMPLEMENTED_CHECKS = frozenset(
     {
+        "pyrefly",
+        "REPO-02",
+        "REPO-03",
         "ARCH-01",
         "ARCH-02",
         "ARCH-03",
         "ARCH-04",
         "ARCH-05",
         "ARCH-06",
+    }
+)
+DIFF_CHECKS: frozenset[str] = frozenset()
+UNIMPLEMENTED_CORPUS_CHECKS = frozenset(
+    {
         "CHECK-01",
         "CHECK-02",
         "CHECK-03",
@@ -915,10 +922,257 @@ def _run_repo03_check(
     return CheckOutcome(exit_code=res.returncode, output=combined)
 
 
+def _resolve_ast_grep_bin() -> tuple[pathlib.Path | None, str]:
+    env_bin = os.environ.get("AST_GREP_BIN", "").strip()
+    if env_bin:
+        candidate = pathlib.Path(env_bin)
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate, ""
+        resolved = shutil.which(env_bin)
+        if resolved is not None:
+            return pathlib.Path(resolved), ""
+        return None, f"AST_GREP_BIN={env_bin!r} does not point to an executable binary"
+
+    on_path = shutil.which("ast-grep")
+    if on_path is not None:
+        return pathlib.Path(on_path), ""
+
+    local_bin = pathlib.Path.home() / ".local" / "bin" / "ast-grep"
+    if local_bin.is_file() and os.access(local_bin, os.X_OK):
+        return local_bin, ""
+
+    return (
+        None,
+        "ast-grep executable not found (checked AST_GREP_BIN, PATH, and ~/.local/bin/ast-grep)",
+    )
+
+
+def _run_ast_grep_rules(
+    case: CorpusCase,
+    phase: str,
+    rule_paths: list[pathlib.Path],
+    *,
+    prefix: str,
+    timeout: float,
+) -> CheckOutcome:
+    ast_grep_bin, err = _resolve_ast_grep_bin()
+    if ast_grep_bin is None:
+        return CheckOutcome(exit_code=-1, output="", runner_error=err)
+
+    missing_rules = [str(rp) for rp in rule_paths if not rp.is_file()]
+    if not rule_paths or missing_rules:
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"missing ast-grep rule file(s): {missing_rules}",
+        )
+
+    target_name = case.before_file if phase == "before" else case.after_file
+    with tempfile.TemporaryDirectory(prefix=prefix) as tmp_str:
+        tmp_dir = pathlib.Path(tmp_str)
+        src_dir = tmp_dir / "src"
+        src_dir.mkdir()
+        shutil.copyfile(case.case_dir / target_name, src_dir / target_name)
+        for sf in case.support_files:
+            shutil.copyfile(case.case_dir / sf, src_dir / sf)
+
+        rules_dir = tmp_dir / "rules"
+        rules_dir.mkdir()
+        for rp in rule_paths:
+            shutil.copyfile(rp, rules_dir / rp.name)
+
+        sgconfig = tmp_dir / "sgconfig.yml"
+        sgconfig.write_text("ruleDirs:\n  - rules\n", encoding="utf-8")
+
+        cmd = [str(ast_grep_bin), "scan", "-c", str(sgconfig), "src"]
+        try:
+            res = subprocess.run(  # noqa: S603 - resolved ast-grep binary with fixed argv
+                cmd,
+                cwd=str(tmp_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return CheckOutcome(
+                exit_code=-1,
+                output="",
+                runner_error=f"ast-grep timed out after {timeout}s",
+            )
+        except OSError as exc:
+            return CheckOutcome(exit_code=-1, output="", runner_error=f"ast-grep exec error: {exc}")
+
+    combined = f"{res.stdout}\n{res.stderr}".strip()
+    return CheckOutcome(exit_code=res.returncode, output=combined)
+
+
+def _arch02_rule_paths(language: str, repo_root: pathlib.Path) -> tuple[list[pathlib.Path], str]:
+    rules_dir = repo_root / "scripts" / "lint" / "ast-grep" / "rules"
+    if language == "go":
+        go_rules = sorted(rules_dir.glob("go-*.yml"))
+        if not go_rules:
+            return [], f"no go-*.yml ast-grep rules found in {rules_dir}"
+        return go_rules, ""
+    if language == "python":
+        return [rules_dir / "python-no-manual-aclose-in-finally.yml"], ""
+    if language == "rust":
+        return [rules_dir / "rust-no-silent-option-regex.yml"], ""
+    return [], f"ARCH-02 has no ast-grep rules configured for language {language!r}"
+
+
+def _run_arch02_check(
+    case: CorpusCase,
+    phase: str,
+    repo_root: pathlib.Path,
+    timeout: float = SUBPROCESS_TIMEOUT_SECONDS,
+) -> CheckOutcome:
+    rule_paths, err = _arch02_rule_paths(case.language, repo_root)
+    if err:
+        return CheckOutcome(exit_code=-1, output="", runner_error=err)
+    return _run_ast_grep_rules(
+        case,
+        phase,
+        rule_paths,
+        prefix="alt-corpus-arch02-",
+        timeout=timeout,
+    )
+
+
+def _select_phase_pyproject(case: CorpusCase, phase: str) -> str | None:
+    candidates = (
+        f"{phase}.pyproject.toml",
+        f"{phase}_pyproject.toml",
+        f"{phase}-pyproject.toml",
+        "pyproject.toml",
+    )
+    for name in candidates:
+        if name in case.support_files:
+            return name
+    return None
+
+
+def _stage_arch03_inputs(
+    case: CorpusCase,
+    phase: str,
+    tmp_dir: pathlib.Path,
+) -> tuple[pathlib.Path | None, list[pathlib.Path], str]:
+    target_name = case.before_file if phase == "before" else case.after_file
+    target_src = case.case_dir / target_name
+    other_phase = "after" if phase == "before" else "before"
+    pyproject_dest = tmp_dir / "pyproject.toml"
+    source_paths: list[pathlib.Path] = []
+
+    if target_src.suffix == ".toml":
+        shutil.copyfile(target_src, pyproject_dest)
+    else:
+        pyproject_name = _select_phase_pyproject(case, phase)
+        if pyproject_name is None:
+            return (
+                None,
+                [],
+                f"ARCH-03 case {case.case_id} missing phase pyproject.toml for {phase!r}",
+            )
+        shutil.copyfile(case.case_dir / pyproject_name, pyproject_dest)
+        dest_py = tmp_dir / target_name
+        shutil.copyfile(target_src, dest_py)
+        source_paths.append(dest_py)
+
+    for sf in case.support_files:
+        if sf.endswith(".toml") or sf.startswith(
+            (f"{other_phase}.", f"{other_phase}_", f"{other_phase}-")
+        ):
+            continue
+        dest_sf = tmp_dir / sf
+        shutil.copyfile(case.case_dir / sf, dest_sf)
+        if sf.endswith(".py"):
+            source_paths.append(dest_sf)
+
+    return pyproject_dest, source_paths, ""
+
+
+def _run_arch03_check(
+    case: CorpusCase,
+    phase: str,
+    repo_root: pathlib.Path,
+    timeout: float = SUBPROCESS_TIMEOUT_SECONDS,
+) -> CheckOutcome:
+    checker_script = repo_root / "scripts" / "lint" / "check_python_versions.py"
+    if not checker_script.is_file():
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"missing check_python_versions.py at {checker_script}",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="alt-corpus-arch03-") as tmp_str:
+        tmp_dir = pathlib.Path(tmp_str)
+        pyproject_dest, source_paths, err = _stage_arch03_inputs(case, phase, tmp_dir)
+        if pyproject_dest is None or err:
+            return CheckOutcome(exit_code=-1, output="", runner_error=err)
+
+        cmd = [
+            sys.executable,
+            str(checker_script),
+            "--repo-root",
+            str(tmp_dir),
+            "--pyproject",
+            str(pyproject_dest),
+        ]
+        for src in source_paths:
+            cmd.extend(["--source", str(src)])
+
+        try:
+            res = subprocess.run(  # noqa: S603 - fixed argv running check_python_versions.py
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return CheckOutcome(
+                exit_code=-1,
+                output="",
+                runner_error=f"ARCH-03 timed out after {timeout}s",
+            )
+        except OSError as exc:
+            return CheckOutcome(exit_code=-1, output="", runner_error=f"ARCH-03 exec error: {exc}")
+
+    combined = f"{res.stdout}\n{res.stderr}".strip()
+    return CheckOutcome(exit_code=res.returncode, output=combined)
+
+
+def _run_arch06_check(
+    case: CorpusCase,
+    phase: str,
+    repo_root: pathlib.Path,
+    timeout: float = SUBPROCESS_TIMEOUT_SECONDS,
+) -> CheckOutcome:
+    rule_path = (
+        repo_root
+        / "scripts"
+        / "lint"
+        / "ast-grep"
+        / "rules"
+        / "python-no-direct-sys-modules-assign.yml"
+    )
+    return _run_ast_grep_rules(
+        case,
+        phase,
+        [rule_path],
+        prefix="alt-corpus-arch06-",
+        timeout=timeout,
+    )
+
+
 BUILTIN_RUNNERS: dict[str, RegisteredRunner] = {
     "pyrefly": RegisteredRunner(mode="after", run_single=_run_pyrefly_check),
     "REPO-02": RegisteredRunner(mode="after", run_single=_run_repo02_check),
     "REPO-03": RegisteredRunner(mode="after", run_single=_run_repo03_check),
+    "ARCH-02": RegisteredRunner(mode="after", run_single=_run_arch02_check),
+    "ARCH-03": RegisteredRunner(mode="after", run_single=_run_arch03_check),
+    "ARCH-06": RegisteredRunner(mode="after", run_single=_run_arch06_check),
 }
 
 

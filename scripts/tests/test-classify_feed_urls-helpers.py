@@ -7,16 +7,12 @@ Run:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import pathlib
 import sys
 import types
-
-if importlib.util.find_spec("psycopg2") is None:
-    psycopg2_stub = types.ModuleType("psycopg2")
-    psycopg2_extras_stub = types.ModuleType("psycopg2.extras")
-    sys.modules["psycopg2"] = psycopg2_stub
-    sys.modules["psycopg2.extras"] = psycopg2_extras_stub
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "scripts" / "classify_feed_urls.py"
@@ -25,7 +21,20 @@ spec = importlib.util.spec_from_file_location("classify_feed_urls", SCRIPT_PATH)
 assert spec is not None, "script missing"
 assert spec.loader is not None, "script loader missing"
 mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+with contextlib.ExitStack() as _stack:
+    if importlib.util.find_spec("psycopg2") is None:
+        psycopg2_stub = types.ModuleType("psycopg2")
+        psycopg2_extras_stub = types.ModuleType("psycopg2.extras")
+        _stack.enter_context(
+            patch.dict(
+                sys.modules,
+                {
+                    "psycopg2": psycopg2_stub,
+                    "psycopg2.extras": psycopg2_extras_stub,
+                },
+            )
+        )
+    spec.loader.exec_module(mod)
 
 COUNTS = {"passed": 0, "failed": 0}
 

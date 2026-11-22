@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // VolumeBackuper handles tar-based volume backup and restore operations
@@ -48,7 +50,7 @@ func (v *VolumeBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPath
 
 	// Ensure output directory exists with restricted permissions
 	outputDir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(outputDir, 0700); err != nil {
+	if err := os.MkdirAll(outputDir, fsperm.SecretDir); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 

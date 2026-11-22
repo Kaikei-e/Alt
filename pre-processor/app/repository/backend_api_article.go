@@ -77,9 +77,6 @@ func (r *articleRepository) Create(ctx context.Context, article *domain.Article)
 	if err != nil {
 		return fmt.Errorf("CreateArticle: %w", err)
 	}
-	if resp == nil || resp.Msg == nil {
-		return fmt.Errorf("CreateArticle: empty response")
-	}
 
 	article.ID = resp.Msg.GetArticleId()
 	return nil
@@ -178,9 +175,6 @@ func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *do
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: %w", err)
 	}
-	if resp == nil || resp.Msg == nil {
-		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: empty response")
-	}
 
 	articles := make([]*domain.Article, len(resp.Msg.GetArticles()))
 	for i, a := range resp.Msg.GetArticles() {
@@ -236,9 +230,6 @@ func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*do
 	resp, err := r.client.DataHub().GetArticleContent(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("GetArticleContent: %w", err)
-	}
-	if resp == nil || resp.Msg == nil {
-		return nil, fmt.Errorf("GetArticleContent: empty response")
 	}
 
 	return &domain.Article{

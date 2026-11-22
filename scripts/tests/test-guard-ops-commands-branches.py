@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import sys
+from unittest.mock import patch
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 GUARD_PATH = REPO_ROOT / "scripts" / "agent-harness" / "guard_ops_commands.py"
@@ -15,8 +16,8 @@ if spec is None or spec.loader is None:
     msg = f"cannot load {GUARD_PATH}"
     raise RuntimeError(msg)
 guard = importlib.util.module_from_spec(spec)
-sys.modules["guard_ops_commands"] = guard
-spec.loader.exec_module(guard)
+with patch.dict(sys.modules, {"guard_ops_commands": guard}):
+    spec.loader.exec_module(guard)
 Token = guard.Token
 
 

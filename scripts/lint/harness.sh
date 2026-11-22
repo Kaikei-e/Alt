@@ -67,6 +67,12 @@ status_migration="pass"
 status_guard_branches="pass"
 status_task_packet_templates="pass"
 status_task_packet_tests="pass"
+status_go_canonical_sync="pass"
+status_go_canonical_tests="pass"
+status_python_pki_sync="pass"
+status_python_pki_tests="pass"
+status_python_version_tests="pass"
+status_pytest_randomized_tests="pass"
 status_corpus="pass"
 corpus_capture_rate=""
 
@@ -106,6 +112,42 @@ if ! python3 scripts/tests/test-task-packet.py; then
   rc=1
 fi
 
+echo "==> [harness] sync_go_canonical.py --check"
+if ! python3 scripts/codegen/sync_go_canonical.py --check; then
+  status_go_canonical_sync="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-sync-go-canonical.py"
+if ! python3 scripts/tests/test-sync-go-canonical.py; then
+  status_go_canonical_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] sync_python_pki.py --check"
+if ! python3 scripts/codegen/pki_py/sync_python_pki.py --check; then
+  status_python_pki_sync="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-sync-python-pki.py"
+if ! python3 scripts/tests/test-sync-python-pki.py; then
+  status_python_pki_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-check-python-versions.py"
+if ! python3 scripts/tests/test-check-python-versions.py; then
+  status_python_version_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-pytest-randomized.py"
+if ! python3 scripts/tests/test-pytest-randomized.py; then
+  status_pytest_randomized_tests="fail"
+  rc=1
+fi
+
 echo "==> [harness] test-corpus.py"
 corpus_out_file="$(mktemp "${TMPDIR:-/tmp}/alt-harness-corpus-XXXXXX")"
 trap 'rm -f "$corpus_out_file"' EXIT
@@ -127,6 +169,12 @@ printf '  %-32s %s\n' "migration_destructive_gate" "$status_migration"
 printf '  %-32s %s\n' "guard_ops_commands_branches" "$status_guard_branches"
 printf '  %-32s %s\n' "task_packet_templates" "$status_task_packet_templates"
 printf '  %-32s %s\n' "task_packet_tests" "$status_task_packet_tests"
+printf '  %-32s %s\n' "go_canonical_sync" "$status_go_canonical_sync"
+printf '  %-32s %s\n' "go_canonical_tests" "$status_go_canonical_tests"
+printf '  %-32s %s\n' "python_pki_sync" "$status_python_pki_sync"
+printf '  %-32s %s\n' "python_pki_tests" "$status_python_pki_tests"
+printf '  %-32s %s\n' "python_version_tests" "$status_python_version_tests"
+printf '  %-32s %s\n' "pytest_randomized_tests" "$status_pytest_randomized_tests"
 printf '  %-32s %s\n' "corpus" "$status_corpus"
 if [ -n "$corpus_capture_rate" ]; then
   printf '  %s\n' "$corpus_capture_rate"

@@ -3,6 +3,8 @@ use regex::Regex;
 use std::fs::File;
 use std::io::Write;
 
+// Build-time validator compiles every static regex literal and fails the build on error.
+#[allow(clippy::disallowed_methods)]
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
@@ -170,6 +172,8 @@ mod tests {
     use super::*;
 
     #[test]
+    // Build-script self-test validates regex compilation directly.
+    #[allow(clippy::disallowed_methods)]
     fn test_all_patterns_compile() {
         let patterns = &[
             (r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", "iso_timestamp"),

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"pki-agent/internal/domain"
+	"pki-agent/internal/fsperm"
 )
 
 func newSelfSignedPEM(t *testing.T) (certPEM, keyPEM []byte) {
@@ -85,7 +86,7 @@ func TestCertFile_Load_Missing(t *testing.T) {
 func TestCertFile_Load_Corrupt(t *testing.T) {
 	dir := t.TempDir()
 	cert := filepath.Join(dir, "svc-cert.pem")
-	if err := os.WriteFile(cert, []byte("not a pem"), 0o400); err != nil {
+	if err := os.WriteFile(cert, []byte("not a pem"), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	cf := &CertFile{CertPath: cert, KeyPath: filepath.Join(dir, "k")}

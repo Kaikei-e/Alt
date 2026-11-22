@@ -4,8 +4,10 @@ import logging
 import re
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import AsyncExitStack, aclosing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Protocol, runtime_checkable
 
 import aiohttp
 
@@ -27,6 +29,11 @@ from news_creator.utils.html_cleaner import clean_html_content, sanitize_for_pro
 from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _SupportsAclose(Protocol):
+    async def aclose(self) -> None: ...
 
 
 _ABNORMAL_PROMPT_END_MIN_CHARS = 1000
@@ -1193,13 +1200,14 @@ class SummarizeUsecase:
             )
 
             try:
-                async for filtered in _consume_summary_stream(
-                    stream_gen, article_id, metrics
-                ):
-                    yield filtered
+                async with AsyncExitStack() as stack:
+                    if isinstance(stream_gen, _SupportsAclose):
+                        await stack.enter_async_context(aclosing(stream_gen))
+                    async for filtered in _consume_summary_stream(
+                        stream_gen, article_id, metrics
+                    ):
+                        yield filtered
             finally:
-                if hasattr(stream_gen, "aclose"):
-                    await stream_gen.aclose()
                 logger.info(
                     "Inner stream generator closed (aclose)",
                     extra={"article_id": article_id},

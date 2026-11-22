@@ -18,6 +18,7 @@ import (
 
 	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
 	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
+	"search-indexer/internal/connectguard"
 
 	"search-indexer/driver"
 )
@@ -56,12 +57,20 @@ func DefaultHTTPClient() *http.Client {
 // signature compatibility with DI wiring and ignored — authentication is
 // established at the TLS transport layer.
 func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
+	return newClientWithOptions(baseURL, httpClient)
+}
+
+func newClientWithOptions(baseURL string, httpClient *http.Client, extraOpts ...connect.ClientOption) *Client {
 	if httpClient == nil {
 		httpClient = DefaultHTTPClient()
 	}
+	opts := append([]connect.ClientOption{
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	}, extraOpts...)
 	c := datahubv1connect.NewDataHubServiceClient(
 		httpClient,
 		baseURL,
+		opts...,
 	)
 	return &Client{client: c}
 }
@@ -86,10 +95,6 @@ func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Ti
 	resp, err := c.client.ListArticlesWithTags(ctx, req)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("ListArticlesWithTags: %w", err)
-	}
-
-	if resp.Msg == nil {
-		return nil, nil, "", fmt.Errorf("ListArticlesWithTags: nil response message")
 	}
 
 	articles, err := toDriverArticles(resp.Msg.GetArticles())
@@ -127,10 +132,6 @@ func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark
 		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
 	}
 
-	if resp.Msg == nil {
-		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: nil response message")
-	}
-
 	articles, err := toDriverArticles(resp.Msg.GetArticles())
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
@@ -160,10 +161,6 @@ func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Tim
 	resp, err := c.client.ListDeletedArticles(ctx, req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListDeletedArticles: %w", err)
-	}
-
-	if resp.Msg == nil {
-		return nil, nil, fmt.Errorf("ListDeletedArticles: nil response message")
 	}
 
 	deleted := make([]*driver.DeletedArticle, len(resp.Msg.GetArticles()))
@@ -196,10 +193,6 @@ func (c *Client) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
 		return nil, fmt.Errorf("GetLatestArticleTimestamp: %w", err)
 	}
 
-	if resp.Msg == nil {
-		return nil, fmt.Errorf("GetLatestArticleTimestamp: nil response message")
-	}
-
 	if resp.Msg.GetLatestCreatedAt() == nil {
 		return nil, nil
 	}
@@ -223,10 +216,6 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 			return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, driver.ErrNotFound)
 		}
 		return nil, fmt.Errorf("GetArticleByID: %w", err)
-	}
-
-	if resp.Msg == nil {
-		return nil, fmt.Errorf("GetArticleByID: nil response message")
 	}
 
 	if resp.Msg.GetArticle() == nil {

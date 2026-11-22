@@ -3,6 +3,7 @@
 package tlsutil
 
 import (
+	"alt-butterfly-facade/internal/httpserver"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -192,11 +193,11 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 // east-west mTLS: bounded IdleTimeout prevents HTTP/2 connection reuse from
 // outliving a short-lived leaf certificate.
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
-	}
+	})
 }

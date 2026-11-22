@@ -21,6 +21,7 @@ import (
 
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
+	"alt/internal/connectguard"
 )
 
 // ErrSovereignDisabled is returned by every mutator (ApplyProjectionMutation,
@@ -147,7 +148,9 @@ func NewClient(baseURL string, enabled bool, opts ...Option) *Client {
 		}
 	}
 
-	var clientOpts []connect.ClientOption
+	clientOpts := []connect.ClientOption{
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	}
 	if co.token != "" {
 		clientOpts = append(clientOpts, connect.WithInterceptors(NewClientAuthInterceptor(co.token)))
 	}

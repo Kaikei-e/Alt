@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"auth-hub/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +34,7 @@ func writeEd25519SigningKeyFile(t *testing.T) (string, ed25519.PrivateKey) {
 	require.NoError(t, err)
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 	keyPath := filepath.Join(t.TempDir(), "signing-key.pem")
-	require.NoError(t, os.WriteFile(keyPath, pemBytes, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pemBytes, fsperm.SecretFile))
 	return keyPath, priv
 }
 
@@ -228,7 +230,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", "")
 		require.NoError(t, os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE"))
 		legacyFile := filepath.Join(t.TempDir(), "legacy.txt")
-		require.NoError(t, os.WriteFile(legacyFile, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), 0o600))
+		require.NoError(t, os.WriteFile(legacyFile, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 		t.Setenv("BACKEND_TOKEN_SECRET_FILE", legacyFile)
 
@@ -249,7 +251,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 	t.Run("fails when key file is not PEM", func(t *testing.T) {
 		setBaseEnv(t)
 		badFile := filepath.Join(t.TempDir(), "bad.pem")
-		require.NoError(t, os.WriteFile(badFile, []byte("not-a-pem-file"), 0o600))
+		require.NoError(t, os.WriteFile(badFile, []byte("not-a-pem-file"), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", badFile)
 
 		_, err := Load()
@@ -264,7 +266,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		spki, err := x509.MarshalPKIXPublicKey(pub)
 		require.NoError(t, err)
 		pubFile := filepath.Join(t.TempDir(), "pub.pem")
-		require.NoError(t, os.WriteFile(pubFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: spki}), 0o600))
+		require.NoError(t, os.WriteFile(pubFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: spki}), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", pubFile)
 
 		_, err = Load()
@@ -279,7 +281,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		der, err := x509.MarshalPKCS8PrivateKey(ecKey)
 		require.NoError(t, err)
 		ecFile := filepath.Join(t.TempDir(), "ec.pem")
-		require.NoError(t, os.WriteFile(ecFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600))
+		require.NoError(t, os.WriteFile(ecFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", ecFile)
 
 		_, err = Load()
@@ -298,7 +300,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 			pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der2})...,
 		)
 		keyPath := filepath.Join(t.TempDir(), "two-blocks.pem")
-		require.NoError(t, os.WriteFile(keyPath, twoBlocks, 0o600))
+		require.NoError(t, os.WriteFile(keyPath, twoBlocks, fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyPath)
 
 		_, err = Load()
@@ -311,7 +313,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		der, err := x509.MarshalPKCS8PrivateKey(generateTestEd25519Key(t))
 		require.NoError(t, err)
 		encFile := filepath.Join(t.TempDir(), "encrypted.pem")
-		require.NoError(t, os.WriteFile(encFile, pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: der}), 0o600))
+		require.NoError(t, os.WriteFile(encFile, pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: der}), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", encFile)
 
 		_, err = Load()
@@ -326,7 +328,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		der, err := x509.MarshalPKCS8PrivateKey(rsaKey)
 		require.NoError(t, err)
 		rsaFile := filepath.Join(t.TempDir(), "rsa.pem")
-		require.NoError(t, os.WriteFile(rsaFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600))
+		require.NoError(t, os.WriteFile(rsaFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), fsperm.SecretFile))
 		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", rsaFile)
 
 		_, err = Load()
@@ -342,7 +344,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		for _, prefix := range []string{"junk-before-pem\n", "-----BEGIN malformed\n"} {
 			setBaseEnv(t)
 			junkFile := filepath.Join(t.TempDir(), "junk-prefix.pem")
-			require.NoError(t, os.WriteFile(junkFile, append([]byte(prefix), validPEM...), 0o600))
+			require.NoError(t, os.WriteFile(junkFile, append([]byte(prefix), validPEM...), fsperm.SecretFile))
 			t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", junkFile)
 
 			_, err = Load()
@@ -949,7 +951,7 @@ func TestLoad_ConfigFileSafety(t *testing.T) {
 		t.Cleanup(func() { _ = baseRoot.Close() })
 
 		subDir := filepath.Join(baseDir, "sub")
-		require.NoError(t, os.MkdirAll(subDir, 0o700))
+		require.NoError(t, os.MkdirAll(subDir, fsperm.SecretDir))
 
 		keyBytes, _ := marshalTestEd25519PEM(t)
 		require.NoError(t, baseRoot.WriteFile("outside-key.pem", keyBytes, 0o600))

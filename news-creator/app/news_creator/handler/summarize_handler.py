@@ -1,17 +1,13 @@
 """Summarize handler - REST endpoint for article summarization."""
 
-import asyncio
-import json
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import aclosing, suppress
-from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import SummarizeRequest, SummarizeResponse
+from news_creator.handler.sse_stream import create_sse_response
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.utils.context_logger import (
     clear_context,
@@ -23,10 +19,6 @@ from news_creator.utils.context_logger import (
 logger = logging.getLogger(__name__)
 
 _MIN_CONTENT_LENGTH = 100
-_HEARTBEAT_INTERVAL_SECONDS = 10
-_HEARTBEAT_IDLE_THRESHOLD_SECONDS = 5.0
-_INITIAL_CHUNK_LOG_LIMIT = 3
-_CHUNK_PREVIEW_LENGTH = 50
 
 
 def _validate_summarize_content(request: SummarizeRequest) -> None:
@@ -45,205 +37,6 @@ def _validate_summarize_content(request: SummarizeRequest) -> None:
             },
         )
         raise HTTPException(status_code=400, detail=error_msg)
-
-
-@dataclass(frozen=True)
-class _SSEStreamContext:
-    http_request: Request
-    stopped: asyncio.Event
-    last_data_time_ref: list[float]
-    article_id: str
-
-
-async def _heartbeat_loop(
-    ctx: _SSEStreamContext,
-    heartbeat_queue: asyncio.Queue[tuple[str, str] | None],
-) -> None:
-    """Send heartbeat comments periodically, but only when no data is flowing."""
-    try:
-        while not ctx.stopped.is_set():
-            # Interruptible sleep: wake as soon as the stream
-            # is done instead of ticking out the whole interval.
-            try:
-                await asyncio.wait_for(
-                    ctx.stopped.wait(),
-                    timeout=_HEARTBEAT_INTERVAL_SECONDS,
-                )
-                break
-            except TimeoutError:
-                pass
-            if await ctx.http_request.is_disconnected():
-                ctx.stopped.set()
-                break
-
-            current_time = asyncio.get_running_loop().time()
-            time_since_data = current_time - ctx.last_data_time_ref[0]
-
-            # Send heartbeat only if no data for at least 5 seconds
-            # This prevents heartbeats from interfering with data streaming
-            if time_since_data >= _HEARTBEAT_IDLE_THRESHOLD_SECONDS:
-                logger.debug(
-                    "Sending SSE heartbeat",
-                    extra={
-                        "article_id": ctx.article_id,
-                        "time_since_data": f"{time_since_data:.2f}s",
-                    },
-                )
-                await heartbeat_queue.put(("heartbeat", ":\n\n"))
-    except asyncio.CancelledError:
-        pass
-    finally:
-        ctx.stopped.set()
-        await heartbeat_queue.put(None)  # Sentinel to stop
-
-
-async def _forward_stream_chunks(
-    original_stream: AsyncGenerator[str],
-    ctx: _SSEStreamContext,
-    data_queue: asyncio.Queue[tuple[str, str] | None],
-) -> None:
-    """Forward data from original stream with priority."""
-    chunk_count = 0
-    try:
-        async with aclosing(original_stream) as stream:
-            async for chunk in stream:
-                if await ctx.http_request.is_disconnected():
-                    ctx.stopped.set()
-                    break
-                chunk_count += 1
-                if chunk_count <= _INITIAL_CHUNK_LOG_LIMIT:
-                    logger.debug(
-                        "Streaming chunk to client",
-                        extra={
-                            "article_id": ctx.article_id,
-                            "chunk_count": chunk_count,
-                            "chunk_size": len(chunk) if chunk else 0,
-                            "chunk_preview": chunk[:_CHUNK_PREVIEW_LENGTH]
-                            if chunk and len(chunk) > _CHUNK_PREVIEW_LENGTH
-                            else chunk,
-                        },
-                    )
-                ctx.last_data_time_ref[0] = asyncio.get_running_loop().time()
-                await data_queue.put(("data", chunk))
-    except Exception as e:
-        logger.exception(
-            "Error in stream task",
-            extra={
-                "error": str(e),
-                "article_id": ctx.article_id,
-            },
-        )
-        # Surface the failure to the client instead of
-        # letting the stream end silently and look
-        # like a normal (if short) completed summary.
-        await data_queue.put(("error", "summary generation failed"))
-    finally:
-        ctx.stopped.set()
-        await data_queue.put(None)  # Sentinel to stop
-
-
-def _format_sse_item(item: tuple[str, str], article_id: str) -> str | None:
-    item_type, content = item
-    if item_type == "data":
-        logger.debug(
-            "Yielding data chunk to client",
-            extra={
-                "article_id": article_id,
-                "chunk_size": len(content) if content else 0,
-            },
-        )
-        return f"data: {json.dumps(content)}\n\n"
-    if item_type == "error":
-        logger.debug(
-            "Yielding SSE error event",
-            extra={
-                "article_id": article_id,
-                "error": content,
-            },
-        )
-        return f"event: error\ndata: {json.dumps({'error': content})}\n\n"
-    return None
-
-
-async def _drain_heartbeat(
-    heartbeat_queue: asyncio.Queue[tuple[str, str] | None],
-    article_id: str,
-) -> str | None:
-    try:
-        heartbeat_item = heartbeat_queue.get_nowait()
-    except asyncio.QueueEmpty:
-        return None
-    if heartbeat_item is None:
-        return None
-    heartbeat_type, heartbeat_content = heartbeat_item
-    if heartbeat_type == "heartbeat":
-        logger.debug(
-            "Yielding SSE heartbeat",
-            extra={"article_id": article_id},
-        )
-        return heartbeat_content
-    return None
-
-
-async def _stream_with_heartbeat(
-    original_stream: AsyncGenerator[str],
-    http_request: Request,
-    article_id: str,
-) -> AsyncIterator[str]:
-    """Wrap the stream generator with heartbeat for SSE.
-
-    This implementation prioritizes data chunks over heartbeats to ensure
-    real-time streaming. Heartbeats are sent only when no data is available
-    to prevent blocking data chunk processing.
-    """
-    data_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
-    heartbeat_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
-    stopped = asyncio.Event()
-    ctx = _SSEStreamContext(
-        http_request=http_request,
-        stopped=stopped,
-        last_data_time_ref=[asyncio.get_running_loop().time()],
-        article_id=article_id,
-    )
-
-    heartbeat = asyncio.create_task(_heartbeat_loop(ctx, heartbeat_queue))
-    stream = asyncio.create_task(
-        _forward_stream_chunks(original_stream, ctx, data_queue)
-    )
-
-    try:
-        while True:
-            try:
-                item = await asyncio.wait_for(data_queue.get(), timeout=0.1)
-                if item is None:
-                    # Generator is done, so end the body now.
-                    # The heartbeat task is torn down in the
-                    # finally block; waiting for its sentinel
-                    # here would hold the connection open for
-                    # up to a full heartbeat interval, and the
-                    # consumer only persists the summary once
-                    # it has read EOF.
-                    break
-                formatted = _format_sse_item(item, article_id)
-                if formatted is not None:
-                    yield formatted
-                if await http_request.is_disconnected():
-                    stopped.set()
-                    break
-            except TimeoutError:
-                hb = await _drain_heartbeat(heartbeat_queue, article_id)
-                if hb is not None:
-                    yield hb
-                    if await http_request.is_disconnected():
-                        stopped.set()
-                        break
-    finally:
-        stopped.set()
-        heartbeat.cancel()
-        stream.cancel()
-        with suppress(Exception):
-            # Partial-failure allowed: cancelled tasks during SSE cleanup.
-            await asyncio.gather(heartbeat, stream, return_exceptions=True)
 
 
 def _create_streaming_response(
@@ -269,13 +62,12 @@ def _create_streaming_response(
             "Stream generator created, creating StreamingResponse with heartbeat",
             extra={"article_id": request.article_id},
         )
-        response = StreamingResponse(
-            _stream_with_heartbeat(original_stream, http_request, request.article_id),
-            media_type="text/event-stream; charset=utf-8",
+        response = create_sse_response(
+            original_stream,
+            http_request,
+            stream_id=request.article_id,
+            error_message="summary generation failed",
         )
-        response.headers["Cache-Control"] = "no-cache"
-        response.headers["Connection"] = "keep-alive"
-        response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
 
         logger.info(
             "StreamingResponse created successfully with SSE format",

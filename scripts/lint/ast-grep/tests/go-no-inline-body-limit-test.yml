@@ -1,0 +1,60 @@
+id: go-no-inline-body-limit
+valid:
+  - |
+    package bootstrap
+
+    const maxRequestBodyBytes = 1_000_000
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit(maxRequestBodyBytes))
+    }
+  - |
+    package rest
+
+    func register(e group) {
+    	e.Use(middleware.BodyLimit(config.MaxRequestBodyBytes))
+    }
+  - |
+    package rest
+
+    func registerUnqualified(e group) {
+    	e.Use(BodyLimit(maxRequestBodyBytes))
+    }
+invalid:
+  # C-15: Echo v5 migration shifted decimal 1M to binary 1 << 20
+  - |
+    package bootstrap
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit(1 << 20))
+    }
+  - |
+    package bootstrap
+
+    func registerUnqualified(api group) {
+    	api.Use(BodyLimit(1 << 20))
+    }
+  - |
+    package bootstrap
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit(1048576))
+    }
+  - |
+    package bootstrap
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit("1M"))
+    }
+  - |
+    package bootstrap
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit(10 * 1024))
+    }
+  - |
+    package bootstrap
+
+    func register(api group) {
+    	api.Use(middleware.BodyLimit(maxBodySize))
+    }

@@ -14,6 +14,7 @@ import (
 
 	ppv2 "alt/gen/proto/services/preprocessor/v2"
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
+	"alt/internal/connectguard"
 	"alt/tlsutil"
 	"alt/utils/authcontext"
 )
@@ -122,7 +123,7 @@ func NewConnectPreProcessorClient(baseURL, _ string) (*ConnectPreProcessorClient
 		httpClient,
 		baseURL,
 		connect.WithProtoJSON(),
-		connect.WithInterceptors(&authInterceptor{}),
+		connect.WithInterceptors(&authInterceptor{}, connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &ConnectPreProcessorClient{client: client}, nil
 }
@@ -133,7 +134,7 @@ func NewConnectPreProcessorClientWithHTTPClient(baseURL string, httpClient conne
 		httpClient,
 		baseURL,
 		connect.WithProtoJSON(),
-		connect.WithInterceptors(&authInterceptor{}),
+		connect.WithInterceptors(&authInterceptor{}, connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &ConnectPreProcessorClient{client: client}
 }
