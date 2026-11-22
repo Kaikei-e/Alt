@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alt-rss/alt-backend/sidecar-proxy/internal/httpserver"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/autolearn"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/config"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/dns"
@@ -189,13 +190,13 @@ func (p *LightweightProxy) Start() error {
 	mux.HandleFunc("/", p.handleRawRequest)
 
 	// Create HTTP server
-	p.server = &http.Server{
+	p.server = httpserver.New(httpserver.Config{
 		Addr:         fmt.Sprintf(":%s", p.config.ListenPort),
 		Handler:      mux,
 		ReadTimeout:  p.config.ReadTimeout,
 		WriteTimeout: p.config.WriteTimeout,
 		IdleTimeout:  p.config.IdleTimeout,
-	}
+	})
 
 	p.ready.Store(true)
 	p.logger.Printf("🚀 Lightweight Proxy Sidecar started on port %s", p.config.ListenPort)

@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +51,7 @@ func setupTempMTLSCerts(t *testing.T) (certPath, keyPath, caPath string, caCert 
 
 	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caBytes})
 	caPath = filepath.Join(dir, "ca-bundle.pem")
-	require.NoError(t, os.WriteFile(caPath, caPEM, 0o600))
+	require.NoError(t, os.WriteFile(caPath, caPEM, fsperm.SecretFile))
 
 	genCert := func(cn string, isClient, isServer bool) (string, string) {
 		priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -86,8 +88,8 @@ func setupTempMTLSCerts(t *testing.T) (certPath, keyPath, caPath string, caCert 
 		cPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDer})
 		kPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
-		require.NoError(t, os.WriteFile(cPath, cPEM, 0o600))
-		require.NoError(t, os.WriteFile(kPath, kPEM, 0o600))
+		require.NoError(t, os.WriteFile(cPath, cPEM, fsperm.SecretFile))
+		require.NoError(t, os.WriteFile(kPath, kPEM, fsperm.SecretFile))
 
 		return cPath, kPath
 	}

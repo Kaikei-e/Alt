@@ -45,7 +45,6 @@ missing-import = false
 missing-module-attribute = false
 
 [tool.ruff]
-target-version = "py314"
 line-length = 120
 exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info", "tts_speaker/gen"]
 

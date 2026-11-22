@@ -24,6 +24,7 @@ run_step() {
 }
 
 run_step "check-suites" bash e2e/playwright/_lib/check-suites.sh
+run_step "e2e-clean-worktree" python3 scripts/tests/test-e2e-clean-worktree.py
 
 printf '%s\n' "${summary[@]}"
 exit "$fail"

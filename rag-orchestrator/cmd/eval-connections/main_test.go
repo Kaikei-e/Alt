@@ -9,6 +9,8 @@ import (
 
 	"rag-orchestrator/internal/evalconnections"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +19,7 @@ import (
 func TestSampleCommand_FailFastValidation(t *testing.T) {
 	tmp := t.TempDir()
 	readIDsPath := filepath.Join(tmp, "read_ids.txt")
-	require.NoError(t, os.WriteFile(readIDsPath, []byte("a1\na2\n"), 0o600))
+	require.NoError(t, os.WriteFile(readIDsPath, []byte("a1\na2\n"), fsperm.SecretFile))
 
 	t.Run("missing user_id fails fast", func(t *testing.T) {
 		t.Setenv("EVAL_USER_ID", "")
@@ -47,7 +49,7 @@ func TestSampleCommand_FailFastValidation(t *testing.T) {
 		t.Setenv("INFERENCE_AUTH", "")
 		t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "")
 		sumPath := filepath.Join(tmp, "summaries.tsv")
-		require.NoError(t, os.WriteFile(sumPath, []byte("a1\thello\n"), 0o600))
+		require.NoError(t, os.WriteFile(sumPath, []byte("a1\thello\n"), fsperm.SecretFile))
 
 		err := runSample(sampleFlags{
 			readIDsPath:   readIDsPath,
@@ -71,7 +73,7 @@ func TestScoreCommand_EmitsReportAndJSON(t *testing.T) {
 		"3,A3,https://e.com/5,B3,https://e.com/6,unsure\n" +
 		"4,A4,https://e.com/7,B4,https://e.com/8,not_connected\n" +
 		"5,A5,https://e.com/9,B5,https://e.com/10,not_connected\n"
-	require.NoError(t, os.WriteFile(sheetPath, []byte(sheetContent), 0o600))
+	require.NoError(t, os.WriteFile(sheetPath, []byte(sheetContent), fsperm.SecretFile))
 
 	key := evalconnections.KeyFile{
 		Seed:             1,
@@ -92,7 +94,7 @@ func TestScoreCommand_EmitsReportAndJSON(t *testing.T) {
 	}
 	keyBytes, err := json.Marshal(key)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(keyPath, keyBytes, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, keyBytes, fsperm.SecretFile))
 
 	var out bytes.Buffer
 	jsonOutPath := filepath.Join(tmp, "report.json")

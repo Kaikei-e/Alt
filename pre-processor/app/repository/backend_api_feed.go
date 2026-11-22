@@ -42,9 +42,6 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListFeedURLs: %w", err)
 	}
-	if resp == nil || resp.Msg == nil {
-		return nil, nil, fmt.Errorf("ListFeedURLs: empty response")
-	}
 
 	urls := make([]*url.URL, 0, len(resp.Msg.GetFeeds()))
 	for _, f := range resp.Msg.GetFeeds() {
@@ -82,9 +79,6 @@ func (r *feedRepository) GetProcessingStats(ctx context.Context) (*domain.Proces
 		resp, err := r.client.DataHub().ListFeedURLs(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("ListFeedURLs: %w", err)
-		}
-		if resp == nil || resp.Msg == nil {
-			return nil, fmt.Errorf("ListFeedURLs: empty response")
 		}
 
 		total += len(resp.Msg.GetFeeds())

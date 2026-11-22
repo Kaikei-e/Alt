@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/alt-project/altctl/internal/fsperm"
 )
 
 // Validate runs the environment freeze and isolated candidate .env render validation.
@@ -130,7 +132,7 @@ func prepareStagingDir(absRoot string, candidateEnvBytes []byte) (string, error)
 	}
 
 	// #nosec G703 -- stageDir is from os.MkdirTemp and ".env" is a constant filename
-	if err := os.WriteFile(filepath.Join(stageDir, ".env"), candidateEnvBytes, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(stageDir, ".env"), candidateEnvBytes, fsperm.SecretFile); err != nil {
 		_ = os.RemoveAll(stageDir)
 		return "", fmt.Errorf("write staged .env: %w", err)
 	}
@@ -160,7 +162,7 @@ func copyComposeDirBytes(srcComposeDir, dstComposeDir string) error {
 		}
 		dstPath := filepath.Join(dstComposeDir, rel)
 		if d.IsDir() {
-			return os.MkdirAll(dstPath, 0o750)
+			return os.MkdirAll(dstPath, fsperm.PrivateDir)
 		}
 		// #nosec G304 G122 -- path is a WalkDir entry under srcComposeDir
 		raw, err := os.ReadFile(path)

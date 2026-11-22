@@ -1,6 +1,7 @@
 package config
 
 import (
+	"alt/internal/fsperm"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,7 @@ func applySovereignAuthEnv(t *testing.T, envVars map[string]string) {
 func writeSovereignTokenFile(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "sovereign_event_token")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write token file: %v", err)
 	}
 	return path

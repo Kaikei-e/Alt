@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"alt/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +62,7 @@ func TestResolveRedisPassword(t *testing.T) {
 	t.Run("file present returns trimmed password", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		pwFile := filepath.Join(tmpDir, "redis_password.txt")
-		err := os.WriteFile(pwFile, []byte("  secret-redis-password \n"), 0600)
+		err := os.WriteFile(pwFile, []byte("  secret-redis-password \n"), fsperm.SecretFile)
 		require.NoError(t, err)
 
 		t.Setenv("REDIS_PASSWORD_FILE", pwFile)
@@ -85,7 +87,7 @@ func TestResolveRedisPassword(t *testing.T) {
 	t.Run("file empty returns startup error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		emptyFile := filepath.Join(tmpDir, "empty_password.txt")
-		err := os.WriteFile(emptyFile, []byte("   \n\t "), 0600)
+		err := os.WriteFile(emptyFile, []byte("   \n\t "), fsperm.SecretFile)
 		require.NoError(t, err)
 
 		t.Setenv("REDIS_PASSWORD_FILE", emptyFile)
@@ -124,7 +126,7 @@ func TestResolveCoordinationRedisPassword(t *testing.T) {
 	t.Run("coordination set resolves the password", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		pwFile := filepath.Join(tmpDir, "redis_password.txt")
-		require.NoError(t, os.WriteFile(pwFile, []byte("coordination-secret"), 0600))
+		require.NoError(t, os.WriteFile(pwFile, []byte("coordination-secret"), fsperm.SecretFile))
 		t.Setenv("REDIS_PASSWORD_FILE", pwFile)
 
 		pwd, err := resolveCoordinationRedisPassword("redis://redis-streams:6379/3")
@@ -178,8 +180,8 @@ func TestResolveCoordinationRedisPassword(t *testing.T) {
 		tmpDir := t.TempDir()
 		coordFile := filepath.Join(tmpDir, "coord_password.txt")
 		genericFile := filepath.Join(tmpDir, "generic_password.txt")
-		require.NoError(t, os.WriteFile(coordFile, []byte("coord-secret"), 0600))
-		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), 0600))
+		require.NoError(t, os.WriteFile(coordFile, []byte("coord-secret"), fsperm.SecretFile))
+		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), fsperm.SecretFile))
 
 		t.Setenv("HOST_RATE_LIMITER_REDIS_PASSWORD_FILE", coordFile)
 		t.Setenv("REDIS_PASSWORD_FILE", genericFile)
@@ -193,8 +195,8 @@ func TestResolveCoordinationRedisPassword(t *testing.T) {
 		tmpDir := t.TempDir()
 		coordFile := filepath.Join(tmpDir, "coord_password.txt")
 		genericFile := filepath.Join(tmpDir, "generic_password.txt")
-		require.NoError(t, os.WriteFile(coordFile, []byte("coord-alt-secret"), 0600))
-		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), 0600))
+		require.NoError(t, os.WriteFile(coordFile, []byte("coord-alt-secret"), fsperm.SecretFile))
+		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), fsperm.SecretFile))
 
 		t.Setenv("COORDINATION_REDIS_PASSWORD_FILE", coordFile)
 		t.Setenv("REDIS_PASSWORD_FILE", genericFile)

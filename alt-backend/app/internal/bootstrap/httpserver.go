@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"alt/config"
+	"alt/internal/httpserver"
 )
 
 // readHeaderTimeout is set independently of ReadTimeout on every listener so
@@ -40,14 +41,14 @@ func cleartextHTTP2() *http.Protocols {
 // NewRESTServer builds the browser-facing REST listener. All four timeouts
 // come from the server config.
 func NewRESTServer(addr string, h http.Handler, cfg *config.Config) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      cfg.Server.WriteTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
-	}
+	})
 }
 
 // NewConnectServer builds the user-facing Connect-RPC listener.
@@ -67,7 +68,7 @@ func NewRESTServer(addr string, h http.Handler, cfg *config.Config) *http.Server
 // any fixed write deadline, and unlike ReadTimeout nothing re-scopes it to a
 // single stream. IdleTimeout still reaps idle keep-alives.
 func NewConnectServer(addr string, h http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           h,
 		Protocols:         cleartextHTTP2(),
@@ -75,14 +76,14 @@ func NewConnectServer(addr string, h http.Handler) *http.Server {
 		ReadTimeout:       connectReadTimeout,
 		WriteTimeout:      0,
 		IdleTimeout:       connectIdleTimeout,
-	}
+	})
 }
 
 // NewServiceServer builds a service-to-service listener (the backend operator
 // surface, the data-hub health surface). Request bodies are bounded by the
 // configured ReadTimeout; responses may stream, so WriteTimeout stays 0.
 func NewServiceServer(addr string, h http.Handler, cfg *config.Config) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           h,
 		Protocols:         cleartextHTTP2(),
@@ -90,7 +91,7 @@ func NewServiceServer(addr string, h http.Handler, cfg *config.Config) *http.Ser
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      0,
 		IdleTimeout:       connectIdleTimeout,
-	}
+	})
 }
 
 // isServerClosed reports whether err is the benign "we asked it to stop"

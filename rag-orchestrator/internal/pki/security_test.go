@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -60,7 +62,7 @@ func TestLoadConfig_FileMissingFails(t *testing.T) {
 
 func TestLoadConfig_FileEmptyFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty")
-	if err := os.WriteFile(path, []byte(" \n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(" \n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PKI_ENROLLMENT_FILE", path)
@@ -167,7 +169,7 @@ func TestNativeStepCAIssuer_RejectsTLS12OnlyCA(t *testing.T) {
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 	rootFile := filepath.Join(t.TempDir(), "root.pem")
-	if err := os.WriteFile(rootFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.caCert.Raw}), 0o444); err != nil {
+	if err := os.WriteFile(rootFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.caCert.Raw}), fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	iss := &NativeStepCAIssuer{
@@ -327,7 +329,7 @@ func TestCertFile_RejectsSymlinkDestAndParent(t *testing.T) {
 	t.Run("dest_symlink", func(t *testing.T) {
 		dir := t.TempDir()
 		target := filepath.Join(dir, "target.pem")
-		if err := os.WriteFile(target, []byte("nope"), 0o644); err != nil {
+		if err := os.WriteFile(target, []byte("nope"), fsperm.GeneratedFile); err != nil {
 			t.Fatal(err)
 		}
 		dest := filepath.Join(dir, "svc-cert.pem")

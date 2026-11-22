@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import compileall
+import contextlib
 import importlib
 import os
 import shutil
@@ -96,14 +97,13 @@ async def test_disabled_mode_imports_and_starts(monkeypatch: pytest.MonkeyPatch)
     assert issuer.NativeStepCAIssuer is not None
     log = _Log()
     handle = await start_enrollment("acolyte-orchestrator", logger=log)
-    try:
+    async with contextlib.AsyncExitStack() as stack:
+        if handle is not None:
+            stack.push_async_callback(handle.aclose)
         assert handle is None
         assert "pki_enrollment_disabled" in log.events
         assert MODE_DISABLED
         assert sys.version_info >= (3, 13)
-    finally:
-        if handle is not None:
-            await handle.aclose()
 
 
 def test_pki_direct_deps_are_capped() -> None:

@@ -8,6 +8,7 @@ import (
 	"html"
 	"log"
 	"math/big"
+	"mock-rss-server/internal/httpserver"
 	"net/http"
 	"os"
 	"regexp"
@@ -32,11 +33,11 @@ func main() {
 	mux.HandleFunc("/images/", handleImage)
 
 	log.Println("mock-rss-server listening on :8080")
-	srv := &http.Server{
+	srv := httpserver.New(httpserver.Config{
 		Addr:              ":8080",
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-	}
+	})
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

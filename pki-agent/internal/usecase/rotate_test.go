@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"pki-agent/internal/domain"
+	"pki-agent/internal/fsperm"
 	"pki-agent/internal/infrastructure"
 )
 
@@ -247,10 +248,10 @@ func TestTick_MismatchedPairOnDisk_TriggersReissue(t *testing.T) {
 
 	certPath := filepath.Join(dir, "svc-cert.pem")
 	keyPath := filepath.Join(dir, "svc-key.pem")
-	if err := os.WriteFile(certPath, cert1, 0o400); err != nil {
+	if err := os.WriteFile(certPath, cert1, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(keyPath, key2, 0o400); err != nil {
+	if err := os.WriteFile(keyPath, key2, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 

@@ -9,6 +9,7 @@
 package profiling
 
 import (
+	"alt/internal/httpserver"
 	"context"
 	"log/slog"
 	"net/http"
@@ -33,7 +34,7 @@ func Start(ctx context.Context, log *slog.Logger) *Server {
 	runtime.SetMutexProfileFraction(5)
 	runtime.SetBlockProfileRate(1)
 
-	srv := &http.Server{
+	srv := httpserver.New(httpserver.Config{
 		Addr:              ":6060",
 		Handler:           http.DefaultServeMux,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -42,7 +43,7 @@ func Start(ctx context.Context, log *slog.Logger) *Server {
 		// fixed write deadline.
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
-	}
+	})
 	go func() { _ = srv.ListenAndServe() }()
 	log.InfoContext(ctx, "pprof server started", "port", 6060)
 

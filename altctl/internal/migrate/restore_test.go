@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,7 +54,7 @@ func createTestBackup(t *testing.T) string {
 
 	backupDir := filepath.Join(dir, "test_backup")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
+	if err := os.MkdirAll(volumesDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +74,7 @@ func createTestBackup(t *testing.T) string {
 			filename = spec.Name + ".tar.gz"
 		}
 		filePath := filepath.Join(volumesDir, filename)
-		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), 0o600); err != nil {
+		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -93,7 +94,7 @@ func createTestBackup(t *testing.T) string {
 	manifest.Finalize()
 
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +106,7 @@ func writeFakeDocker(t *testing.T, script string) {
 	binDir := t.TempDir()
 	fakeDocker := filepath.Join(binDir, "docker")
 	// #nosec G306 -- executable fake docker script for test PATH
-	if err := os.WriteFile(fakeDocker, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(fakeDocker, []byte(script), fsperm.OwnerExecFile); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
@@ -180,7 +181,7 @@ func TestMigrator_Restore_ReturnsErrorWhenAllVolumesFail(t *testing.T) {
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -308,10 +309,10 @@ func TestMigrator_Restore_AbortsOnMissingAggregate(t *testing.T) {
 	// compose.yaml -- the layout composeFileList must refuse loudly.
 	root := t.TempDir()
 	composeDir := filepath.Join(root, "compose")
-	if err := os.MkdirAll(composeDir, 0o750); err != nil {
+	if err := os.MkdirAll(composeDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -346,7 +347,7 @@ func TestMigrator_Restore_StartsDatabaseServiceBeforePGRestore(t *testing.T) {
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -428,7 +429,7 @@ exit 1
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -479,7 +480,7 @@ exit 0
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 
@@ -514,7 +515,7 @@ exit 0
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 

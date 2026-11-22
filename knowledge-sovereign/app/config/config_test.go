@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"knowledge-sovereign/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +81,7 @@ func TestLoad_AdminTokenFromEnv(t *testing.T) {
 
 func TestLoad_AdminTokenFromFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "admin_token")
-	require.NoError(t, os.WriteFile(path, []byte("  file-token-that-is-long-enough\n"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("  file-token-that-is-long-enough\n"), fsperm.SecretFile))
 
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
@@ -150,7 +152,7 @@ func TestLoad_EventTokenFromEnv(t *testing.T) {
 
 func TestLoad_EventTokenFromFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "event_token")
-	require.NoError(t, os.WriteFile(path, []byte("  file-event-token-that-is-long-enough\n"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("  file-event-token-that-is-long-enough\n"), fsperm.SecretFile))
 
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
@@ -193,7 +195,7 @@ func TestLoad_RejectsShortEventToken(t *testing.T) {
 
 func TestLoad_EventAuthDisabledTakesPrecedenceOverTokenFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "event_token")
-	require.NoError(t, os.WriteFile(path, []byte("file-event-token-that-is-long-enough"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("file-event-token-that-is-long-enough"), fsperm.SecretFile))
 
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")

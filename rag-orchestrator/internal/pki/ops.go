@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"rag-orchestrator/internal/httpserver"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -58,12 +60,12 @@ func NewOpsHandler(gatherer prometheus.Gatherer) http.Handler {
 
 // NewOpsServer binds the PKI ops surface with Slowloris-safe timeouts.
 func NewOpsServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-	}
+	})
 }

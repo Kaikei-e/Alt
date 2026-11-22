@@ -1,6 +1,7 @@
 package config
 
 import (
+	"alt/internal/fsperm"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,7 +32,7 @@ func applyInternalAuthEnv(t *testing.T, envVars map[string]string) {
 func writeInternalAuthSecretFile(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "internal_auth_secret")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write secret file: %v", err)
 	}
 	return path

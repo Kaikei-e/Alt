@@ -3,6 +3,7 @@ FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb910
 WORKDIR /build
 COPY go.mod .
 COPY main.go .
+COPY internal/ ./internal/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mock-rss-server .
 
 FROM alpine:3.21

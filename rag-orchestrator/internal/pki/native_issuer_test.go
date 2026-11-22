@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"rag-orchestrator/internal/fsperm"
 	"strings"
 	"sync"
 	"testing"
@@ -275,7 +276,7 @@ func (f *fakeStepCA) start(t *testing.T) (caURL, rootFile string) {
 
 	rootFile = filepath.Join(t.TempDir(), "root.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.caCert.Raw})
-	if err := os.WriteFile(rootFile, pemBytes, 0o444); err != nil {
+	if err := os.WriteFile(rootFile, pemBytes, fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	return srv.URL, rootFile
@@ -786,7 +787,7 @@ func TestNativeStepCAIssuer_WrongCARoot(t *testing.T) {
 	iss := newNativeIssuer(t, ca)
 	other, _ := generateTestCA(t)
 	wrongRoot := filepath.Join(t.TempDir(), "wrong.pem")
-	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), 0o444); err != nil {
+	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	iss.RootFile = wrongRoot

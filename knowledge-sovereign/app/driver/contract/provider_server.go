@@ -19,6 +19,7 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1connect "knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/internal/httpserver"
 )
 
 // The provider under verification is the real thing: the generated
@@ -299,7 +300,7 @@ func startProviderServer(t *testing.T, repo *fakeRepo) int {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := httpserver.New(httpserver.Config{Handler: mux, ReadHeaderTimeout: 10 * time.Second})
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
 

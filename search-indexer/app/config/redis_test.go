@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"search-indexer/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +62,7 @@ func TestResolveRedisPassword(t *testing.T) {
 	t.Run("file present returns trimmed password", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		pwFile := filepath.Join(tmpDir, "redis_password.txt")
-		err := os.WriteFile(pwFile, []byte("  secret-redis-password \n"), 0600)
+		err := os.WriteFile(pwFile, []byte("  secret-redis-password \n"), fsperm.SecretFile)
 		require.NoError(t, err)
 
 		t.Setenv("REDIS_PASSWORD_FILE", pwFile)
@@ -85,7 +87,7 @@ func TestResolveRedisPassword(t *testing.T) {
 	t.Run("file empty returns startup error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		emptyFile := filepath.Join(tmpDir, "empty_password.txt")
-		err := os.WriteFile(emptyFile, []byte("   \n\t "), 0600)
+		err := os.WriteFile(emptyFile, []byte("   \n\t "), fsperm.SecretFile)
 		require.NoError(t, err)
 
 		t.Setenv("REDIS_PASSWORD_FILE", emptyFile)
@@ -109,8 +111,8 @@ func TestResolveRedisPassword(t *testing.T) {
 		tmpDir := t.TempDir()
 		streamsFile := filepath.Join(tmpDir, "streams_pw.txt")
 		generalFile := filepath.Join(tmpDir, "general_pw.txt")
-		require.NoError(t, os.WriteFile(streamsFile, []byte("streams_secret"), 0600))
-		require.NoError(t, os.WriteFile(generalFile, []byte("general_secret"), 0600))
+		require.NoError(t, os.WriteFile(streamsFile, []byte("streams_secret"), fsperm.SecretFile))
+		require.NoError(t, os.WriteFile(generalFile, []byte("general_secret"), fsperm.SecretFile))
 
 		t.Setenv("REDIS_STREAMS_PASSWORD_FILE", streamsFile)
 		t.Setenv("REDIS_PASSWORD_FILE", generalFile)

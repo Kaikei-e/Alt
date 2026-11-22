@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 
 	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
+	"pre-processor/internal/connectguard"
 )
 
 // Client wraps the DataHubService Connect-RPC client.
@@ -34,12 +35,20 @@ const defaultClientTimeout = 30 * time.Second
 // retained for signature compatibility and ignored — authentication is
 // established at the TLS transport layer.
 func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
+	return newClientWithOptions(baseURL, httpClient)
+}
+
+func newClientWithOptions(baseURL string, httpClient *http.Client, extraOpts ...connect.ClientOption) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultClientTimeout}
 	}
+	opts := append([]connect.ClientOption{
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	}, extraOpts...)
 	c := datahubv1connect.NewDataHubServiceClient(
 		httpClient,
 		baseURL,
+		opts...,
 	)
 	return &Client{client: c}
 }

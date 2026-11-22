@@ -21,6 +21,7 @@ import (
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 
+	"rag-orchestrator/internal/connectguard"
 	"rag-orchestrator/internal/usecase"
 )
 
@@ -122,9 +123,13 @@ func NewAppendEventClient(baseURL string, httpClient *http.Client, opts ...Optio
 		opt(&co)
 	}
 
-	clientOpts := []connect.ClientOption{connect.WithProtoJSON()}
+	interceptors := []connect.Interceptor{connectguard.NewUnaryNilResponseInterceptor()}
 	if co.token != "" {
-		clientOpts = append(clientOpts, connect.WithInterceptors(&clientAuthInterceptor{token: co.token}))
+		interceptors = append([]connect.Interceptor{&clientAuthInterceptor{token: co.token}}, interceptors...)
+	}
+	clientOpts := []connect.ClientOption{
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(interceptors...),
 	}
 
 	return &AppendEventClient{

@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import sys
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -32,8 +33,8 @@ spec = importlib.util.spec_from_file_location(
 assert spec is not None
 assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = audit
-spec.loader.exec_module(audit)
+with patch.dict(sys.modules, {spec.name: audit}):
+    spec.loader.exec_module(audit)
 
 
 class _Results:

@@ -1,0 +1,56 @@
+id: python-no-direct-sys-modules-assign
+valid:
+  # C-08/before.py: monkeypatch.setitem restores sys.modules automatically
+  - |
+    import sys
+    from unittest.mock import MagicMock
+
+    def test_auth_service_wires_strict_from_env(monkeypatch):
+        stub = MagicMock()
+        monkeypatch.setitem(sys.modules, "auth_service", stub)
+        monkeypatch.setenv("PEER_IDENTITY_STRICT", "true")
+  - |
+    import sys
+
+    def test_reimport(monkeypatch):
+        monkeypatch.delitem(sys.modules, "auth_service", raising=False)
+  - |
+    import sys
+    from unittest.mock import patch
+
+    def load_isolated(mod):
+        with patch.dict(sys.modules, {"my_mod": mod}):
+            return sys.modules["my_mod"]
+invalid:
+  # C-08/after.py: direct mutation leaks across tests
+  - |
+    import sys
+    from unittest.mock import MagicMock
+
+    def test_replace_auth_service_module():
+        sys.modules["auth_service"] = MagicMock()
+  - |
+    import sys
+
+    def test_delete_auth_service_module():
+        del sys.modules["auth_service"]
+  - |
+    import sys
+
+    def test_update_sys_modules():
+        sys.modules.update({"auth_service": object()})
+  - |
+    import sys
+
+    def test_pop_sys_modules():
+        sys.modules.pop("auth_service", None)
+  - |
+    import sys
+
+    def test_setdefault_sys_modules():
+        sys.modules.setdefault("auth_service", object())
+  - |
+    import sys
+
+    def test_clear_sys_modules():
+        sys.modules.clear()

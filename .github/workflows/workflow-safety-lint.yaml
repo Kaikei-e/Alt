@@ -88,10 +88,29 @@ jobs:
           check-latest: true
           cache: false
 
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.14"
+
       - name: Install PyYAML
         # ubuntu-latest ships python3 but not PyYAML. Pin to the 6.x line so
         # supply-chain drift is bounded.
         run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Install ast-grep
+        # Remove any adjacent `sg` shim installed by ast-grep-cli so /usr/bin/sg
+        # is never shadowed.
+        run: |
+          pip install --quiet 'ast-grep-cli==0.42.1'
+          if ast_grep_bin="$(command -v ast-grep)"; then
+            rm -f "$(dirname "$ast_grep_bin")/sg"
+          elif [ -x "$HOME/.local/bin/ast-grep" ]; then
+            rm -f "$HOME/.local/bin/sg"
+          else
+            echo "ast-grep binary not found after install" >&2
+            exit 1
+          fi
 
       - name: Run repository lint
         env:

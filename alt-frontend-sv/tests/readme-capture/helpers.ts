@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Locator, Page, Route } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { ensureStorageState } from "../e2e/global-setup";
 
 export const CAPTURE_NOW = "2026-11-20T09:30:00Z";
 export const CAPTURE_OUTPUT_DIR = "test-results/readme-capture";
@@ -34,7 +35,7 @@ const SHARED_CONTEXT_OPTIONS = {
 	reducedMotion: "reduce" as const,
 	locale: "en-US",
 	timezoneId: "UTC",
-	storageState: "tests/e2e/.auth/storage.json",
+	storageState: ensureStorageState(),
 };
 
 export const DESKTOP_CONTEXT = {

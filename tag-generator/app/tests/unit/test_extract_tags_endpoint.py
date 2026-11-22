@@ -21,8 +21,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Create a test client authenticated as legitimate caller recap-worker."""
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
-    if "auth_service" in sys.modules:
-        del sys.modules["auth_service"]
+    monkeypatch.delitem(sys.modules, "auth_service", raising=False)
     from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     test_client = TestClient(app, client=("127.0.0.1", 44444))

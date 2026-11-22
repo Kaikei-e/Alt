@@ -1,0 +1,91 @@
+package connectguard
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"connectrpc.com/connect"
+)
+
+type stubMsg struct {
+	Value string
+}
+
+func TestUnaryNilResponseInterceptor_PassesNonNilMessage(t *testing.T) {
+	t.Parallel()
+
+	interceptor := NewUnaryNilResponseInterceptor()
+	want := connect.NewResponse(&stubMsg{Value: "ok"})
+	call := interceptor(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		return want, nil
+	})
+
+	got, err := call(context.Background(), connect.NewRequest(&stubMsg{}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestUnaryNilResponseInterceptor_RejectsNilResponse(t *testing.T) {
+	t.Parallel()
+
+	interceptor := NewUnaryNilResponseInterceptor()
+	call := interceptor(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		return nil, nil
+	})
+
+	got, err := call(context.Background(), connect.NewRequest(&stubMsg{}))
+	if err == nil {
+		t.Fatal("expected error for nil response, got nil")
+	}
+	if got != nil {
+		t.Fatalf("expected nil response on error, got %v", got)
+	}
+	if !strings.Contains(err.Error(), "nil response message") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
+func TestUnaryNilResponseInterceptor_RejectsTypedNilMsg(t *testing.T) {
+	t.Parallel()
+
+	interceptor := NewUnaryNilResponseInterceptor()
+	call := interceptor(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		var nilMsg *stubMsg
+		return connect.NewResponse(nilMsg), nil
+	})
+
+	got, err := call(context.Background(), connect.NewRequest(&stubMsg{}))
+	if err == nil {
+		t.Fatal("expected error for typed-nil response message, got nil")
+	}
+	if got != nil {
+		t.Fatalf("expected nil response on error, got %v", got)
+	}
+	if !strings.Contains(err.Error(), "nil response message") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
+func TestUnaryNilResponseInterceptor_PreservesUpstreamError(t *testing.T) {
+	t.Parallel()
+
+	interceptor := NewUnaryNilResponseInterceptor()
+	upstream := connect.NewError(connect.CodeNotFound, errors.New("missing"))
+	call := interceptor(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		return nil, upstream
+	})
+
+	_, err := call(context.Background(), connect.NewRequest(&stubMsg{}))
+	if !errors.Is(err, upstream) {
+		t.Fatalf("got error %v, want %v", err, upstream)
+	}
+	if connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("got code %v, want CodeNotFound", connect.CodeOf(err))
+	}
+}

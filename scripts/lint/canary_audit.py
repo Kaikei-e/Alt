@@ -9,8 +9,8 @@ gosec exits 0 with an empty SARIF report) by:
    files exist in the target project.
 
 Subcommands:
-    go-canary                 Run isolated golangci-lint and gosec canary checks.
-    go-verify-scan            Verify gosec scanned > 0 files on non-generated Go sources.
+    go-canary                 Run isolated golangci-lint (incl. gosec SARIF) canary check.
+    go-verify-scan            Verify Go scan coverage and SARIF integrity on non-generated sources.
     python-canary             Run isolated ruff (and optional bandit) canary checks.
     python-verify-files       Verify target directory contains > 0 non-generated .py files.
     python-verify-bandit-scan Verify bandit scanned > 0 lines on non-empty Python sources.
@@ -69,6 +69,7 @@ PY_GENERATED_SUFFIXES = ("_pb2.py", "_pb2_grpc.py", "_connect.py", "_gen.py", ".
 GO_DIRECTIVE_RE = re.compile(r"^go\s+(\S+)")
 TOOLCHAIN_DIRECTIVE_RE = re.compile(r"^toolchain\s+(\S+)")
 GOSEC_FILES_RE = re.compile(r"^\s*Files\s*:\s*(\d+)\s*$", re.MULTILINE)
+GOSEC_RULE_PREFIX_RE = re.compile(r"^(G\d{3}):")
 BANDIT_LOC_RE = re.compile(r"Total lines of code:\s*(\d+)")
 
 GO_CANARY_SOURCE = """package canary
@@ -102,7 +103,7 @@ class GoCanaryConfig:
     project_dir: pathlib.Path
     config_file: pathlib.Path
     golangci_lint_bin: pathlib.Path
-    gosec_bin: pathlib.Path
+    gosec_bin: pathlib.Path | None = None
     work_dir: pathlib.Path | None = None
 
 
@@ -164,7 +165,7 @@ def extract_go_mod_directives(go_mod_path: pathlib.Path) -> tuple[str | None, st
 
 
 def extract_sarif_rule_ids(sarif_data: object) -> set[str]:
-    """Collect all ruleId strings from SARIF `.runs[].results[]`."""
+    """Collect ruleId strings (plus concrete G<NNN> gosec IDs from message.text) from SARIF."""
     if not isinstance(sarif_data, dict):
         return set()
     runs = sarif_data.get("runs")
@@ -178,10 +179,18 @@ def extract_sarif_rule_ids(sarif_data: object) -> set[str]:
         if not isinstance(results, list):
             continue
         for item in results:
-            if isinstance(item, dict):
-                rule_id = item.get("ruleId")
-                if isinstance(rule_id, str) and rule_id:
-                    rule_ids.add(rule_id)
+            if not isinstance(item, dict):
+                continue
+            rule_id = item.get("ruleId")
+            if isinstance(rule_id, str) and rule_id:
+                rule_ids.add(rule_id)
+                if rule_id == "gosec":
+                    message = item.get("message")
+                    msg_text = message.get("text") if isinstance(message, dict) else None
+                    if isinstance(msg_text, str):
+                        gosec_match = GOSEC_RULE_PREFIX_RE.match(msg_text)
+                        if gosec_match is not None:
+                            rule_ids.add(gosec_match.group(1))
     return rule_ids
 
 
@@ -202,7 +211,17 @@ def _check_golangci_canary(
     canary_dir: pathlib.Path,
     env: dict[str, str],
 ) -> bool:
-    cmd = [str(cfg.golangci_lint_bin), "run", "--config", str(cfg.config_file)]
+    sarif_path = canary_dir / "canary.sarif"
+    cmd = [
+        str(cfg.golangci_lint_bin),
+        "run",
+        "--config",
+        str(cfg.config_file),
+        "--output.text.path",
+        "stdout",
+        "--output.sarif.path",
+        str(sarif_path),
+    ]
     try:
         res = subprocess.run(  # noqa: S603 - resolved linter binary with fixed argv
             cmd,
@@ -217,82 +236,44 @@ def _check_golangci_canary(
         return False
 
     combined = f"{res.stdout}\n{res.stderr}"
-    has_expected_marker = (
-        GO_CANARY_EXPECTED_RULE in combined or GO_CANARY_ALT_LINT_MARKER in combined
-    )
-    if res.returncode != GOLANGCI_FINDINGS_RC or not has_expected_marker:
+    if res.returncode != GOLANGCI_FINDINGS_RC:
         _error(
             "ERROR: CANARY AUDIT FAILED (go/golangci-lint): "
-            f"expected exit {GOLANGCI_FINDINGS_RC} with rule {GO_CANARY_EXPECTED_RULE}/"
-            f"{GO_CANARY_ALT_LINT_MARKER}, got exit {res.returncode} "
-            f"(output: {_snippet(combined)})"
+            f"expected exit {GOLANGCI_FINDINGS_RC} with SARIF rules "
+            f"{GO_CANARY_EXPECTED_RULE} and {GO_CANARY_ALT_LINT_MARKER}, "
+            f"got exit {res.returncode} (output: {_snippet(combined)})"
         )
         return False
-    return True
 
-
-def _check_gosec_canary(
-    cfg: GoCanaryConfig,
-    canary_dir: pathlib.Path,
-    env: dict[str, str],
-) -> bool:
-    sarif_path = canary_dir / "canary.sarif"
-    cmd = [
-        str(cfg.gosec_bin),
-        "-severity",
-        "high",
-        "-confidence",
-        "high",
-        "-fmt",
-        "sarif",
-        "-out",
-        str(sarif_path),
-        "-stdout",
-        "-verbose",
-        "text",
-        "./...",
-    ]
-    try:
-        res = subprocess.run(  # noqa: S603 - resolved gosec binary with fixed argv
-            cmd,
-            cwd=str(canary_dir),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        _error(f"ERROR: CANARY AUDIT FAILED (go/gosec): execution error: {exc}")
-        return False
-
-    combined = f"{res.stdout}\n{res.stderr}"
     if not sarif_path.is_file():
         _error(
-            "ERROR: CANARY AUDIT FAILED (go/gosec): "
-            f"missing canary SARIF output (exit {res.returncode}, output: {_snippet(combined)})"
+            "ERROR: CANARY AUDIT FAILED (go/golangci-lint): "
+            f"missing canary SARIF output at {sarif_path} (output: {_snippet(combined)})"
         )
         return False
 
     try:
         sarif_data = json.loads(sarif_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        _error(f"ERROR: CANARY AUDIT FAILED (go/gosec): invalid canary SARIF JSON: {exc}")
+        _error(f"ERROR: CANARY AUDIT FAILED (go/golangci-lint): invalid canary SARIF JSON: {exc}")
         return False
 
     rule_ids = extract_sarif_rule_ids(sarif_data)
-    if res.returncode == 0 or GO_CANARY_EXPECTED_RULE not in rule_ids:
+    missing_rules = [
+        r for r in (GO_CANARY_EXPECTED_RULE, GO_CANARY_ALT_LINT_MARKER) if r not in rule_ids
+    ]
+    if missing_rules:
         _error(
-            "ERROR: CANARY AUDIT FAILED (go/gosec): "
-            f"expected non-zero exit and SARIF rule {GO_CANARY_EXPECTED_RULE}, "
-            f"got exit {res.returncode}, rules={sorted(rule_ids)} "
-            f"(output: {_snippet(combined)})"
+            "ERROR: CANARY AUDIT FAILED (go/golangci-lint): "
+            f"canary SARIF missing expected rule(s) {missing_rules}, "
+            f"found rules={sorted(rule_ids)} (output: {_snippet(combined)})"
         )
         return False
     return True
 
 
 def run_go_canary(cfg: GoCanaryConfig) -> int:
-    """Execute isolated golangci-lint and gosec canary self-audit."""
+    """Execute isolated golangci-lint (incl. gosec SARIF) canary self-audit."""
     go_mod_path = cfg.project_dir / "go.mod"
     if not go_mod_path.is_file():
         _error(f"ERROR: CANARY AUDIT FAILED (go): go.mod not found at {go_mod_path}")
@@ -310,12 +291,10 @@ def run_go_canary(cfg: GoCanaryConfig) -> int:
         _prepare_go_canary_dir(canary_dir, go_version, toolchain_version)
         if not _check_golangci_canary(cfg, canary_dir, env):
             return EXIT_FAIL
-        if not _check_gosec_canary(cfg, canary_dir, env):
-            return EXIT_FAIL
 
     _info(
-        f"canary audit passed (go): golangci-lint (exit {GOLANGCI_FINDINGS_RC}), "
-        f"gosec (SARIF rule {GO_CANARY_EXPECTED_RULE})"
+        f"canary audit passed (go): golangci-lint (exit {GOLANGCI_FINDINGS_RC}, "
+        f"SARIF rules {GO_CANARY_EXPECTED_RULE}, {GO_CANARY_ALT_LINT_MARKER})"
     )
     return EXIT_OK
 
@@ -392,11 +371,68 @@ def _parse_gosec_files_scanned(
     return files_scanned
 
 
+def _validate_sarif_run(run: object, gosec_sarif_path: pathlib.Path) -> bool:
+    if not isinstance(run, dict):
+        _error(f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: run entry must be an object")
+        return False
+
+    tool = run.get("tool")
+    driver = tool.get("driver") if isinstance(tool, dict) else None
+    rules = driver.get("rules") if isinstance(driver, dict) else None
+    if not isinstance(rules, list):
+        _error(
+            f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: "
+            "missing tool.driver.rules list (SARIF 2.1.0 compliance)"
+        )
+        return False
+
+    declared_rule_ids = {
+        r["id"] for r in rules if isinstance(r, dict) and isinstance(r.get("id"), str) and r["id"]
+    }
+    has_artifacts = run.get("artifacts") is not None
+    results = run.get("results", [])
+    if not isinstance(results, list):
+        _error(f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: run.results must be a list")
+        return False
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        rule_id = item.get("ruleId")
+        if isinstance(rule_id, str) and rule_id not in declared_rule_ids:
+            _error(
+                f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: "
+                f"result ruleId {rule_id!r} missing from tool.driver.rules"
+            )
+            return False
+        if not has_artifacts:
+            for loc in item.get("locations", []):
+                if not isinstance(loc, dict):
+                    continue
+                phys = loc.get("physicalLocation")
+                art_loc = phys.get("artifactLocation") if isinstance(phys, dict) else None
+                if isinstance(art_loc, dict) and "index" in art_loc:
+                    _error(
+                        f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: "
+                        "artifactLocation.index present without run.artifacts"
+                    )
+                    return False
+    return True
+
+
 def _validate_gosec_sarif(gosec_sarif_path: pathlib.Path) -> bool:
+    if not gosec_sarif_path.is_file():
+        _error(f"ERROR: missing gosec SARIF at {gosec_sarif_path}")
+        return False
+
     try:
         sarif_data = json.loads(gosec_sarif_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         _error(f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: {exc}")
+        return False
+
+    if not isinstance(sarif_data, dict) or not isinstance(sarif_data.get("runs"), list):
+        _error(f"ERROR: invalid gosec SARIF at {gosec_sarif_path}: missing top-level 'runs' list")
         return False
 
     if _sarif_contains_canary_uri(sarif_data):
@@ -406,16 +442,63 @@ def _validate_gosec_sarif(gosec_sarif_path: pathlib.Path) -> bool:
         )
         return False
 
-    return True
+    return all(_validate_sarif_run(run, gosec_sarif_path) for run in sarif_data["runs"])
 
 
-def verify_go_scan(
+def _verify_go_packages_loaded(
+    project_dir: pathlib.Path,
+    non_gen_count: int,
+) -> int | None:
+    go_bin = shutil.which("go")
+    if go_bin is None:
+        _error(
+            "ERROR: ZERO-FILE SCAN DETECTED (go): "
+            f"go executable not found in PATH despite {non_gen_count} non-generated .go files"
+        )
+        return None
+
+    env = os.environ.copy()
+    env["GOFLAGS"] = "-buildvcs=false"
+    try:
+        res = subprocess.run(  # noqa: S603 - resolved go binary with fixed argv
+            [go_bin, "list", "./..."],
+            cwd=str(project_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        _error(f"ERROR: ZERO-FILE SCAN DETECTED (go): failed to run 'go list ./...': {exc}")
+        return None
+
+    combined = f"{res.stdout}\n{res.stderr}"
+    if res.returncode != 0:
+        _error(
+            "ERROR: ZERO-FILE SCAN DETECTED (go): "
+            f"'go list ./...' failed (exit {res.returncode}) despite {non_gen_count} "
+            f"non-generated .go files in {project_dir} (output: {_snippet(combined)})"
+        )
+        return None
+
+    packages = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    if not packages:
+        _error(
+            "ERROR: ZERO-FILE SCAN DETECTED (go): "
+            f"'go list ./...' resolved 0 Go packages despite {non_gen_count} "
+            f"non-generated .go files in {project_dir} (output: {_snippet(combined)})"
+        )
+        return None
+
+    return len(packages)
+
+
+def _verify_go_scan_legacy(
     project_dir: pathlib.Path,
     gosec_out_path: pathlib.Path,
     gosec_sarif_path: pathlib.Path,
+    non_gen_count: int,
 ) -> int:
-    """Verify gosec analyzed > 0 files when non-generated .go files exist."""
-    non_gen_count = count_non_generated_go_files(project_dir)
     if non_gen_count == 0:
         _info(f"go scan check skipped: 0 non-generated .go files in {project_dir}")
         return EXIT_OK
@@ -426,6 +509,34 @@ def verify_go_scan(
 
     _info(
         f"go scan check passed: gosec scanned {files_scanned} files "
+        f"({non_gen_count} non-generated .go files)"
+    )
+    return EXIT_OK
+
+
+def verify_go_scan(
+    project_dir: pathlib.Path,
+    gosec_out_path: pathlib.Path | None,
+    gosec_sarif_path: pathlib.Path,
+) -> int:
+    """Verify Go scan coverage and SARIF integrity when non-generated .go files exist."""
+    non_gen_count = count_non_generated_go_files(project_dir)
+    if gosec_out_path is not None:
+        return _verify_go_scan_legacy(project_dir, gosec_out_path, gosec_sarif_path, non_gen_count)
+
+    if not _validate_gosec_sarif(gosec_sarif_path):
+        return EXIT_FAIL
+
+    if non_gen_count == 0:
+        _info(f"go scan check skipped: 0 non-generated .go files in {project_dir}")
+        return EXIT_OK
+
+    package_count = _verify_go_packages_loaded(project_dir, non_gen_count)
+    if package_count is None:
+        return EXIT_FAIL
+
+    _info(
+        f"go scan check passed: resolved {package_count} Go package(s) "
         f"({non_gen_count} non-generated .go files)"
     )
     return EXIT_OK
@@ -648,12 +759,12 @@ def build_parser() -> argparse.ArgumentParser:
     go_canary_p.add_argument("--project-dir", type=pathlib.Path, required=True)
     go_canary_p.add_argument("--config", type=pathlib.Path, required=True)
     go_canary_p.add_argument("--golangci-lint-bin", type=pathlib.Path, required=True)
-    go_canary_p.add_argument("--gosec-bin", type=pathlib.Path, required=True)
+    go_canary_p.add_argument("--gosec-bin", type=pathlib.Path, default=None)
     go_canary_p.add_argument("--work-dir", type=pathlib.Path, default=None)
 
     go_scan_p = subparsers.add_parser("go-verify-scan")
     go_scan_p.add_argument("--project-dir", type=pathlib.Path, required=True)
-    go_scan_p.add_argument("--gosec-out", type=pathlib.Path, required=True)
+    go_scan_p.add_argument("--gosec-out", type=pathlib.Path, default=None)
     go_scan_p.add_argument("--gosec-sarif", type=pathlib.Path, required=True)
 
     py_canary_p = subparsers.add_parser("python-canary")
@@ -681,14 +792,14 @@ def main(argv: list[str] | None = None) -> int:
                 project_dir=args.project_dir.resolve(),
                 config_file=args.config.resolve(),
                 golangci_lint_bin=args.golangci_lint_bin.resolve(),
-                gosec_bin=args.gosec_bin.resolve(),
+                gosec_bin=args.gosec_bin.resolve() if args.gosec_bin is not None else None,
                 work_dir=args.work_dir.resolve() if args.work_dir is not None else None,
             )
         )
     if args.command == "go-verify-scan":
         return verify_go_scan(
             project_dir=args.project_dir.resolve(),
-            gosec_out_path=args.gosec_out.resolve(),
+            gosec_out_path=args.gosec_out.resolve() if args.gosec_out is not None else None,
             gosec_sarif_path=args.gosec_sarif.resolve(),
         )
     if args.command == "python-canary":

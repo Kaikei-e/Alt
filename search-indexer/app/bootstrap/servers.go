@@ -13,6 +13,7 @@ import (
 	"search-indexer/config"
 	connectv2 "search-indexer/connect/v2"
 	"search-indexer/healthdeep"
+	"search-indexer/internal/httpserver"
 	"search-indexer/middleware"
 	"search-indexer/rest"
 	"search-indexer/usecase"
@@ -49,7 +50,7 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 		mux.Handle("/health/deep", deepHandler)
 	}
 
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              config.HTTPAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -57,7 +58,7 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-	}
+	})
 }
 
 // newConnectServer creates the Connect-RPC server handler.
@@ -69,7 +70,7 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              config.ConnectAddr,
 		Handler:           handler,
 		Protocols:         protocols,
@@ -78,7 +79,7 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-	}
+	})
 }
 
 // newMTLSMuxHandler builds the combined handler served on the :9443 mTLS

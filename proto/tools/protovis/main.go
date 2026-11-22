@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"protovis/internal/fsperm"
 )
 
 // Output paths, relative to the repo root.
@@ -87,11 +88,11 @@ func run(desc, root, goOut, tsOut string) error {
 
 func writeArtifact(path string, content []byte) error {
 	// #nosec G301 -- generated source directory committed to the repository, must remain traversable/readable like other sources.
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), fsperm.GeneratedDir); err != nil {
 		return fmt.Errorf("create output directory for %q: %w", path, err)
 	}
 	// #nosec G306 -- generated source file committed to the repository, must be world-readable like other sources.
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := os.WriteFile(path, content, fsperm.GeneratedFile); err != nil {
 		return fmt.Errorf("write %q: %w", path, err)
 	}
 	return nil

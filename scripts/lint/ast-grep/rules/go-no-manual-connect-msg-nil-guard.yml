@@ -1,0 +1,23 @@
+id: go-no-manual-connect-msg-nil-guard
+language: go
+severity: error
+message: >-
+  Do not scatter manual resp.Msg == nil checks at Connect-RPC client call sites;
+  wire connectguard.NewUnaryNilResponseInterceptor() via connect.WithInterceptors(...)
+  when constructing the Connect client.
+rule:
+  any:
+    - pattern:
+        context: "func _() { _ = $RESP.Msg == nil }"
+        selector: binary_expression
+    - pattern:
+        context: "func _() { _ = nil == $RESP.Msg }"
+        selector: binary_expression
+constraints:
+  RESP:
+    not:
+      regex: "^req"
+ignores:
+  - "**/connectguard/**"
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

@@ -9,10 +9,21 @@ import (
 	recapv2 "alt/gen/proto/alt/recap/v2"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 
+	"rag-orchestrator/internal/connectguard"
 	"rag-orchestrator/internal/domain"
 
 	"connectrpc.com/connect"
 )
+
+// NewRecapServiceClient constructs a RecapServiceClient with the canonical
+// unary nil-response guard interceptor wired in.
+func NewRecapServiceClient(httpClient connect.HTTPClient, baseURL string) recapv2connect.RecapServiceClient {
+	return recapv2connect.NewRecapServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	)
+}
 
 // ConnectRecapSearchClient implements domain.RecapSearchClient using Connect-RPC.
 type ConnectRecapSearchClient struct {

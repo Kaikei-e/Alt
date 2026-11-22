@@ -73,9 +73,6 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	if err != nil {
 		return nil, nil, fmt.Errorf("FindArticlesWithSummaries: %w", err)
 	}
-	if resp == nil || resp.Msg == nil {
-		return nil, nil, fmt.Errorf("FindArticlesWithSummaries: empty response")
-	}
 
 	results := make([]*domain.ArticleWithSummary, len(resp.Msg.GetArticles()))
 	for i, a := range resp.Msg.GetArticles() {

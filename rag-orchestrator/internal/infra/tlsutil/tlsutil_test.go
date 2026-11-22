@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,7 +131,7 @@ func TestLoadClientConfig_ReloadFailure_FallsBackToCached(t *testing.T) {
 	// Corrupt the cert file after advancing mtime: a parse error at reload
 	// time should NOT kill the client; the cached cert must be returned.
 	time.Sleep(10 * time.Millisecond)
-	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), 0o600))
+	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), fsperm.SecretFile))
 	future := time.Now().Add(2 * time.Second)
 	require.NoError(t, os.Chtimes(certPath, future, future))
 

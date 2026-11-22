@@ -16,6 +16,8 @@ import (
 
 	"alt/config"
 
+	"alt/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,9 +54,9 @@ func writeTestCerts(t *testing.T) (certPath, keyPath, caPath string) {
 	caPath = filepath.Join(dir, "ca-bundle.pem")
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
-	require.NoError(t, os.WriteFile(caPath, certPEM, 0o600))
-	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600))
+	require.NoError(t, os.WriteFile(certPath, certPEM, fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(caPath, certPEM, fsperm.SecretFile))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), fsperm.SecretFile))
 
 	return certPath, keyPath, caPath
 }

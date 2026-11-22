@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"knowledge-sovereign/internal/fsperm"
 	"knowledge-sovereign/internal/pki"
 )
 
@@ -108,7 +109,7 @@ func TestCertReloader_KeepsLastGoodAcrossInterruptedInstall(t *testing.T) {
 
 	_, strayKey := newLeafPEM(t, "knowledge-sovereign")
 	staged := files.KeyPath + ".staged"
-	require.NoError(t, os.WriteFile(staged, strayKey, 0o400))
+	require.NoError(t, os.WriteFile(staged, strayKey, fsperm.ReadOnlySecretFile))
 	require.NoError(t, os.Rename(staged, files.KeyPath))
 	bumpMtime(t, 2, files.CertPath, files.KeyPath)
 

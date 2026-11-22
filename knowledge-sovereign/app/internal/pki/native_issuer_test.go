@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"knowledge-sovereign/internal/fsperm"
 	"math/big"
 	"net"
 	"net/http"
@@ -285,7 +286,7 @@ func (f *fakeStepCA) start(t *testing.T) (caURL, rootFile string) {
 
 	rootFile = filepath.Join(t.TempDir(), "root.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.caCert.Raw})
-	if err := os.WriteFile(rootFile, pemBytes, 0o444); err != nil {
+	if err := os.WriteFile(rootFile, pemBytes, fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	return srv.URL, rootFile
@@ -809,7 +810,7 @@ func TestNativeStepCAIssuer_WrongCARoot(t *testing.T) {
 	iss := newNativeIssuer(t, ca)
 	other, _ := generateTestCA(t)
 	wrongRoot := filepath.Join(t.TempDir(), "wrong.pem")
-	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), 0o444); err != nil {
+	if err := os.WriteFile(wrongRoot, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	iss.RootFile = wrongRoot
@@ -937,7 +938,7 @@ func TestNativeStepCAIssuer_PasswordFileErrors(t *testing.T) {
 			name: "too-large",
 			file: func(t *testing.T) string {
 				path := filepath.Join(t.TempDir(), "huge")
-				if err := os.WriteFile(path, bytes.Repeat([]byte("a"), maxPasswordBytes+1), 0o400); err != nil {
+				if err := os.WriteFile(path, bytes.Repeat([]byte("a"), maxPasswordBytes+1), fsperm.ReadOnlySecretFile); err != nil {
 					t.Fatal(err)
 				}
 				return path
@@ -1041,7 +1042,7 @@ func TestNativeStepCAIssuer_PasswordTooLarge(t *testing.T) {
 	ca := newFakeStepCA(t, "pki-agent-knowledge-sovereign", []byte("pw-cap"))
 	url, root := ca.start(t)
 	path := filepath.Join(t.TempDir(), "huge")
-	if err := os.WriteFile(path, bytes.Repeat([]byte("a"), maxPasswordBytes+1), 0o400); err != nil {
+	if err := os.WriteFile(path, bytes.Repeat([]byte("a"), maxPasswordBytes+1), fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	iss := &NativeStepCAIssuer{

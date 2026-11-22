@@ -24,6 +24,8 @@ impl StaticRegexSet {
     ///
     /// Returns [`RegexError::CompilationFailed`] if any pattern in the set fails to compile,
     /// or [`RegexError::IndexOutOfBounds`] if `index` is out of range.
+    // Canonical StaticRegexSet compilation entry point propagating RegexError.
+    #[allow(clippy::disallowed_methods)]
     pub fn get(&self, index: usize) -> Result<&Regex, RegexError> {
         let compiled = self.compiled.get_or_init(|| {
             let mut regexes = Vec::with_capacity(self.patterns.len());

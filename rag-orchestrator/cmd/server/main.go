@@ -24,6 +24,7 @@ import (
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/di"
+	"rag-orchestrator/internal/httpserver"
 	"rag-orchestrator/internal/infra"
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/logger"
@@ -171,14 +172,14 @@ func main() {
 	// explicitly to avoid the bare http.Server defaults (unlimited = open
 	// to Slowloris). WriteTimeout stays 0 (unlimited) because the SSE
 	// streaming endpoints (handler.go writeSSE) hold the response open.
-	echoServer := &http.Server{
+	echoServer := httpserver.New(httpserver.Config{
 		Addr:              fmt.Sprintf(":%s", cfg.Server.Port),
 		Handler:           e,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20, // 1 MiB
-	}
+	})
 
 	go func() {
 		if connectTLS != nil {
@@ -368,11 +369,11 @@ func newHealthMux(pinger HealthPinger, log *slog.Logger) *http.ServeMux {
 
 // newHealthServer constructs the dedicated plaintext health HTTP server.
 func newHealthServer(addr string, pinger HealthPinger, log *slog.Logger) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           newHealthMux(pinger, log),
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	})
 }
 
 func cleartextHTTP2() *http.Protocols {
@@ -385,12 +386,12 @@ func cleartextHTTP2() *http.Protocols {
 // newPlaintextConnectServer constructs the plaintext Connect-RPC server used
 // when PEER_IDENTITY_MODE=disabled.
 func newPlaintextConnectServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		Protocols:         cleartextHTTP2(),
 		ReadHeaderTimeout: 10 * time.Second,
-	}
+	})
 }
 
 // newProductionTLSServer constructs a production *http.Server configured with
@@ -401,12 +402,12 @@ func newProductionTLSServer(addr string, handler http.Handler, certFile, keyFile
 	if err != nil {
 		return nil, err
 	}
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsCfg,
 		ReadHeaderTimeout: 10 * time.Second,
-	}, nil
+	}), nil
 }
 
 // isHealthcheckCommand returns true if "healthcheck" is present in args.

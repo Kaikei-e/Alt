@@ -1,6 +1,7 @@
 package config
 
 import (
+	"alt/internal/fsperm"
 	"crypto/ed25519"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 func writeBackendVerifyKeyFile(t *testing.T, content []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "backend_token_verify_key")
-	if err := os.WriteFile(path, content, 0o600); err != nil {
+	if err := os.WriteFile(path, content, fsperm.SecretFile); err != nil {
 		t.Fatalf("failed to write verify key file: %v", err)
 	}
 	return path

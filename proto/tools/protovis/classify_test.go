@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	apiv1 "protovis/gen/alt/api/v1"
+	"protovis/internal/fsperm"
 )
 
 // service builds a ServiceDescriptorProto, optionally carrying the visibility
@@ -60,7 +61,7 @@ func descriptorSetFile(t *testing.T, files ...*descriptorpb.FileDescriptorProto)
 		t.Fatalf("marshal descriptor set: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "descriptor.binpb")
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	if err := os.WriteFile(path, raw, fsperm.SecretFile); err != nil {
 		t.Fatalf("write descriptor set: %v", err)
 	}
 	return path

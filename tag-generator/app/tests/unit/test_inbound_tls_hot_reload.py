@@ -16,6 +16,7 @@ import ssl
 import subprocess
 import threading
 import time
+from contextlib import aclosing
 from pathlib import Path
 
 import pytest
@@ -399,8 +400,6 @@ async def test_start_inbound_tls_listener_serves_and_aclose(tmp_path: Path) -> N
     app = Starlette(routes=[Route("/health", lambda _r: PlainTextResponse("ok"))])
     runtime = await start_inbound_tls_listener(app, bind)
     assert runtime is not None
-    try:
+    async with aclosing(runtime):
         port = runtime.server.sockets[0].getsockname()[1]
         await asyncio.to_thread(_handshake_enddate, port, cert, key)
-    finally:
-        await runtime.aclose()

@@ -1,6 +1,7 @@
 package tlsutil
 
 import (
+	"auth-hub/internal/fsperm"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -45,9 +46,9 @@ func TestLoadServerConfig_Smoke(t *testing.T) {
 	cert := filepath.Join(dir, "svc-cert.pem")
 	key := filepath.Join(dir, "svc-key.pem")
 	ca := filepath.Join(dir, "ca.pem")
-	_ = os.WriteFile(cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}), 0600)
-	_ = os.WriteFile(key, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: leafKeyDER}), 0600)
-	_ = os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0600)
+	_ = os.WriteFile(cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}), fsperm.SecretFile)
+	_ = os.WriteFile(key, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: leafKeyDER}), fsperm.SecretFile)
+	_ = os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), fsperm.SecretFile)
 
 	cfg, err := LoadServerConfig(cert, key, ca)
 	if err != nil {

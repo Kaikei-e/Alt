@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"alt/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +15,7 @@ func TestMQHubAuth_SecretFileValidation(t *testing.T) {
 	t.Run("valid token file loads token", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "mqhub_token.txt")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("valid-mqhub-token-123\n"), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("valid-mqhub-token-123\n"), fsperm.SecretFile))
 
 		cfg := &MQHubConfig{
 			AuthTokenFile: tokenFile,
@@ -26,7 +28,7 @@ func TestMQHubAuth_SecretFileValidation(t *testing.T) {
 	t.Run("empty token file fails fast", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "empty_token.txt")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("   \n\t  \n"), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("   \n\t  \n"), fsperm.SecretFile))
 
 		cfg := &MQHubConfig{
 			AuthTokenFile: tokenFile,

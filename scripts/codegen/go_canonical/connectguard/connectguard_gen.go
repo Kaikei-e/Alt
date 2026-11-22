@@ -1,0 +1,46 @@
+// Package connectguard provides Connect-RPC client interceptors that enforce
+// non-nil response messages at the transport boundary.
+package connectguard
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+
+	"connectrpc.com/connect"
+)
+
+// NewUnaryNilResponseInterceptor returns a Connect unary interceptor that
+// rejects nil responses or responses carrying a nil protobuf message before
+// generated Get*() accessors can silently coerce them into zero values.
+func NewUnaryNilResponseInterceptor() connect.UnaryInterceptorFunc {
+	return func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			resp, err := next(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+			if resp == nil || isNilMsg(resp.Any()) {
+				proc := ""
+				if req != nil {
+					proc = req.Spec().Procedure
+				}
+				return nil, fmt.Errorf("%s: nil response message", proc)
+			}
+			return resp, nil
+		}
+	}
+}
+
+func isNilMsg(msg any) bool {
+	if msg == nil {
+		return true
+	}
+	v := reflect.ValueOf(msg)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
+}

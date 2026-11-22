@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"search-indexer/internal/httpserver"
 	"strings"
 	"sync"
 	"time"
@@ -195,7 +196,7 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 // listener was previously missing all three, leaving it unbounded against
 // slow-request/slow-response connection exhaustion (CWE-400).
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
@@ -204,5 +205,5 @@ func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler)
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-	}
+	})
 }

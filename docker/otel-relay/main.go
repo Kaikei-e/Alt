@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"otel-relay/internal/httpserver"
 	"strings"
 	"syscall"
 	"time"
@@ -255,13 +256,13 @@ func main() {
 		client:    newClient(),
 	}
 
-	httpSrv := &http.Server{
+	httpSrv := httpserver.New(httpserver.Config{
 		Addr:         listenAddr,
 		Handler:      newMux(s),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  30 * time.Second,
-	}
+	})
 
 	go func() {
 		// #nosec G706 -- listenAddr is constant and targetURL is validated from OTEL_EXPORTER_OTLP_ENDPOINT at startup.

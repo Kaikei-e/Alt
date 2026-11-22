@@ -20,7 +20,7 @@ notes = "Replacing direct protobuf field reads with generated Get*() methods und
 
 [detection]
 planned_checks = ["ARCH-02", "VERIFY-01"]
-active_checks = []
-currently_caught = false
-current_method = "レビュー観点のみ"
-expected_signal = ""
+active_checks = ["ARCH-02"]
+currently_caught = true
+current_method = "ARCH-02"
+expected_signal = "go-no-unguarded-response-proto-getter"

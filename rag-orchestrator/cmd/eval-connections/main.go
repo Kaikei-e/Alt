@@ -22,6 +22,8 @@ import (
 	"rag-orchestrator/internal/infra/httpclient"
 	"rag-orchestrator/internal/usecase"
 
+	"rag-orchestrator/internal/fsperm"
+
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -214,7 +216,7 @@ func runScore(flags scoreFlags, stdout io.Writer) error {
 	jsonBytes = append(jsonBytes, '\n')
 
 	if strings.TrimSpace(flags.jsonOutPath) != "" {
-		if err := os.WriteFile(flags.jsonOutPath, jsonBytes, 0o600); err != nil {
+		if err := os.WriteFile(flags.jsonOutPath, jsonBytes, fsperm.SecretFile); err != nil {
 			return fmt.Errorf("write JSON report %s: %w", flags.jsonOutPath, err)
 		}
 	}

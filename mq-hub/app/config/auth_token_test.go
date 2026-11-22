@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"mq-hub/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +39,7 @@ func TestResolveAuthToken(t *testing.T) {
 	t.Run("empty token file content returns error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "empty_token")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("   \n\t "), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("   \n\t "), fsperm.SecretFile))
 		t.Setenv("MQHUB_AUTH_TOKEN_FILE", tokenFile)
 		t.Setenv("MQHUB_AUTH_TOKEN", "")
 
@@ -49,7 +51,7 @@ func TestResolveAuthToken(t *testing.T) {
 	t.Run("non-ASCII token returns error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "non_ascii_token")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("secret-token-日本語\n"), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("secret-token-日本語\n"), fsperm.SecretFile))
 		t.Setenv("MQHUB_AUTH_TOKEN_FILE", tokenFile)
 		t.Setenv("MQHUB_AUTH_TOKEN", "")
 
@@ -61,7 +63,7 @@ func TestResolveAuthToken(t *testing.T) {
 	t.Run("token with control characters returns error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "control_token")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("secret\x00token\n"), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("secret\x00token\n"), fsperm.SecretFile))
 		t.Setenv("MQHUB_AUTH_TOKEN_FILE", tokenFile)
 		t.Setenv("MQHUB_AUTH_TOKEN", "")
 
@@ -73,7 +75,7 @@ func TestResolveAuthToken(t *testing.T) {
 	t.Run("valid token from file succeeds", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "valid_token")
-		require.NoError(t, os.WriteFile(tokenFile, []byte("mqhub-valid-bearer-token-1234\n"), 0600))
+		require.NoError(t, os.WriteFile(tokenFile, []byte("mqhub-valid-bearer-token-1234\n"), fsperm.SecretFile))
 		t.Setenv("MQHUB_AUTH_TOKEN_FILE", tokenFile)
 		t.Setenv("MQHUB_AUTH_TOKEN", "")
 

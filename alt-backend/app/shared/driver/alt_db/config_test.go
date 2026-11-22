@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"alt/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +101,7 @@ func TestLoadDatabaseConfigFromEnv_PasswordFailFast(t *testing.T) {
 
 	t.Run("empty password file returns error", func(t *testing.T) {
 		emptyFile := filepath.Join(t.TempDir(), "empty-secret")
-		require.NoError(t, os.WriteFile(emptyFile, []byte("   \n"), 0o600))
+		require.NoError(t, os.WriteFile(emptyFile, []byte("   \n"), fsperm.SecretFile))
 		t.Setenv("DB_PASSWORD_FILE", emptyFile)
 		t.Setenv("DB_PASSWORD", "")
 		t.Setenv("DB_SSL_MODE", "disable")
@@ -112,7 +114,7 @@ func TestLoadDatabaseConfigFromEnv_PasswordFailFast(t *testing.T) {
 
 	t.Run("readable password file loads trimmed secret", func(t *testing.T) {
 		secretFile := filepath.Join(t.TempDir(), "db-secret")
-		require.NoError(t, os.WriteFile(secretFile, []byte("file-secret-value\n"), 0o600))
+		require.NoError(t, os.WriteFile(secretFile, []byte("file-secret-value\n"), fsperm.SecretFile))
 		t.Setenv("DB_PASSWORD_FILE", secretFile)
 		t.Setenv("DB_PASSWORD", "")
 		t.Setenv("DB_SSL_MODE", "require")

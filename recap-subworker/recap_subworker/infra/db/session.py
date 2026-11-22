@@ -13,6 +13,7 @@ application and therefore cannot read from ``app.state``.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import dataclass
 
 import structlog
@@ -92,8 +93,5 @@ async def get_session() -> AsyncIterator[AsyncSession]:  # pragma: no cover - le
     and take sessions from ``container.db.session_factory``.
     """
     resources = create_database_resources(get_settings())
-    try:
-        async with resources.session_factory() as session:
-            yield session
-    finally:
-        await resources.aclose()
+    async with aclosing(resources), resources.session_factory() as session:
+        yield session

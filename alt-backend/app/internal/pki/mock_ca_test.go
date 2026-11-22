@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"alt/internal/fsperm"
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
@@ -274,7 +275,7 @@ func (f *fakeStepCA) start(t *testing.T) (caURL, rootFile string) {
 
 	rootFile = filepath.Join(t.TempDir(), "root.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.caCert.Raw})
-	if err := os.WriteFile(rootFile, pemBytes, 0o444); err != nil {
+	if err := os.WriteFile(rootFile, pemBytes, fsperm.ReadOnlyPublicFile); err != nil {
 		t.Fatal(err)
 	}
 	return srv.URL, rootFile

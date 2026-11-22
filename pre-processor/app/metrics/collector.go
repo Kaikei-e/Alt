@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"pre-processor/config"
+	"pre-processor/internal/httpserver"
 )
 
 // metricsListenerEnabledLog and metricsListenerDisabledLog state the metrics
@@ -505,14 +506,14 @@ func (c *Collector) Start(ctx context.Context, errCh chan<- error) error {
 	})
 
 	addr := fmt.Sprintf(":%d", c.port)
-	server := &http.Server{
+	server := httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: c.readHeaderTimeout,
 		ReadTimeout:       c.readTimeout,
 		WriteTimeout:      c.writeTimeout,
 		IdleTimeout:       c.idleTimeout,
-	}
+	})
 
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {

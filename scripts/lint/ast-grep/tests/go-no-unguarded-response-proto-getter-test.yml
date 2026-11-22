@@ -1,0 +1,58 @@
+id: go-no-unguarded-response-proto-getter
+valid:
+  # C-04 before: explicit nil guard prevents silent zero-value success
+  - |
+    package backendapi
+
+    import "fmt"
+
+    func extractArticleIDs(resp *ListArticlesResponse) ([]string, error) {
+    	if resp == nil {
+    		return nil, fmt.Errorf("ListArticlesWithTagsForward: nil response message")
+    	}
+    	ids := make([]string, 0, len(resp.GetArticles()))
+    	for _, a := range resp.GetArticles() {
+    		ids = append(ids, a.GetId())
+    	}
+    	return ids, nil
+    }
+  - |
+    package backendapi
+
+    func extractDirect(resp *ListArticlesResponse) ([]string, error) {
+    	if resp == nil {
+    		return nil, errNil
+    	}
+    	return []string{resp.Articles[0].Id}, nil
+    }
+  - |
+    package backendapi
+
+    func (c *Client) extractSafe(resp *ListArticlesResponse) ([]string, error) {
+    	if resp == nil {
+    		return nil, errNil
+    	}
+    	return []string{resp.GetArticles()[0].GetId()}, nil
+    }
+invalid:
+  # C-04 after: naive protogetter migration omits nil guard on *...Response
+  - |
+    package backendapi
+
+    func extractArticleIDs(resp *ListArticlesResponse) ([]string, error) {
+    	ids := make([]string, 0, len(resp.GetArticles()))
+    	for _, a := range resp.GetArticles() {
+    		ids = append(ids, a.GetId())
+    	}
+    	return ids, nil
+    }
+  - |
+    package backendapi
+
+    func (c *Client) extractArticleIDs(resp *ListArticlesResponse) ([]string, error) {
+    	ids := make([]string, 0, len(resp.GetArticles()))
+    	for _, a := range resp.GetArticles() {
+    		ids = append(ids, a.GetId())
+    	}
+    	return ids, nil
+    }

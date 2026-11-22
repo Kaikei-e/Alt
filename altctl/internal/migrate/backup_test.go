@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/alt-project/altctl/internal/stack"
 )
 
@@ -199,15 +200,15 @@ func TestCompressBackupDir(t *testing.T) {
 	baseDir := t.TempDir()
 	backupDir := filepath.Join(baseDir, "20260409_120000")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
+	if err := os.MkdirAll(volumesDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
 
 	// Write some test files
-	if err := os.WriteFile(filepath.Join(backupDir, "manifest.json"), []byte(`{"version":"1.0"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, "manifest.json"), []byte(`{"version":"1.0"}`), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(volumesDir, "db_data_17.dump"), []byte("fake-pg-dump-data"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(volumesDir, "db_data_17.dump"), []byte("fake-pg-dump-data"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -384,10 +385,10 @@ func TestComposeFileList_MissingComposeDir_TolerantEmpty(t *testing.T) {
 func TestComposeFileList_MissingAggregate_Aborts(t *testing.T) {
 	root := t.TempDir()
 	composeDir := filepath.Join(root, "compose")
-	if err := os.MkdirAll(composeDir, 0o750); err != nil {
+	if err := os.MkdirAll(composeDir, fsperm.PrivateDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -450,7 +451,7 @@ func TestComposeFileList_AggregateCoversSovereign(t *testing.T) {
 func TestMigrator_BuildComposeArgs_UsesAggregateFileOnly(t *testing.T) {
 	dir := t.TempDir()
 	writeFile := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), fsperm.SecretFile); err != nil {
 			t.Fatal(err)
 		}
 	}

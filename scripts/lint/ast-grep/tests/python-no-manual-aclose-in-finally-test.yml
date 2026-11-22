@@ -1,0 +1,40 @@
+id: python-no-manual-aclose-in-finally
+valid:
+  # C-07/before.py: contextlib.aclosing inside try keeps finally sentinel guaranteed
+  - |
+    from contextlib import aclosing
+
+    async def forward_stream_chunks(original_stream, data_queue):
+        try:
+            async with aclosing(original_stream) as stream:
+                async for chunk in stream:
+                    await data_queue.put(("data", chunk))
+        except Exception:
+            await data_queue.put(("error", "summary generation failed"))
+        finally:
+            await data_queue.put(None)
+  # Closing outside a finally block (e.g. explicit helper method or test assertion)
+  - |
+    async def shutdown(client):
+        await client.aclose()
+invalid:
+  # C-07/after.py: manual aclose() inside finally aborts before terminal sentinel
+  - |
+    async def forward_stream_chunks(original_stream, data_queue):
+        try:
+            async for chunk in original_stream:
+                await data_queue.put(("data", chunk))
+        except Exception:
+            await data_queue.put(("error", "summary generation failed"))
+        finally:
+            await original_stream.aclose()
+            await data_queue.put(None)
+  # Conditional manual aclose() nested inside finally
+  - |
+    async def consume(stream_gen):
+        try:
+            async for item in stream_gen:
+                yield item
+        finally:
+            if hasattr(stream_gen, "aclose"):
+                await stream_gen.aclose()

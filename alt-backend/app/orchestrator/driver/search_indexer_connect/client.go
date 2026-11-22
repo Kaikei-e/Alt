@@ -13,6 +13,7 @@ import (
 
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/gen/proto/services/search/v2/searchv2connect"
+	"alt/internal/connectguard"
 	"alt/tlsutil"
 	"alt/utils/authcontext"
 	"alt/utils/safeconv"
@@ -115,7 +116,7 @@ func NewClient(baseURL string) (*Client, error) {
 		httpClient,
 		baseURL,
 		connect.WithProtoJSON(),
-		connect.WithInterceptors(&authInterceptor{}),
+		connect.WithInterceptors(&authInterceptor{}, connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &Client{client: client}, nil
 }
@@ -126,7 +127,7 @@ func NewClientWithHTTPClient(baseURL string, httpClient connect.HTTPClient) *Cli
 		httpClient,
 		baseURL,
 		connect.WithProtoJSON(),
-		connect.WithInterceptors(&authInterceptor{}),
+		connect.WithInterceptors(&authInterceptor{}, connectguard.NewUnaryNilResponseInterceptor()),
 	)
 	return &Client{client: client}
 }

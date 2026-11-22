@@ -1,0 +1,22 @@
+id: go-no-octal-filemode-literal
+language: go
+severity: error
+message: >-
+  Do not pass raw numeric file mode literals to os.WriteFile or os.MkdirAll;
+  use a purpose-named os.FileMode constant from internal/fsperm (e.g.,
+  fsperm.SecretFile, fsperm.GeneratedFile, fsperm.PrivateDir, fsperm.GeneratedDir).
+rule:
+  any:
+    - pattern: os.WriteFile($PATH, $DATA, $MODE)
+    - pattern: os.MkdirAll($PATH, $MODE)
+constraints:
+  MODE:
+    any:
+      - kind: int_literal
+      - has:
+          stopBy: end
+          kind: int_literal
+ignores:
+  - "**/fsperm/**"
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

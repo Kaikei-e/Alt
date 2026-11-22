@@ -9,6 +9,7 @@ import sys
 import wave
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,10 +21,10 @@ _HTTP_FORBIDDEN = 403
 
 
 @pytest.fixture(autouse=True)
-def clean_main_module() -> Iterator[None]:
-    sys.modules.pop("tts_speaker.main", None)
-    yield
-    sys.modules.pop("tts_speaker.main", None)
+def clean_main_module(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with patch.dict(sys.modules):
+        monkeypatch.delitem(sys.modules, "tts_speaker.main", raising=False)
+        yield
 
 
 def test_main_exits_on_missing_config(monkeypatch: pytest.MonkeyPatch) -> None:

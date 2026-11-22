@@ -37,13 +37,19 @@ class MockCountVectorizer:
         self._kwargs = kwargs
 
 
-# Install mock module before tests if sklearn is not available
-if "sklearn" not in sys.modules:
-    mock_sklearn = MagicMock()
-    mock_sklearn.feature_extraction.text.CountVectorizer = MockCountVectorizer
-    sys.modules["sklearn"] = mock_sklearn
-    sys.modules["sklearn.feature_extraction"] = mock_sklearn.feature_extraction
-    sys.modules["sklearn.feature_extraction.text"] = mock_sklearn.feature_extraction.text
+@pytest.fixture(autouse=True)
+def _install_mock_sklearn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Install a scoped sklearn stub when sklearn is not loaded in sys.modules."""
+    if "sklearn" not in sys.modules:
+        mock_sklearn = MagicMock()
+        mock_sklearn.feature_extraction.text.CountVectorizer = MockCountVectorizer
+        monkeypatch.setitem(sys.modules, "sklearn", mock_sklearn)
+        monkeypatch.setitem(sys.modules, "sklearn.feature_extraction", mock_sklearn.feature_extraction)
+        monkeypatch.setitem(
+            sys.modules,
+            "sklearn.feature_extraction.text",
+            mock_sklearn.feature_extraction.text,
+        )
 
 
 class TestJapaneseKeyBERTScoringUppercase:

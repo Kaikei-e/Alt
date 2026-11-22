@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"rag-orchestrator/internal/fsperm"
 	"strings"
 	"time"
 )
@@ -225,7 +226,7 @@ func SaveReport(report EvalReport, path string) error {
 	}
 	// A report over the real corpus carries article titles and generated
 	// answers, so it is written owner-only.
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, data, fsperm.SecretFile); err != nil {
 		return fmt.Errorf("write report %s: %w", path, err)
 	}
 	return nil

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"alt/config"
+	"alt/internal/fsperm"
 )
 
 func fieldNames(t *testing.T, v any) map[string]bool {
@@ -197,7 +198,7 @@ func setDataHubClientEnv(t *testing.T) {
 		caPath:   certPEM,
 		keyPath:  pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}),
 	} {
-		if err := os.WriteFile(path, content, 0o600); err != nil {
+		if err := os.WriteFile(path, content, fsperm.SecretFile); err != nil {
 			t.Fatalf("write %s: %v", path, err)
 		}
 	}

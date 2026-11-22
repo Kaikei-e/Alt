@@ -78,7 +78,6 @@ addopts = [
 asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py314"
 line-length = 120
 exclude = [".git", "__pycache__", ".venv", "build", "dist", "acolyte/gen"]
 

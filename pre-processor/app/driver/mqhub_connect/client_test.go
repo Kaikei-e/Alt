@@ -3,11 +3,15 @@ package mqhub_connect
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	mqhubv1 "pre-processor/gen/proto/services/mqhub/v1"
 )
 
 func TestNewClient_Disabled(t *testing.T) {
@@ -74,4 +78,22 @@ func TestClient_StreamKeysAndEventTypes(t *testing.T) {
 	// Verify constants are defined correctly
 	assert.Equal(t, "alt:events:summaries", StreamKeySummaries)
 	assert.Equal(t, "ArticleSummarized", EventTypeArticleSummarized)
+}
+
+func TestPublishArticleSummarized_NilResponseFailsFast(t *testing.T) {
+	nilMsgInterceptor := connect.UnaryInterceptorFunc(func(_ connect.UnaryFunc) connect.UnaryFunc {
+		return func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+			var nilMsg *mqhubv1.PublishResponse
+			return connect.NewResponse(nilMsg), nil
+		}
+	})
+
+	client := newClientWithOptions("http://127.0.0.1:1", http.DefaultClient, connect.WithInterceptors(nilMsgInterceptor))
+	_, err := client.PublishArticleSummarized(context.Background(), ArticleSummarizedPayload{
+		ArticleID: "article-123",
+		UserID:    "user-456",
+		Summary:   "summary",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil response message")
 }

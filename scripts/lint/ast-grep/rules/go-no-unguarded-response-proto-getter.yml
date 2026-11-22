@@ -1,0 +1,60 @@
+id: go-no-unguarded-response-proto-getter
+language: go
+severity: error
+message: >-
+  Function taking a *...Response parameter and returning an error calls a proto
+  Get*() getter without guarding against a nil response; check 'if resp == nil'
+  or enforce non-nil responses via connectguard.NewUnaryNilResponseInterceptor().
+rule:
+  all:
+    - any:
+        - kind: function_declaration
+        - kind: method_declaration
+    - has:
+        field: parameters
+        has:
+          pattern:
+            context: "func _($RESP *$TYPE) {}"
+            selector: parameter_declaration
+    - has:
+        field: result
+        regex: "\\berror\\b"
+    - has:
+        field: body
+        has:
+          stopBy: end
+          kind: call_expression
+          has:
+            field: function
+            kind: selector_expression
+            all:
+              - has:
+                  field: operand
+                  pattern: $RESP
+              - has:
+                  field: field
+                  regex: "^Get[A-Z]"
+    - not:
+        has:
+          field: body
+          has:
+            stopBy: end
+            any:
+              - pattern:
+                  context: "func _() { _ = $RESP == nil }"
+                  selector: binary_expression
+              - pattern:
+                  context: "func _() { _ = nil == $RESP }"
+                  selector: binary_expression
+              - pattern:
+                  context: "func _() { _ = $RESP != nil }"
+                  selector: binary_expression
+              - pattern:
+                  context: "func _() { _ = nil != $RESP }"
+                  selector: binary_expression
+constraints:
+  TYPE:
+    regex: "Response$"
+ignores:
+  - "stopped-using-k8s/**"
+  - "scripts/harness/corpus/**"

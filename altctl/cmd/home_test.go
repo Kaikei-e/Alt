@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +41,7 @@ func newTestAdminCmd(t *testing.T) *cobra.Command {
 func writeTokenFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.SecretFile); err != nil {
 		t.Fatalf("write token file: %v", err)
 	}
 	return path
@@ -123,7 +124,7 @@ func TestLoadOperatorToken_DefaultMissing_ReturnsEmptyWithoutError(t *testing.T)
 func TestLoadOperatorToken_DefaultPresent_ReadsProjectRootSecret(t *testing.T) {
 	setupRootTest(t)
 	secretsDir := filepath.Join(cfg.Project.Root, "secrets")
-	if err := os.MkdirAll(secretsDir, 0o700); err != nil {
+	if err := os.MkdirAll(secretsDir, fsperm.SecretDir); err != nil {
 		t.Fatalf("mkdir secrets: %v", err)
 	}
 	writeTokenFile(t, secretsDir, "backend_operator_token.txt", "default-token")

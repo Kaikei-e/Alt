@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"pre-processor/internal/fsperm"
 	"testing"
 	"time"
 )
@@ -119,7 +120,7 @@ func TestCertFile_Load_MismatchedPairIsCorrupt(t *testing.T) {
 	if err := os.Remove(cf.KeyPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cf.KeyPath, keyB, 0o400); err != nil {
+	if err := os.WriteFile(cf.KeyPath, keyB, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	_, err := cf.Load(context.Background())
@@ -137,13 +138,13 @@ func TestCertFile_Load_RestoresPreviousKeyFromJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, keyB := newSelfSignedPEM(t, "alt-backend", nb, nb.Add(2*time.Hour))
-	if err := os.WriteFile(cf.journalPath(), keyA, 0o400); err != nil {
+	if err := os.WriteFile(cf.journalPath(), keyA, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(cf.KeyPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cf.KeyPath, keyB, 0o400); err != nil {
+	if err := os.WriteFile(cf.KeyPath, keyB, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	got, err := cf.Load(context.Background())

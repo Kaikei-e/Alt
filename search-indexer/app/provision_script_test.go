@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"search-indexer/internal/fsperm"
 	"strings"
 	"testing"
 )
@@ -37,7 +38,7 @@ func runProvisionScript(t *testing.T, env map[string]string, args ...string) pro
 	if err := os.Mkdir(binDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(binDir, "redis-cli"), []byte(fakeRedisCLI), 0o700); err != nil { // #nosec G306 -- the fake has to be executable
+	if err := os.WriteFile(filepath.Join(binDir, "redis-cli"), []byte(fakeRedisCLI), fsperm.OwnerExecFile); err != nil { // #nosec G306 -- the fake has to be executable
 		t.Fatal(err)
 	}
 	argsFile := filepath.Join(dir, "args")
@@ -68,7 +69,7 @@ func runProvisionScript(t *testing.T, env map[string]string, args ...string) pro
 func writePasswordFile(t *testing.T, password string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "redis_streams_password")
-	if err := os.WriteFile(path, []byte(password+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(password+"\n"), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 	return path

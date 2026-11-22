@@ -16,6 +16,7 @@ import (
 
 	mqhubv1 "pre-processor/gen/proto/services/mqhub/v1"
 	"pre-processor/gen/proto/services/mqhub/v1/mqhubv1connect"
+	"pre-processor/internal/connectguard"
 )
 
 // StreamKey constants matching mq-hub domain.
@@ -78,14 +79,22 @@ func NewClient(baseURL string, tokenPath string, enabled bool) (*Client, error) 
 		},
 	}
 
+	return newClientWithOptions(baseURL, httpClient), nil
+}
+
+func newClientWithOptions(baseURL string, httpClient *http.Client, extraOpts ...connect.ClientOption) *Client {
+	opts := append([]connect.ClientOption{
+		connect.WithInterceptors(connectguard.NewUnaryNilResponseInterceptor()),
+	}, extraOpts...)
 	client := mqhubv1connect.NewMQHubServiceClient(
 		httpClient,
 		baseURL,
+		opts...,
 	)
 	return &Client{
 		client:  client,
 		enabled: true,
-	}, nil
+	}
 }
 
 // IsEnabled returns true if the client is enabled.
@@ -126,9 +135,6 @@ func (c *Client) PublishArticleSummarized(ctx context.Context, payload ArticleSu
 	}))
 	if err != nil {
 		return "", err
-	}
-	if resp == nil || resp.Msg == nil {
-		return "", fmt.Errorf("mqhub publish: empty response")
 	}
 
 	return resp.Msg.GetMessageId(), nil

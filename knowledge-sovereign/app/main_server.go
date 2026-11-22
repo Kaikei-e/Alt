@@ -14,10 +14,11 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/internal/httpserver"
 )
 
 func newHTTPServer(addr string, h http.Handler, writeTimeout time.Duration) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -25,7 +26,7 @@ func newHTTPServer(addr string, h http.Handler, writeTimeout time.Duration) *htt
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-	}
+	})
 }
 
 func logEventAuthStatus(cfg *config.Config) {

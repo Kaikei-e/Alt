@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"search-indexer/internal/httpserver"
 	"strings"
 	"time"
 )
@@ -40,14 +41,14 @@ func NewOpsHandler(serviceName string, metrics http.Handler) http.Handler {
 
 // NewOpsServer builds the ops listener with the shared GREEN timeouts.
 func NewOpsServer(addr string, h http.Handler) *http.Server {
-	return &http.Server{
+	return httpserver.New(httpserver.Config{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
-	}
+	})
 }
 
 // OpsListenAddr is 127.0.0.1:9110 unless OPS_LISTEN is set (compose later

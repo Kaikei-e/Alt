@@ -123,8 +123,5 @@ func (c *Client) AppendKnowledgeEvent(ctx context.Context, event domain.Knowledg
 	if err != nil {
 		return 0, fmt.Errorf("sovereign AppendKnowledgeEvent: %w", err)
 	}
-	if resp == nil || resp.Msg == nil {
-		return 0, nil
-	}
 	return resp.Msg.GetEventSeq(), nil
 }

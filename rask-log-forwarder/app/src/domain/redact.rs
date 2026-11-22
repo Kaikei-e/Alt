@@ -18,6 +18,15 @@ pub struct RedactionPatterns {
     json_string_pair: Regex,
 }
 
+/// Canonical alias for the compiled secret-redaction mask set.
+pub type MaskSet = RedactionPatterns;
+
+// Canonical redaction regex compilation entry point (ARCH-02 / C-17).
+#[allow(clippy::disallowed_methods)]
+fn compile_pattern(pattern: &str) -> Result<Regex, regex::Error> {
+    Regex::new(pattern)
+}
+
 /// Compile every secret-redaction regex once at startup. Any pattern that
 /// fails to compile is propagated as an error rather than skipped.
 ///
@@ -26,17 +35,19 @@ pub struct RedactionPatterns {
 /// Returns [`regex::Error`] if any built-in redaction pattern fails to compile.
 pub fn compile_patterns() -> Result<RedactionPatterns, regex::Error> {
     Ok(RedactionPatterns {
-        query_param: Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#)?,
-        bare_key_value: Regex::new(r#"(^|[\s,])([A-Za-z0-9_.\-]+)=([^\s,&;"'#]+)"#)?,
+        query_param: compile_pattern(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#)?,
+        bare_key_value: compile_pattern(r#"(^|[\s,])([A-Za-z0-9_.\-]+)=([^\s,&;"'#]+)"#)?,
         // Cookie headers hold `name=value; name=value` pairs, so the value runs to the
         // end of the line or the next unescaped quote.
-        cookie_header: Regex::new(r#"(?i)\b(set-cookie|cookie)(\s*[:=]\s*)(?:[^\r\n"\\]|\\.)*"#)?,
+        cookie_header: compile_pattern(
+            r#"(?i)\b(set-cookie|cookie)(\s*[:=]\s*)(?:[^\r\n"\\]|\\.)*"#,
+        )?,
         // Single-credential headers: an optional auth scheme plus one token.
-        token_header: Regex::new(
+        token_header: compile_pattern(
             r#"(?i)\b((?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|digest|token|negotiate)\s+)?|x-[a-z0-9-]*-(?:token|secret|key)\s*[:=]\s*)(?:[^\s,;"\\]|\\.)+"#,
         )?,
-        json_container_key: Regex::new(r#""([A-Za-z0-9_.\-]+)"\s*:\s*[\[{]"#)?,
-        json_string_pair: Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"(?:[^"\\]|\\.)*""#)?,
+        json_container_key: compile_pattern(r#""([A-Za-z0-9_.\-]+)"\s*:\s*[\[{]"#)?,
+        json_string_pair: compile_pattern(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"(?:[^"\\]|\\.)*""#)?,
     })
 }
 
@@ -255,7 +266,17 @@ mod tests {
 
     #[test]
     fn compile_patterns_succeeds() {
-        compile_patterns().expect("built-in redaction regex literals must compile");
+        let _mask_set: MaskSet =
+            compile_patterns().expect("built-in redaction regex literals must compile");
+    }
+
+    #[test]
+    fn compile_pattern_returns_err_for_invalid_regex() {
+        let err = compile_pattern(r"[unclosed-character-class");
+        assert!(
+            err.is_err(),
+            "invalid redaction regex must return Err instead of silently falling back"
+        );
     }
 
     #[test]

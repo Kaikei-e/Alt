@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/alt-project/altctl/internal/fsperm"
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func setupInitTest(t *testing.T) string {
 
 	// Create .env.example
 	example := "POSTGRES_DB=alt\nPOSTGRES_USER=alt_user\n"
-	if err := os.WriteFile(filepath.Join(tmpDir, ".env.example"), []byte(example), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env.example"), []byte(example), fsperm.SecretFile); err != nil {
 		t.Fatal(err)
 	}
 

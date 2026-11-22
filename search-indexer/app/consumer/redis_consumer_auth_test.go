@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"search-indexer/internal/fsperm"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +28,7 @@ func TestConfigFromEnv_RedisPassword(t *testing.T) {
 	t.Run("resolves password when file present", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		pwFile := filepath.Join(tmpDir, "redis_password.txt")
-		err := os.WriteFile(pwFile, []byte("my-secret-pw\n"), 0600)
+		err := os.WriteFile(pwFile, []byte("my-secret-pw\n"), fsperm.SecretFile)
 		require.NoError(t, err)
 
 		t.Setenv("REDIS_PASSWORD_FILE", pwFile)

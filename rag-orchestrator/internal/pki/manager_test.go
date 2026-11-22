@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"rag-orchestrator/internal/fsperm"
 	"rag-orchestrator/internal/infra/tlsutil"
 )
 
@@ -153,7 +154,7 @@ func TestTick_MismatchedPair_ReissuesImmediately(t *testing.T) {
 	if err := os.Remove(files.KeyPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(files.KeyPath, otherKey, 0o400); err != nil {
+	if err := os.WriteFile(files.KeyPath, otherKey, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	state, err := m.Tick(ctx)
@@ -192,13 +193,13 @@ func TestTick_JournalRestore_DoesNotReportFreshOnNewKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, keyB := newSelfSignedPEM(t, "alt-backend", nb, nb.Add(24*time.Hour))
-	if err := os.WriteFile(files.journalPath(), keyA, 0o400); err != nil {
+	if err := os.WriteFile(files.journalPath(), keyA, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(files.KeyPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(files.KeyPath, keyB, 0o400); err != nil {
+	if err := os.WriteFile(files.KeyPath, keyB, fsperm.ReadOnlySecretFile); err != nil {
 		t.Fatal(err)
 	}
 	state, err := m.Tick(ctx)
