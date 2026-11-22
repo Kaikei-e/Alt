@@ -1473,23 +1473,91 @@ def _validate_single_scanner_entry(
     return None
 
 
+_GIT_SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(?:[#;].*)?$")
+_GIT_KV_RE = re.compile(r"^\s*([A-Za-z0-9-]+)(?:\s*=\s*(.*?))?\s*(?:[#;].*)?$")
+
+
+def _git_config_has_sparse_checkout(cfg_path: pathlib.Path) -> bool:
+    try:
+        lines = cfg_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    in_core = False
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith(("#", ";")):
+            continue
+        sec_match = _GIT_SECTION_RE.match(raw_line)
+        if sec_match is not None:
+            in_core = sec_match.group(1).strip().lower() == "core"
+            continue
+        if not in_core:
+            continue
+        kv_match = _GIT_KV_RE.match(raw_line)
+        if kv_match is None or kv_match.group(1).lower() != "sparsecheckout":
+            continue
+        val = kv_match.group(2)
+        if val is None or val.strip().strip('"').lower() in {"true", "1", "yes", "on"}:
+            return True
+    return False
+
+
+def is_git_sparse_checkout(repo_root: pathlib.Path) -> bool:
+    """Return True only when git config explicitly enables core.sparseCheckout."""
+    dot_git = repo_root / ".git"
+    git_dir: pathlib.Path | None = None
+    common_dir: pathlib.Path | None = None
+    if dot_git.is_dir():
+        git_dir = dot_git
+        common_dir = dot_git
+    elif dot_git.is_file():
+        try:
+            first = dot_git.read_text(encoding="utf-8", errors="replace").splitlines()[0].strip()
+        except (OSError, IndexError):
+            return False
+        if not first.startswith("gitdir:"):
+            return False
+        git_dir = (repo_root / first.split(":", 1)[1].strip()).resolve()
+        common_dir = git_dir
+        commondir_file = git_dir / "commondir"
+        if commondir_file.is_file():
+            try:
+                rel = commondir_file.read_text(encoding="utf-8", errors="replace").strip()
+                if rel:
+                    common_dir = (git_dir / rel).resolve()
+            except OSError:
+                pass
+    if git_dir is None or common_dir is None:
+        return False
+    candidates = (git_dir / "config.worktree", git_dir / "config", common_dir / "config")
+    return any(_git_config_has_sparse_checkout(p) for p in candidates if p.is_file())
+
+
 def _validate_python_ledger_scanners(
     target: str,
     scanners: dict[str, object],
     repo_root: pathlib.Path,
+    *,
+    require_pyproject: bool = True,
 ) -> list[str]:
+    errors = [
+        f"target {target!r} (python): missing explicit scanner entry for {optional_tool!r}"
+        for optional_tool in ("bandit", "pyrefly")
+        if not isinstance(scanners.get(optional_tool), dict)
+    ]
+    if errors:
+        return errors
+
     pyproject_path = repo_root / target / "pyproject.toml"
     if not pyproject_path.is_file():
-        return [f"target {target!r}: missing pyproject.toml at {pyproject_path}"]
+        if require_pyproject:
+            return [f"target {target!r}: missing pyproject.toml at {pyproject_path}"]
+        return []
 
-    errors: list[str] = []
     dev_deps = _read_python_dev_deps(pyproject_path)
     for optional_tool in ("bandit", "pyrefly"):
         entry = scanners.get(optional_tool)
         if not isinstance(entry, dict):
-            errors.append(
-                f"target {target!r} (python): missing explicit scanner entry for {optional_tool!r}"
-            )
             continue
         declared = optional_tool in dev_deps
         expected_status = "canary" if declared else "not-applicable"
@@ -1508,6 +1576,8 @@ def _validate_ledger_scanners(
     kind: str,
     scanners: object,
     repo_root: pathlib.Path,
+    *,
+    require_pyproject: bool = True,
 ) -> list[str]:
     if not isinstance(scanners, dict) or not scanners:
         return [f"target {target!r}: missing or empty 'scanners' table"]
@@ -1527,7 +1597,14 @@ def _validate_ledger_scanners(
             )
 
     if kind == "python":
-        errors.extend(_validate_python_ledger_scanners(target, scanners, repo_root))
+        errors.extend(
+            _validate_python_ledger_scanners(
+                target,
+                scanners,
+                repo_root,
+                require_pyproject=require_pyproject,
+            )
+        )
     return errors
 
 
@@ -1580,9 +1657,50 @@ def _tally_scanner_statuses(scanners: object) -> tuple[int, int, int]:
     return canary, exempt, na
 
 
+def _validate_ledger_entries(
+    targets_to_check: list[str],
+    listed_set: set[str],
+    targets_table: dict[str, object],
+    repo_root: pathlib.Path,
+    *,
+    sparse_active: bool,
+) -> tuple[list[str], int, int, int]:
+    errors: list[str] = []
+    canary_count = exempt_count = na_count = 0
+    for target in targets_to_check:
+        entry = targets_table.get(target)
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("kind")
+        if not isinstance(kind, str) or kind not in VALID_LEDGER_KINDS:
+            errors.append(
+                f"target {target!r}: invalid kind {kind!r} "
+                f"(expected one of {sorted(VALID_LEDGER_KINDS)})"
+            )
+            continue
+        scanners = entry.get("scanners")
+        require_pyproject = (target in listed_set) or not sparse_active
+        errors.extend(
+            _validate_ledger_scanners(
+                target,
+                kind,
+                scanners,
+                repo_root,
+                require_pyproject=require_pyproject,
+            )
+        )
+        c_cnt, e_cnt, n_cnt = _tally_scanner_statuses(scanners)
+        canary_count += c_cnt
+        exempt_count += e_cnt
+        na_count += n_cnt
+    return errors, canary_count, exempt_count, na_count
+
+
 def verify_canary_ledger(
     repo_root: pathlib.Path,
     ledger_path: pathlib.Path | None = None,
+    *,
+    allow_sparse: bool = False,
 ) -> int:
     """Verify canary_ledger.toml covers every target from ./scripts/lint/run.sh --list."""
     resolved_ledger = (
@@ -1600,41 +1718,44 @@ def verify_canary_ledger(
         _error(f"ERROR: LEDGER CHECK FAILED: {load_err}")
         return EXIT_FAIL
 
+    is_sparse = is_git_sparse_checkout(repo_root)
+    sparse_active = allow_sparse and is_sparse
+    listed_set = set(listed_targets)
+    ledger_set = set(targets_table.keys())
+
     errors: list[str] = []
-    missing = sorted(set(listed_targets) - set(targets_table.keys()))
-    extra = sorted(set(targets_table.keys()) - set(listed_targets))
+    missing = sorted(listed_set - ledger_set)
+    extra = sorted(ledger_set - listed_set)
     if missing:
         errors.append(f"targets in run.sh --list missing from ledger: {missing}")
-    if extra:
-        errors.append(f"stale targets in ledger absent from run.sh --list: {extra}")
+    if extra and not sparse_active:
+        hint = (
+            " (git core.sparseCheckout=true; run verify-ledger on a full checkout "
+            "or pass --allow-sparse for checked-out subset validation)"
+            if is_sparse
+            else ""
+        )
+        errors.append(f"stale targets in ledger absent from run.sh --list: {extra}{hint}")
 
-    canary_count = exempt_count = na_count = 0
-    for target in listed_targets:
-        entry = targets_table.get(target)
-        if not isinstance(entry, dict):
-            continue
-        kind = entry.get("kind")
-        if not isinstance(kind, str) or kind not in VALID_LEDGER_KINDS:
-            errors.append(
-                f"target {target!r}: invalid kind {kind!r} "
-                f"(expected one of {sorted(VALID_LEDGER_KINDS)})"
-            )
-            continue
-        scanners = entry.get("scanners")
-        errors.extend(_validate_ledger_scanners(target, kind, scanners, repo_root))
-        c_cnt, e_cnt, n_cnt = _tally_scanner_statuses(scanners)
-        canary_count += c_cnt
-        exempt_count += e_cnt
-        na_count += n_cnt
+    targets_to_check = sorted(ledger_set) if sparse_active else listed_targets
+    entry_errors, canary_count, exempt_count, na_count = _validate_ledger_entries(
+        targets_to_check,
+        listed_set,
+        targets_table,
+        repo_root,
+        sparse_active=sparse_active,
+    )
+    errors.extend(entry_errors)
 
     if errors:
         for err in errors:
             _error(f"ERROR: LEDGER CHECK FAILED: {err}")
         return EXIT_FAIL
 
+    sparse_note = f"sparse materialized={len(listed_targets)}, " if sparse_active else ""
     _info(
-        f"canary ledger verified: {len(listed_targets)} targets accounted for "
-        f"(canary={canary_count}, exempt={exempt_count}, not-applicable={na_count})"
+        f"canary ledger verified: {len(targets_to_check)} targets accounted for "
+        f"({sparse_note}canary={canary_count}, exempt={exempt_count}, not-applicable={na_count})"
     )
     return EXIT_OK
 
@@ -1713,6 +1834,7 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_p = subparsers.add_parser("verify-ledger")
     ledger_p.add_argument("--repo-root", type=pathlib.Path, required=True)
     ledger_p.add_argument("--ledger", type=pathlib.Path, default=None)
+    ledger_p.add_argument("--allow-sparse", action="store_true", default=False)
 
     return parser
 
@@ -1793,6 +1915,7 @@ def _dispatch_command(args: argparse.Namespace) -> int:
         "verify-ledger": lambda a: verify_canary_ledger(
             repo_root=a.repo_root.resolve(),
             ledger_path=_resolve_opt(a.ledger),
+            allow_sparse=bool(a.allow_sparse),
         ),
     }
     handler = handlers.get(args.command)

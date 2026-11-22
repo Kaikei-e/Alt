@@ -975,8 +975,8 @@ go_ver = detect_go_toolchain_version()
 cache_root = pathlib.Path(os.environ.get("XDG_CACHE_HOME", pathlib.Path.home() / ".cache"))
 real_cache_base = cache_root / "alt-lint" / go_ver
 real_golangci = real_cache_base / f"golangci-lint-{GOLANGCI_LINT_VERSION}" / "golangci-lint"
-if real_golangci.is_file():
-    pki_dir = ROOT / "pki-agent"
+pki_dir = ROOT / "pki-agent"
+if real_golangci.is_file() and (pki_dir / "go.mod").is_file():
     before_pki = snapshot_tree(pki_dir)
     res = subprocess.run(  # noqa: S603 - fixed argv running real canary audit
         [
@@ -1000,7 +1000,7 @@ if real_golangci.is_file():
     )
     check("pki-agent tree unchanged after canary", before_pki == after_pki)
 else:
-    check("real golangci-lint binary cached (skipped if absent)", True)
+    check("real golangci-lint binary cached (skipped if absent or sparse workspace)", True)
 
 # ---------------------------------------------------------------------------
 # Group B: Python tests
@@ -1466,14 +1466,15 @@ sys.exit(0)
             )
 
 cached_deno = cache_root / "alt-lint" / "deno" / "2.6.3" / "deno"
-if cached_deno.is_file():
+atm_dir = ROOT / "auth-token-manager"
+if cached_deno.is_file() and (atm_dir / "deno.json").is_file():
     res = subprocess.run(  # noqa: S603 - fixed argv running real deno-canary
         [
             sys.executable,
             str(CANARY_AUDIT_PY),
             "deno-canary",
             "--project-dir",
-            str(ROOT / "auth-token-manager"),
+            str(atm_dir),
             "--deno-bin",
             str(cached_deno),
         ],
@@ -1652,8 +1653,10 @@ check(
 # ---------------------------------------------------------------------------
 # Group H: 45-target canary coverage ledger verification
 # ---------------------------------------------------------------------------
-sys.stdout.write("H1. 45-target canary coverage ledger (real + negative drift tests)\n")
-res_ledger = _run_py_tool([str(CANARY_AUDIT_PY), "verify-ledger", "--repo-root", str(ROOT)])
+sys.stdout.write("H1. 45-target canary coverage ledger (real + sparse + negative drift tests)\n")
+res_ledger = _run_py_tool(
+    [str(CANARY_AUDIT_PY), "verify-ledger", "--repo-root", str(ROOT), "--allow-sparse"]
+)
 check(
     "real repo verify-ledger exits 0",
     res_ledger.returncode == 0,
@@ -1661,7 +1664,7 @@ check(
 )
 check(
     "real repo verify-ledger accounts for all 45 targets",
-    "45" in res_ledger.stdout,
+    "45 targets accounted for" in res_ledger.stdout,
     res_ledger.stdout,
 )
 
@@ -1678,6 +1681,127 @@ with tempfile.TemporaryDirectory() as td:
         '[project]\nname = "svc-py"\n[dependency-groups]\ndev = ["ruff>=0.15.0", "bandit>=1.8.0", "pyrefly>=0.42.0"]\n',
         encoding="utf-8",
     )
+
+    valid_mini_ledger_body = (
+        "version = 1\n"
+        '[targets."svc-a"]\nkind = "go"\n'
+        '[targets."svc-a".scanners.golangci-lint]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.gosec]\nstatus = "canary"\ncanary = "go-canary"\n'
+        '[targets."svc-a".scanners.govulncheck]\nstatus = "canary"\ncanary = "go-verify-govulncheck"\n'
+        '[targets."svc-py"]\nkind = "python"\n'
+        '[targets."svc-py".scanners.ruff]\nstatus = "canary"\ncanary = "python-canary"\n'
+        '[targets."svc-py".scanners.bandit]\nstatus = "canary"\ncanary = "python-canary"\n'
+        '[targets."svc-py".scanners.pyrefly]\nstatus = "canary"\ncanary = "python-canary"\n'
+    )
+    valid_ledger = td_path / "valid.toml"
+    valid_ledger.write_text(valid_mini_ledger_body, encoding="utf-8")
+    res_valid = _run_py_tool(
+        [
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(valid_ledger),
+        ]
+    )
+    check(
+        "verify-ledger exits 0 on complete valid ledger",
+        res_valid.returncode == 0,
+        f"rc={res_valid.returncode}, stderr={res_valid.stderr!r}",
+    )
+
+    # Sparse checkout: default verify-ledger fails closed; --allow-sparse validates materialized + schema
+    stale_on_non_sparse = td_path / "stale-extra.toml"
+    stale_on_non_sparse.write_text(
+        valid_mini_ledger_body
+        + '[targets."unmaterialized-svc"]\nkind = "python"\n'
+        + '[targets."unmaterialized-svc".scanners.ruff]\nstatus = "canary"\ncanary = "python-canary"\n'
+        + '[targets."unmaterialized-svc".scanners.bandit]\nstatus = "not-applicable"\nreason = "bandit not declared in dev deps"\n'
+        + '[targets."unmaterialized-svc".scanners.pyrefly]\nstatus = "not-applicable"\nreason = "pyrefly not declared in dev deps"\n',
+        encoding="utf-8",
+    )
+    res_non_sparse_allow = _run_py_tool(
+        [
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(stale_on_non_sparse),
+            "--allow-sparse",
+        ]
+    )
+    check(
+        "verify-ledger --allow-sparse still rejects stale extra targets when git sparseCheckout is false",
+        res_non_sparse_allow.returncode == 1
+        and "unmaterialized-svc" in res_non_sparse_allow.stderr,
+        f"rc={res_non_sparse_allow.returncode}, stderr={res_non_sparse_allow.stderr!r}",
+    )
+
+    (mini_repo / ".git").mkdir()
+    (mini_repo / ".git" / "config.worktree").write_text(
+        "[core]\n\tsparseCheckout = true\n\tsparseCheckoutCone = true\n",
+        encoding="utf-8",
+    )
+    res_sparse_strict = _run_py_tool(
+        [
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(stale_on_non_sparse),
+        ]
+    )
+    check(
+        "verify-ledger without --allow-sparse fails closed on sparse checkout with hint",
+        res_sparse_strict.returncode == 1
+        and "core.sparseCheckout=true" in res_sparse_strict.stderr,
+        f"rc={res_sparse_strict.returncode}, stderr={res_sparse_strict.stderr!r}",
+    )
+    res_sparse_allowed = _run_py_tool(
+        [
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(stale_on_non_sparse),
+            "--allow-sparse",
+        ]
+    )
+    check(
+        "verify-ledger --allow-sparse succeeds on git sparse checkout and validates all ledger entries",
+        res_sparse_allowed.returncode == 0 and "sparse materialized=" in res_sparse_allowed.stdout,
+        f"rc={res_sparse_allowed.returncode}, out={res_sparse_allowed.stdout!r}, err={res_sparse_allowed.stderr!r}",
+    )
+    bad_sparse_ledger = td_path / "bad-sparse.toml"
+    bad_sparse_ledger.write_text(
+        valid_mini_ledger_body
+        + '[targets."unmaterialized-svc"]\nkind = "python"\n'
+        + '[targets."unmaterialized-svc".scanners.ruff]\nstatus = "canary"\ncanary = "python-canary"\n'
+        + '[targets."unmaterialized-svc".scanners.bandit]\nstatus = "not-applicable"\nreason = ""\n'
+        + '[targets."unmaterialized-svc".scanners.pyrefly]\nstatus = "not-applicable"\nreason = "pyrefly not declared in dev deps"\n',
+        encoding="utf-8",
+    )
+    res_bad_sparse = _run_py_tool(
+        [
+            str(CANARY_AUDIT_PY),
+            "verify-ledger",
+            "--repo-root",
+            str(mini_repo),
+            "--ledger",
+            str(bad_sparse_ledger),
+            "--allow-sparse",
+        ]
+    )
+    check(
+        "verify-ledger --allow-sparse still rejects invalid unmaterialized ledger entry",
+        res_bad_sparse.returncode == 1 and "reason" in res_bad_sparse.stderr.lower(),
+        f"rc={res_bad_sparse.returncode}, stderr={res_bad_sparse.stderr!r}",
+    )
+    shutil.rmtree(mini_repo / ".git")
 
     # 1) Missing target in ledger fails
     missing_ledger = td_path / "missing.toml"
@@ -1812,7 +1936,7 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={res_ep_go.returncode}, out={res_ep_go.stdout!r}, err={res_ep_go.stderr!r}",
     )
 
-if BUF_BIN is not None:
+if BUF_BIN is not None and (ROOT / "proto" / "buf.yaml").is_file():
     res_ep_proto = _run_py_tool(
         [
             str(ENTRYPOINT_CANARY_PY),
