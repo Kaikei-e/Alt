@@ -94,11 +94,22 @@ def matches_glob(pattern: str, rel_path: str) -> bool:
     return any(_glob_to_regex(alt).match(norm_rel) is not None for alt in _expand_braces(pattern))
 
 
+def _resolve_relative_base(repo_resolved: Path, cwd: str | Path | None) -> Path:
+    if cwd is not None:
+        return Path(cwd)
+    proc_cwd = Path.cwd().resolve()
+    if proc_cwd.is_relative_to(repo_resolved):
+        return proc_cwd
+    return repo_resolved
+
+
 def _resolve_repo_rel_or_outside(
     raw_path: str,
     repo_root: Path,
+    *,
+    cwd: str | Path | None = None,
 ) -> tuple[str | None, str | None]:
-    """Resolve raw_path against repo_root.
+    """Resolve raw_path against payload cwd (or repo_root fallback).
 
     Returns (repo_rel_posix_or_None_if_outside, block_reason_or_None).
     Symlinks escaping repo_root always return a block_reason.
@@ -108,7 +119,8 @@ def _resolve_repo_rel_or_outside(
 
     repo_resolved = repo_root.resolve()
     p = Path(raw_path)
-    candidate = p if p.is_absolute() else (repo_resolved / p)
+    base_dir = _resolve_relative_base(repo_resolved, cwd)
+    candidate = p if p.is_absolute() else (base_dir / p)
     lexical_abs = Path(os.path.normpath(str(candidate)))
 
     try:
@@ -203,9 +215,11 @@ def check_target_path(
     raw_path: str,
     repo_root: Path,
     active_packet: dict[str, Any] | None,
+    *,
+    cwd: str | Path | None = None,
 ) -> str | None:
     """Return a block reason string if editing raw_path is forbidden, else None."""
-    rel_path, resolve_err = _resolve_repo_rel_or_outside(raw_path, repo_root)
+    rel_path, resolve_err = _resolve_repo_rel_or_outside(raw_path, repo_root, cwd=cwd)
     if resolve_err is not None:
         return resolve_err
 
@@ -227,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     if payload is None:
         return 0
 
-    repo_root = _harness_run.resolve_repo_root()
+    repo_root = _harness_run.resolve_repo_root(start_dir=payload.cwd)
     active_packet, pkt_err = _harness_run.load_active_packet(repo_root)
     if pkt_err is not None:
         sys.stderr.write(f"BLOCKED [EXEC-02]: {pkt_err}.\n")
@@ -235,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
 
     violations: list[str] = []
     for raw_path in payload.paths:
-        err = check_target_path(raw_path, repo_root, active_packet)
+        err = check_target_path(raw_path, repo_root, active_packet, cwd=payload.cwd)
         if err is not None:
             violations.append(err)
 

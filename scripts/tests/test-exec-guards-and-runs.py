@@ -9,20 +9,24 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import io
 import json
 import os
 import pathlib
+import platform
 import shutil
 import sys
 import tempfile
 import unittest.mock
+import zipfile
 from dataclasses import dataclass
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
 CLAUDE_HOOK_SH = ROOT / ".claude" / "hooks" / "deny-unsafe-commands.sh"
+FRONTEND_SH = ROOT / "scripts" / "lint" / "frontend.sh"
 
 if str(HARNESS_DIR) not in sys.path:
     sys.path.insert(0, str(HARNESS_DIR))
@@ -190,7 +194,7 @@ def bash_payload(
     return json.dumps(payload)
 
 
-def edit_payload(path: str, tool_name: str = "Edit") -> str:
+def edit_payload(path: str, tool_name: str = "Edit", *, cwd: str | None = None) -> str:
     if tool_name == "Write":
         tool_input: dict[str, object] = {"file_path": path, "content": "x = 1\n"}
     elif tool_name == "apply_patch":
@@ -199,13 +203,14 @@ def edit_payload(path: str, tool_name: str = "Edit") -> str:
         }
     else:
         tool_input = {"file_path": path, "old_string": "a", "new_string": "b"}
-    return json.dumps(
-        {
-            "hook_event_name": "PreToolUse",
-            "tool_name": tool_name,
-            "tool_input": tool_input,
-        }
-    )
+    payload: dict[str, object] = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+    }
+    if cwd is not None:
+        payload["cwd"] = cwd
+    return json.dumps(payload)
 
 
 def init_git_repo(task_packet_mod: object, repo: pathlib.Path) -> None:
@@ -238,12 +243,23 @@ def sample_packet_md(
     allowed_paths: list[str] | None = None,
     forbidden_paths: list[str] | None = None,
     allow_generated: bool = False,
-    forbid_repo_wide: bool = True,
+    include_measured: bool = True,
 ) -> str:
     allowed = allowed_paths or ["scripts/agent-harness/**"]
     forbidden = forbidden_paths or ["scripts/agent-harness/forbidden.py"]
     allowed_yaml = "\n".join(f'    - "{p}"' for p in allowed)
     forbidden_yaml = "\n".join(f'    - "{p}"' for p in forbidden)
+    verify_cmd = "./scripts/lint/run.sh scripts"
+    cmd_sha = hashlib.sha256(verify_cmd.encode("utf-8")).hexdigest()
+    measured_yaml = (
+        "  measured:\n"
+        "    duration_s: 1.5\n"
+        "    exit_code: 0\n"
+        '    at_commit: "1111111111111111111111111111111111111111"\n'
+        f'    command_sha256: "{cmd_sha}"\n'
+        if include_measured
+        else ""
+    )
     return (
         "---\n"
         'packet_version: "1.0"\n'
@@ -264,15 +280,24 @@ def sample_packet_md(
         "execution_policy:\n"
         '  policy: "fix-existing"\n'
         "  foreground_only: true\n"
-        f"  forbid_repo_wide_test_build: {'true' if forbid_repo_wide else 'false'}\n"
+        "  forbid_repo_wide_test_build: true\n"
         "  forbid_bulk_autofix: true\n"
-        '  verification_command: "./scripts/lint/run.sh scripts"\n'
+        f'  verification_command: "{verify_cmd}"\n'
+        f"{measured_yaml}"
         "handoff_requirements:\n"
         "  require_modified_files_and_lines: true\n"
         "  require_runtime_behavior_impact: true\n"
         "  require_change_rationale: true\n"
         "---\n\n"
-        f"# Task Packet {packet_id}\n"
+        f"# Task Packet {packet_id}\n\n"
+        "## 1. 範囲と作業量制約\n\n"
+        "- Bounded scope.\n\n"
+        "## 2. 実行・検証手順\n\n"
+        "```bash\n"
+        "./scripts/lint/run.sh scripts\n"
+        "```\n\n"
+        "## 3. Hand-off 記述必須項目\n\n"
+        "- Modified files, behavior impact, rationale.\n"
     )
 
 
@@ -989,6 +1014,299 @@ def test_loop03_exec03_loop06_runs(harness_run_mod: object, task_packet_mod: obj
         _verify_subagent_and_parallelism(harness_run_mod, repo, run_dir, env)
 
 
+def test_mf06_exec01_bypasses(exec_mod: object) -> None:
+    sys.stdout.write("MF-06: guard_exec_commands.py bypass hardening (12 #45 §4A cases + extras)\n")
+    mf06_cases: list[tuple[str, str, str | None]] = [
+        ("env -S golangci-lint --fix", 'env -S "golangci-lint run --fix"', None),
+        ("env --split-string cargo fix", 'env --split-string "cargo fix"', None),
+        ("quoted golangci-lint", '"golangci-lint" run --fix', None),
+        ("quoted ./scripts/lint/run.sh all", '"./scripts/lint/run.sh" all', "w-1"),
+        ("quoted nohup pytest", '"nohup" pytest', "w-1"),
+        ("uvx ruff --unsafe-fixes", "uvx ruff check --unsafe-fixes .", None),
+        ("uv tool run ruff --unsafe-fixes", "uv tool run ruff check --unsafe-fixes .", None),
+        (
+            "bunx @biomejs/biome@1.9.4 --unsafe",
+            "bunx @biomejs/biome@1.9.4 check --write --unsafe .",
+            None,
+        ),
+        (
+            "npx @biomejs/biome@latest --unsafe",
+            "npx @biomejs/biome@latest check --write --unsafe .",
+            None,
+        ),
+        (
+            "bun x --bun @biomejs/biome --unsafe",
+            "bun x --bun @biomejs/biome check --write --unsafe .",
+            None,
+        ),
+        (
+            "pnpm dlx @biomejs/biome --unsafe",
+            "pnpm dlx @biomejs/biome check --write --unsafe .",
+            None,
+        ),
+        ("pnpm exec biome --unsafe", "pnpm exec biome check --unsafe .", None),
+        ("eval golangci-lint --fix", 'eval "golangci-lint run --fix"', None),
+        (
+            "bash --rcfile -c golangci-lint --fix",
+            'bash --rcfile rcfile -c "golangci-lint run --fix"',
+            None,
+        ),
+        ("bash --init-file -lc cargo fix", 'bash --init-file rcfile -lc "cargo fix"', None),
+    ]
+    for label, cmd, agent_id in mf06_cases:
+        res = invoke_main(exec_mod, stdin_text=bash_payload(cmd, agent_id=agent_id))
+        check(
+            f"MF-06 blocks {label}",
+            res.returncode == BLOCKED_RC and "BLOCKED [EXEC-01]" in res.stderr,
+            f"rc={res.returncode} err={res.stderr!r}",
+        )
+
+    # Confirm benign quoted/eval/env commands remain allowed
+    for label, cmd in [
+        ("env -S safe golangci-lint run", 'env -S "golangci-lint run ./..."'),
+        ("echo eval golangci-lint --fix", "echo 'eval \"golangci-lint run --fix\"'"),
+        ("uvx ruff check --fix (safe)", "uvx ruff check --fix ."),
+        ("pnpm dlx @biomejs/biome check --write (safe)", "pnpm dlx @biomejs/biome check --write ."),
+    ]:
+        res = invoke_main(exec_mod, stdin_text=bash_payload(cmd))
+        check(
+            f"MF-06 allows safe {label}",
+            res.returncode == 0,
+            f"rc={res.returncode} err={res.stderr!r}",
+        )
+
+
+def test_mf07_scope_cwd(
+    scope_mod: object,
+    harness_run_mod: object,
+    task_packet_mod: object,
+) -> None:
+    sys.stdout.write("MF-07: guard_packet_scope.py resolves relative paths against payload cwd\n")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp) / "repo"
+        repo.mkdir()
+        init_git_repo(task_packet_mod, repo)
+        git_commit_file(
+            task_packet_mod, repo, "stopped-using-k8s/deploy.yaml", "kind: Deployment\n", "k8s"
+        )
+        git_commit_file(
+            task_packet_mod,
+            repo,
+            "sub/gen.pb.go",
+            "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage sub\n",
+            "gen",
+        )
+        git_commit_file(
+            task_packet_mod, repo, "alt-backend/app/driver/db.go", "package driver\n", "db"
+        )
+
+        # Case 1: cwd=<repo>/stopped-using-k8s + Edit("deploy.yaml") -> rc=2 (R-33)
+        res_k8s = invoke_main(
+            scope_mod,
+            stdin_text=edit_payload("deploy.yaml", cwd=str(repo / "stopped-using-k8s")),
+        )
+        check(
+            "MF-07 blocks cwd=<repo>/stopped-using-k8s + deploy.yaml",
+            res_k8s.returncode == BLOCKED_RC and "stopped-using-k8s" in res_k8s.stderr,
+            f"rc={res_k8s.returncode} err={res_k8s.stderr!r}",
+        )
+
+        # Case 2: cwd=<repo>/sub + Edit("gen.pb.go") -> rc=2 (C-16 DO NOT EDIT)
+        res_gen = invoke_main(
+            scope_mod,
+            stdin_text=edit_payload("gen.pb.go", cwd=str(repo / "sub")),
+        )
+        check(
+            "MF-07 blocks cwd=<repo>/sub + gen.pb.go",
+            res_gen.returncode == BLOCKED_RC and "DO NOT EDIT" in res_gen.stderr,
+            f"rc={res_gen.returncode} err={res_gen.stderr!r}",
+        )
+
+        # Case 3: active packet allowed_paths=["alt-backend/app/**"], cwd=<repo>/alt-backend/app + Edit("driver/db.go") -> rc=0
+        pkt_file = repo / "pkt-cwd.md"
+        pkt_file.write_text(
+            sample_packet_md(
+                "PKT-CWD",
+                allowed_paths=["alt-backend/app/**"],
+                forbidden_paths=["scripts/lint/run.sh"],
+            ),
+            encoding="utf-8",
+        )
+        assert (
+            invoke_main(
+                harness_run_mod,
+                argv=["activate-packet", str(pkt_file)],
+                env={"ALT_HARNESS_REPO_ROOT": str(repo)},
+            ).returncode
+            == 0
+        )
+        res_in_scope = invoke_main(
+            scope_mod,
+            stdin_text=edit_payload("driver/db.go", cwd=str(repo / "alt-backend" / "app")),
+        )
+        check(
+            "MF-07 allows cwd=<repo>/alt-backend/app + driver/db.go under allowed_paths",
+            res_in_scope.returncode == 0,
+            f"rc={res_in_scope.returncode} err={res_in_scope.stderr!r}",
+        )
+        res_out_scope = invoke_main(
+            scope_mod,
+            stdin_text=edit_payload(
+                "../../other/outside.go", cwd=str(repo / "alt-backend" / "app")
+            ),
+        )
+        check(
+            "MF-07 blocks out-of-scope relative path from subdir cwd under active packet",
+            res_out_scope.returncode == BLOCKED_RC and "allowed_paths" in res_out_scope.stderr,
+            f"rc={res_out_scope.returncode} err={res_out_scope.stderr!r}",
+        )
+
+
+def test_c01_c03_harness_run_hardening(harness_run_mod: object, task_packet_mod: object) -> None:
+    sys.stdout.write("C-01 / C-03: LOOP-06 window=10 scale-up guard & activate-packet validation\n")
+    calc = harness_run_mod.compute_recommended_parallelism  # type: ignore[attr-defined]
+    check(
+        "C-01 1 adopted outcome holds base 2 (no premature scale-up)",
+        calc(["adopted"])["recommended"] == PAR_BASE,
+    )
+    check(
+        "C-01 9 adopted outcomes still hold base 2",
+        calc(["adopted"] * 9)["recommended"] == PAR_BASE,
+    )
+    check(
+        "C-01 10 adopted outcomes scales up to 4", calc(["adopted"] * 10)["recommended"] == PAR_UP
+    )
+    check(
+        "C-01 3 reverted (<10 window) still scales down immediately to 1",
+        calc(["reverted"] * 3)["recommended"] == 1,
+    )
+    check(
+        "C-01 2 mismatch (<10 window) still scales down immediately to 1",
+        calc(["mismatch"] * 2)["recommended"] == 1,
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        init_git_repo(task_packet_mod, repo)
+        env = {"ALT_HARNESS_REPO_ROOT": str(repo)}
+
+        unmeasured = repo / "pkt-unmeasured.md"
+        unmeasured.write_text(
+            sample_packet_md("PKT-UNMEASURED", include_measured=False), encoding="utf-8"
+        )
+        res_unm = invoke_main(harness_run_mod, argv=["activate-packet", str(unmeasured)], env=env)
+        run_dir = repo / ".harness" / "runs" / "feat-test-branch"
+        check(
+            "C-03 activate-packet rejects unmeasured packet",
+            res_unm.returncode != 0
+            and "UNMEASURED_VERIFICATION_COMMAND" in res_unm.stderr
+            and not (run_dir / "active-packet.json").exists(),
+            f"rc={res_unm.returncode} err={res_unm.stderr!r}",
+        )
+
+        stale = repo / "pkt-stale.md"
+        stale_text = sample_packet_md("PKT-STALE").replace(
+            'verification_command: "./scripts/lint/run.sh scripts"',
+            'verification_command: "./scripts/lint/run.sh harness"',
+        )
+        stale.write_text(stale_text, encoding="utf-8")
+        res_stale = invoke_main(harness_run_mod, argv=["activate-packet", str(stale)], env=env)
+        check(
+            "C-03 activate-packet rejects stale command_sha256 packet",
+            res_stale.returncode != 0 and "STALE_MEASURED_COMMAND" in res_stale.stderr,
+            f"rc={res_stale.returncode} err={res_stale.stderr!r}",
+        )
+
+
+def _frontend_target_zip_name() -> str:
+    sys_name = platform.system()
+    mach = platform.machine()
+    mapping = {
+        ("Linux", "x86_64"): "bun-linux-x64",
+        ("Linux", "aarch64"): "bun-linux-aarch64",
+        ("Linux", "arm64"): "bun-linux-aarch64",
+        ("Darwin", "arm64"): "bun-darwin-aarch64",
+        ("Darwin", "aarch64"): "bun-darwin-aarch64",
+        ("Darwin", "x86_64"): "bun-darwin-x64",
+    }
+    return mapping[(sys_name, mach)]
+
+
+def test_cs02_frontend_sha256_and_mktemp() -> None:
+    sys.stdout.write("CS-02: scripts/lint/frontend.sh mktemp + optional ALT_LINT_BUN_SHA256\n")
+    sh_text = FRONTEND_SH.read_text(encoding="utf-8")
+    check(
+        "CS-02 frontend.sh uses mktemp instead of bun.tmp.$$",
+        'mktemp "${cache_dir}/bun.tmp.XXXXXX"' in sh_text and "bun.tmp.$$" not in sh_text,
+    )
+    if BASH_BIN is None:
+        return
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = pathlib.Path(tmp)
+        proj = tmp_path / "proj"
+        (proj / "node_modules").mkdir(parents=True)
+        (proj / "package.json").write_text('{"name":"demo"}\n', encoding="utf-8")
+        (proj / "Dockerfile").write_text("FROM oven/bun:1.3.12-alpine\n", encoding="utf-8")
+
+        marker = tmp_path / "executed.marker"
+        stub_bytes = f"#!/usr/bin/env bash\ntouch '{marker}'\necho '1.3.12'\n".encode()
+        target_zip = _frontend_target_zip_name()
+        mirror = tmp_path / "mirror" / "bun-v1.3.12"
+        mirror.mkdir(parents=True)
+        zip_file = mirror / f"{target_zip}.zip"
+        with zipfile.ZipFile(zip_file, "w") as zf:
+            zf.writestr(f"{target_zip}/bun", stub_bytes)
+
+        rel_proj = os.path.relpath(proj, ROOT)
+        py_bin_dir = str(pathlib.Path(sys.executable).parent)
+        base_env = {
+            "XDG_CACHE_HOME": str(tmp_path / "cache"),
+            "ALT_LINT_BUN_DOWNLOAD_BASE_URL": f"file://{tmp_path / 'mirror'}",
+            "PATH": f"{py_bin_dir}:/usr/bin:/bin",
+        }
+        wrong_sha = "0" * 64
+
+        async def _run_frontend(extra_env: dict[str, str]) -> RunResult:
+            assert BASH_BIN is not None
+            merged = dict(os.environ)
+            merged.pop("ALT_LINT_BUN_BIN", None)
+            merged.update(extra_env)
+            proc = await asyncio.create_subprocess_exec(
+                BASH_BIN,
+                str(FRONTEND_SH),
+                rel_proj,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=merged,
+                cwd=str(ROOT),
+            )
+            out_b, err_b = await proc.communicate()
+            return RunResult(
+                returncode=proc.returncode if proc.returncode is not None else 1,
+                stdout=out_b.decode("utf-8", errors="replace"),
+                stderr=err_b.decode("utf-8", errors="replace"),
+            )
+
+        res_mismatch = asyncio.run(_run_frontend({**base_env, "ALT_LINT_BUN_SHA256": wrong_sha}))
+        check(
+            "CS-02 frontend.sh fails closed on SHA-256 mismatch before executing binary",
+            res_mismatch.returncode != 0
+            and "SHA-256 mismatch" in res_mismatch.stderr
+            and not marker.exists(),
+            f"rc={res_mismatch.returncode} marker={marker.exists()} err={res_mismatch.stderr!r}",
+        )
+
+        good_sha = hashlib.sha256(stub_bytes).hexdigest()
+        res_match = asyncio.run(_run_frontend({**base_env, "ALT_LINT_BUN_SHA256": good_sha}))
+        check(
+            "CS-02 frontend.sh installs cached bun when ALT_LINT_BUN_SHA256 matches",
+            (tmp_path / "cache" / "alt-lint" / "bun" / "1.3.12" / "bun").is_file()
+            and marker.exists(),
+            f"rc={res_match.returncode} err={res_match.stderr!r}",
+        )
+
+
 def main() -> int:
     task_packet_mod = importlib.import_module("task_packet")
     exec_mod = importlib.import_module("guard_exec_commands")
@@ -996,8 +1314,12 @@ def main() -> int:
     harness_run_mod = importlib.import_module("harness_run")
 
     test_exec01_commands(exec_mod, harness_run_mod, task_packet_mod)
+    test_mf06_exec01_bypasses(exec_mod)
     test_exec02_scope(scope_mod, harness_run_mod, task_packet_mod)
+    test_mf07_scope_cwd(scope_mod, harness_run_mod, task_packet_mod)
     test_loop03_exec03_loop06_runs(harness_run_mod, task_packet_mod)
+    test_c01_c03_harness_run_hardening(harness_run_mod, task_packet_mod)
+    test_cs02_frontend_sha256_and_mktemp()
 
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return 1 if RESULTS.failed else 0
