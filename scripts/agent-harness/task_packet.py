@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unittest.mock
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -2384,8 +2385,8 @@ def _load_behavior_screener() -> ModuleType:
         msg = f"unable to load behavior screener module from {SCREENER_SCRIPT_PATH}"
         raise DocumentParseError(msg)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
+    with unittest.mock.patch.dict(sys.modules, {spec.name: mod}):
+        spec.loader.exec_module(mod)
     _SCREENER_MOD_CACHE["mod"] = mod
     return mod
 
