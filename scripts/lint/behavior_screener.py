@@ -60,18 +60,26 @@ EXT_TO_LANG: dict[str, str] = {
     ".cts": "typescript",
     ".js": "typescript",
     ".jsx": "typescript",
+    ".mjs": "typescript",
+    ".cjs": "typescript",
+    ".svelte": "typescript",
 }
 
 RUST_OPTION_REGEX_RE = re.compile(r"\bOption\s*<\s*[^>]*\bRegex\b[^>]*>")
 RUST_DOT_OK_RE = re.compile(r"\.\s*ok\s*\(\s*\)")
 RUST_UNWRAP_OR_DEFAULT_RE = re.compile(r"\.\s*unwrap_or_default\s*\(\s*\)")
+RUST_TEST_ATTR_RE = re.compile(r"#\[\s*(?:cfg\(\s*test\s*\)|(?:[\w:]+::)?test\b|rstest\b)")
+RUST_CFG_TEST_RE = re.compile(r"#\[\s*cfg\(\s*test\s*\)\s*\]")
+RUST_FN_DECL_RE = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)")
+RUST_MOD_DECL_RE = re.compile(r"\bmod\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{")
 
 TS_WAIT_FOR_TIMEOUT_RE = re.compile(r"\.\s*waitForTimeout\s*\(([^)]*)\)")
 TS_WAIT_FOR_LOAD_STATE_RE = re.compile(r"\.\s*waitForLoadState\s*\(([^)]*)\)")
 
 TEST_PATH_RE = re.compile(
-    r"(?:^|/)(?:tests?/|e2e/|__tests__/|test_[^/]+\.py$|test-[^/]+\.py$|[^/]+_test\.(?:go|py|rs)$|"
-    r"[^/]+\.(?:spec|test)\.(?:[cm]?[jt]sx?)$)",
+    r"(?:^|/)(?:tests?/|e2e/|__tests__/|test_[^/]+\.py$|test-[^/]+\.py$|"
+    r"tests\.rs$|[^/]+_tests?\.rs$|[^/]+_test\.(?:go|py|[cm]?[jt]sx?)$|"
+    r"[^/]+\.(?:spec|test)\.(?:[cm]?[jt]sx?|svelte)$)",
     re.IGNORECASE,
 )
 
@@ -80,7 +88,7 @@ EXPECTATION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"\b(?:require|assert)\.\w+\s*\(|\bt\.(?:Fatal|Fatalf|Fatalln|Error|Errorf)\s*\("
     ),
     "python": re.compile(r"^\s*assert\b|\bself\.assert\w+\s*\(|\bpytest\.raises\s*\("),
-    "rust": re.compile(r"\b(?:debug_)?assert(?:_eq|_ne)?!\s*[\(\[\{]"),
+    "rust": re.compile(r"\b(?:debug_|prop_)?assert(?:_eq|_ne|_matches)?!\s*[\(\[\{]"),
     "typescript": re.compile(r"\bexpect(?:\.\w+)?\s*\("),
 }
 CHAIN_MEMBER_RE = re.compile(r"\s*\??\.\s*[A-Za-z_$][A-Za-z0-9_$]*")
@@ -375,7 +383,16 @@ def screen_go(
 
     before_funcs: dict[str, dict[str, Any]] = before_summary.get("functions", {})
     after_funcs: dict[str, dict[str, Any]] = after_summary.get("functions", {})
-    candidates: list[Candidate] = []
+    candidates: list[Candidate] = [
+        _make_candidate(
+            logical_path,
+            func_name,
+            "go.function_removed",
+            f"defined ({func_name})",
+            "<removed>",
+        )
+        for func_name in sorted(set(before_funcs) - set(after_funcs))
+    ]
 
     for func_name in sorted(set(before_funcs) & set(after_funcs)):
         candidates.extend(
@@ -394,6 +411,20 @@ def screen_go(
 # ---------------------------------------------------------------------------
 
 
+_PY_CMP_OP_NAMES: dict[type[ast.cmpop], str] = {
+    ast.Eq: "==",
+    ast.NotEq: "!=",
+    ast.Lt: "<",
+    ast.LtE: "<=",
+    ast.Gt: ">",
+    ast.GtE: ">=",
+    ast.Is: "is",
+    ast.IsNot: "is not",
+    ast.In: "in",
+    ast.NotIn: "not in",
+}
+
+
 @dataclass(frozen=True)
 class PyFuncFacts:
     if_count: int
@@ -404,6 +435,53 @@ class PyFuncFacts:
     context_managers: tuple[str, ...]
     finally_hashes: tuple[str, ...]
     except_types: tuple[tuple[tuple[str, ...], ...], ...]
+    cond_ops: tuple[tuple[str, int], ...]
+    except_raise_count: int
+
+
+def _collect_py_compare_ops(expr: ast.Compare, counts: Counter[str]) -> None:
+    for cmp_op in expr.ops:
+        name = _PY_CMP_OP_NAMES.get(type(cmp_op))
+        if name is not None:
+            counts[name] += 1
+    _collect_py_cond_ops(expr.left, counts)
+    for comp in expr.comparators:
+        _collect_py_cond_ops(comp, counts)
+
+
+def _collect_py_cond_ops(expr: ast.expr | None, counts: Counter[str]) -> None:
+    if expr is None:
+        return
+    if isinstance(expr, ast.BoolOp):
+        op_name = "and" if isinstance(expr.op, ast.And) else "or"
+        counts[op_name] += max(1, len(expr.values) - 1)
+        for val in expr.values:
+            _collect_py_cond_ops(val, counts)
+    elif isinstance(expr, ast.UnaryOp):
+        if isinstance(expr.op, ast.Not):
+            counts["not"] += 1
+        _collect_py_cond_ops(expr.operand, counts)
+    elif isinstance(expr, ast.Compare):
+        _collect_py_compare_ops(expr, counts)
+    elif isinstance(expr, ast.Call):
+        for sub in (*expr.args, *(kw.value for kw in expr.keywords)):
+            _collect_py_cond_ops(sub, counts)
+    elif isinstance(expr, ast.IfExp):
+        for sub in (expr.test, expr.body, expr.orelse):
+            _collect_py_cond_ops(sub, counts)
+
+
+def _collect_py_ifexp_in_expr(expr: ast.expr | None, counts: Counter[str]) -> None:
+    if expr is None or isinstance(expr, ast.Lambda):
+        return
+    if isinstance(expr, ast.IfExp):
+        _collect_py_cond_ops(expr.test, counts)
+        _collect_py_ifexp_in_expr(expr.body, counts)
+        _collect_py_ifexp_in_expr(expr.orelse, counts)
+        return
+    for child in ast.iter_child_nodes(expr):
+        if isinstance(child, ast.expr):
+            _collect_py_ifexp_in_expr(child, counts)
 
 
 def _is_docstring_stmt(stmt: ast.stmt) -> bool:
@@ -441,6 +519,9 @@ class _PyFuncCollector:
         self.try_else_count = 0
         self.loop_else_count = 0
         self.return_count = 0
+        self.except_raise_count = 0
+        self._except_depth = 0
+        self.cond_ops: Counter[str] = Counter()
         self.context_managers: list[str] = []
         self.finally_hashes: list[str] = []
         self.except_types: list[tuple[tuple[str, ...], ...]] = []
@@ -459,38 +540,63 @@ class _PyFuncCollector:
         )
         self.except_types.append(try_handlers)
         for handler in stmt.handlers:
-            self.walk_body(handler.body)
+            self._except_depth += 1
+            try:
+                self.walk_body(handler.body)
+            finally:
+                self._except_depth -= 1
         self.walk_body(stmt.body)
         self.walk_body(stmt.orelse)
         self.walk_body(stmt.finalbody)
 
-    def _visit_stmt(self, stmt: ast.stmt) -> None:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return
+    def _visit_compound_stmt(self, stmt: ast.stmt) -> bool:
         if isinstance(stmt, ast.If):
             self.if_count += 1
             if stmt.orelse:
                 self.if_else_count += 1
+            _collect_py_cond_ops(stmt.test, self.cond_ops)
             self.walk_body(stmt.body)
             self.walk_body(stmt.orelse)
-        elif isinstance(stmt, (ast.Try, ast.TryStar)):
+            return True
+        if isinstance(stmt, (ast.Try, ast.TryStar)):
             self._visit_try(stmt)
-        elif isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+            return True
+        if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+            if isinstance(stmt, ast.While):
+                _collect_py_cond_ops(stmt.test, self.cond_ops)
             if stmt.orelse:
                 self.loop_else_count += 1
             self.walk_body(stmt.body)
             self.walk_body(stmt.orelse)
-        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            return True
+        if isinstance(stmt, (ast.With, ast.AsyncWith)):
             prefix = "async with" if isinstance(stmt, ast.AsyncWith) else "with"
             self.context_managers.extend(
                 f"{prefix}:{ast.unparse(item.context_expr)}" for item in stmt.items
             )
             self.walk_body(stmt.body)
-        elif isinstance(stmt, ast.Match):
+            return True
+        if isinstance(stmt, ast.Match):
             for case in stmt.cases:
+                if case.guard is not None:
+                    _collect_py_cond_ops(case.guard, self.cond_ops)
                 self.walk_body(case.body)
-        elif isinstance(stmt, ast.Return):
+            return True
+        return False
+
+    def _visit_stmt(self, stmt: ast.stmt) -> None:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return
+        if self._visit_compound_stmt(stmt):
+            return
+        if isinstance(stmt, ast.Return):
             self.return_count += 1
+            _collect_py_ifexp_in_expr(stmt.value, self.cond_ops)
+        elif isinstance(stmt, ast.Raise):
+            if self._except_depth > 0:
+                self.except_raise_count += 1
+        elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Expr)):
+            _collect_py_ifexp_in_expr(stmt.value, self.cond_ops)
 
     def to_facts(self) -> PyFuncFacts:
         return PyFuncFacts(
@@ -502,6 +608,8 @@ class _PyFuncCollector:
             context_managers=tuple(sorted(self.context_managers)),
             finally_hashes=tuple(self.finally_hashes),
             except_types=tuple(self.except_types),
+            cond_ops=tuple(sorted(self.cond_ops.items())),
+            except_raise_count=self.except_raise_count,
         )
 
 
@@ -539,80 +647,115 @@ def _extract_python_functions(
     return results
 
 
+def _compare_python_function(
+    logical_path: str,
+    func_name: str,
+    bf: PyFuncFacts,
+    af: PyFuncFacts,
+) -> list[Candidate]:
+    candidates: list[Candidate] = []
+    b_cf = (bf.if_count, bf.if_else_count, bf.try_else_count, bf.loop_else_count, bf.return_count)
+    a_cf = (af.if_count, af.if_else_count, af.try_else_count, af.loop_else_count, af.return_count)
+    if b_cf != a_cf:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.control_flow_return_change",
+                (
+                    f"if={bf.if_count}, if_else={bf.if_else_count}, "
+                    f"try_else={bf.try_else_count}, loop_else={bf.loop_else_count}, "
+                    f"return={bf.return_count}"
+                ),
+                (
+                    f"if={af.if_count}, if_else={af.if_else_count}, "
+                    f"try_else={af.try_else_count}, loop_else={af.loop_else_count}, "
+                    f"return={af.return_count}"
+                ),
+            )
+        )
+
+    if bf.cond_ops != af.cond_ops:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.condition_operator_change",
+                _fmt_counter_map(dict(bf.cond_ops)),
+                _fmt_counter_map(dict(af.cond_ops)),
+            )
+        )
+
+    if bf.context_managers != af.context_managers:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.context_manager_change",
+                ", ".join(bf.context_managers) or "none",
+                ", ".join(af.context_managers) or "none",
+            )
+        )
+
+    if bf.finally_hashes != af.finally_hashes:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.finally_body_change",
+                ", ".join(bf.finally_hashes) or "none",
+                ", ".join(af.finally_hashes) or "none",
+            )
+        )
+
+    if bf.except_types != af.except_types:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.except_types_change",
+                _fmt_py_except_types(bf.except_types),
+                _fmt_py_except_types(af.except_types),
+            )
+        )
+
+    if bf.except_raise_count != af.except_raise_count:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "python.except_raise_change",
+                f"except_raise={bf.except_raise_count}",
+                f"except_raise={af.except_raise_count}",
+            )
+        )
+
+    return candidates
+
+
 def screen_python(before_src: str, after_src: str, logical_path: str) -> list[Candidate]:
     before_funcs = _extract_python_functions(before_src, logical_path=logical_path, role="before")
     after_funcs = _extract_python_functions(after_src, logical_path=logical_path, role="after")
 
-    candidates: list[Candidate] = []
+    candidates: list[Candidate] = [
+        _make_candidate(
+            logical_path,
+            func_name,
+            "python.function_removed",
+            f"defined ({func_name})",
+            "<removed>",
+        )
+        for func_name in sorted(set(before_funcs) - set(after_funcs))
+    ]
     for func_name in sorted(set(before_funcs) & set(after_funcs)):
-        bf = before_funcs[func_name]
-        af = after_funcs[func_name]
-
-        b_cf = (
-            bf.if_count,
-            bf.if_else_count,
-            bf.try_else_count,
-            bf.loop_else_count,
-            bf.return_count,
+        candidates.extend(
+            _compare_python_function(
+                logical_path,
+                func_name,
+                before_funcs[func_name],
+                after_funcs[func_name],
+            )
         )
-        a_cf = (
-            af.if_count,
-            af.if_else_count,
-            af.try_else_count,
-            af.loop_else_count,
-            af.return_count,
-        )
-        if b_cf != a_cf:
-            candidates.append(
-                _make_candidate(
-                    logical_path,
-                    func_name,
-                    "python.control_flow_return_change",
-                    (
-                        f"if={bf.if_count}, if_else={bf.if_else_count}, "
-                        f"try_else={bf.try_else_count}, loop_else={bf.loop_else_count}, "
-                        f"return={bf.return_count}"
-                    ),
-                    (
-                        f"if={af.if_count}, if_else={af.if_else_count}, "
-                        f"try_else={af.try_else_count}, loop_else={af.loop_else_count}, "
-                        f"return={af.return_count}"
-                    ),
-                )
-            )
-
-        if bf.context_managers != af.context_managers:
-            candidates.append(
-                _make_candidate(
-                    logical_path,
-                    func_name,
-                    "python.context_manager_change",
-                    ", ".join(bf.context_managers) or "none",
-                    ", ".join(af.context_managers) or "none",
-                )
-            )
-
-        if bf.finally_hashes != af.finally_hashes:
-            candidates.append(
-                _make_candidate(
-                    logical_path,
-                    func_name,
-                    "python.finally_body_change",
-                    ", ".join(bf.finally_hashes) or "none",
-                    ", ".join(af.finally_hashes) or "none",
-                )
-            )
-
-        if bf.except_types != af.except_types:
-            candidates.append(
-                _make_candidate(
-                    logical_path,
-                    func_name,
-                    "python.except_types_change",
-                    _fmt_py_except_types(bf.except_types),
-                    _fmt_py_except_types(af.except_types),
-                )
-            )
 
     return candidates
 
@@ -642,20 +785,28 @@ def _skip_block_comment(src: str, start: int, *, nested: bool, out: list[str]) -
 
 
 def _try_skip_rust_raw_string(src: str, idx: int, out: list[str]) -> int | None:
+    end_pos = _scan_rust_raw_string_end(src, idx)
+    if end_pos is None:
+        return None
+    newlines = src[idx:end_pos].count("\n")
+    out.append('""' + ("\n" * newlines))
+    return end_pos
+
+
+def _try_skip_rust_char_lit(src: str, idx: int, out: list[str]) -> int | None:
     prev_is_ident = idx > 0 and (src[idx - 1].isalnum() or src[idx - 1] == "_")
-    if prev_is_ident:
+    ch = src[idx]
+    if ch == "b" and not prev_is_ident and idx + 1 < len(src) and src[idx + 1] == "'":
+        quote_idx = idx + 1
+    elif ch == "'":
+        quote_idx = idx
+    else:
         return None
-    n = len(src)
-    j = idx + 1
-    while j < n and src[j] == "#":
-        j += 1
-    if j >= n or src[j] != '"':
+    m_char = RUST_CHAR_LIT_RE.match(src[quote_idx : quote_idx + 16])
+    if m_char is None:
         return None
-    hashes = j - (idx + 1)
-    end_delim = '"' + ("#" * hashes)
-    end_pos = src.find(end_delim, j + 1)
-    out.append('""')
-    return n if end_pos == -1 else end_pos + len(end_delim)
+    out.append("''")
+    return quote_idx + m_char.end()
 
 
 def _skip_quoted_string(src: str, start: int, out: list[str]) -> int:
@@ -690,8 +841,15 @@ def _strip_c_style_comments_and_strings(src: str, *, rust_raw_strings: bool = Fa
             i = n if nl == -1 else nl
         elif ch == "/" and nxt == "*":
             i = _skip_block_comment(src, i, nested=rust_raw_strings, out=out)
-        elif rust_raw_strings and ch == "r":
+        elif rust_raw_strings and (ch == "r" or (ch in ("b", "c") and nxt == "r")):
             next_i = _try_skip_rust_raw_string(src, i, out)
+            if next_i is not None:
+                i = next_i
+            else:
+                out.append(ch)
+                i += 1
+        elif rust_raw_strings and ch in ("'", "b"):
+            next_i = _try_skip_rust_char_lit(src, i, out)
             if next_i is not None:
                 i = next_i
             else:
@@ -705,34 +863,134 @@ def _strip_c_style_comments_and_strings(src: str, *, rust_raw_strings: bool = Fa
     return "".join(out)
 
 
+def _count_rust_swallows(segment: str) -> dict[str, int]:
+    return {
+        "Option<Regex>": len(RUST_OPTION_REGEX_RE.findall(segment)),
+        ".ok()": len(RUST_DOT_OK_RE.findall(segment)),
+        ".unwrap_or_default()": len(RUST_UNWRAP_OR_DEFAULT_RE.findall(segment)),
+    }
+
+
+def _find_rust_brace_close(src: str, open_idx: int) -> int:
+    depth = 1
+    idx = open_idx + 1
+    n = len(src)
+    while idx < n and depth > 0:
+        ch = src[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        idx += 1
+    return idx
+
+
+def _find_rust_fn_body_open(src: str, start: int) -> int | None:
+    paren_depth = 0
+    bracket_depth = 0
+    idx = start
+    n = len(src)
+    while idx < n:
+        ch = src[idx]
+        if ch == "(":
+            paren_depth += 1
+        elif ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+        elif ch == "[":
+            bracket_depth += 1
+        elif ch == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+        elif paren_depth == 0 and bracket_depth == 0:
+            if ch == "{":
+                return idx
+            if ch == ";":
+                return None
+        idx += 1
+    return None
+
+
+def _find_cfg_test_ranges(cleaned_src: str) -> list[tuple[int, int, str]]:
+    ranges: list[tuple[int, int, str]] = []
+    for cfg_m in RUST_CFG_TEST_RE.finditer(cleaned_src):
+        tail = cleaned_src[cfg_m.end() : cfg_m.end() + 200]
+        mod_m = RUST_MOD_DECL_RE.search(tail)
+        if mod_m is None:
+            continue
+        open_idx = cfg_m.end() + mod_m.end() - 1
+        close_idx = _find_rust_brace_close(cleaned_src, open_idx)
+        ranges.append((open_idx, close_idx, mod_m.group(1)))
+    return ranges
+
+
+def _extract_rust_scopes(cleaned_src: str) -> dict[str, dict[str, int]]:
+    test_ranges = _find_cfg_test_ranges(cleaned_src)
+    fn_spans: list[tuple[int, int, str]] = []
+    name_counts: Counter[str] = Counter()
+
+    for match in RUST_FN_DECL_RE.finditer(cleaned_src):
+        body_open = _find_rust_fn_body_open(cleaned_src, match.end())
+        if body_open is None:
+            continue
+        body_close = _find_rust_brace_close(cleaned_src, body_open)
+        fn_name = match.group(1)
+        test_mod = next(
+            (mod_name for s, e, mod_name in test_ranges if s <= match.start() < e),
+            None,
+        )
+        base = f"{test_mod}::{fn_name}" if test_mod is not None else fn_name
+        name_counts[base] += 1
+        key = f"{base}#{name_counts[base]}" if name_counts[base] > 1 else base
+        fn_spans.append((match.start(), body_close, key))
+
+    scopes: dict[str, dict[str, int]] = {}
+    for start, end, key in fn_spans:
+        scopes[key] = _count_rust_swallows(cleaned_src[start:end])
+
+    # Collect non-fn module-level code (e.g. static LazyLock<Option<Regex>>) separately
+    # from #[cfg(test)] module-level code so test deletions never cancel prod additions.
+    prod_mod_parts: list[str] = []
+    test_mod_parts: list[str] = []
+    pos = 0
+    for start, end, _ in sorted(fn_spans):
+        if start > pos:
+            chunk = cleaned_src[pos:start]
+            in_test = any(s <= pos < e for s, e, _ in test_ranges)
+            (test_mod_parts if in_test else prod_mod_parts).append(chunk)
+        pos = max(pos, end)
+    if pos < len(cleaned_src):
+        chunk = cleaned_src[pos:]
+        in_test = any(s <= pos < e for s, e, _ in test_ranges)
+        (test_mod_parts if in_test else prod_mod_parts).append(chunk)
+
+    scopes["<module>"] = _count_rust_swallows("".join(prod_mod_parts))
+    if test_mod_parts:
+        scopes["<module:test>"] = _count_rust_swallows("".join(test_mod_parts))
+    return scopes
+
+
 def screen_rust(before_src: str, after_src: str, logical_path: str) -> list[Candidate]:
     b_clean = _strip_c_style_comments_and_strings(before_src, rust_raw_strings=True)
     a_clean = _strip_c_style_comments_and_strings(after_src, rust_raw_strings=True)
 
-    b_counts = {
-        "Option<Regex>": len(RUST_OPTION_REGEX_RE.findall(b_clean)),
-        ".ok()": len(RUST_DOT_OK_RE.findall(b_clean)),
-        ".unwrap_or_default()": len(RUST_UNWRAP_OR_DEFAULT_RE.findall(b_clean)),
-    }
-    a_counts = {
-        "Option<Regex>": len(RUST_OPTION_REGEX_RE.findall(a_clean)),
-        ".ok()": len(RUST_DOT_OK_RE.findall(a_clean)),
-        ".unwrap_or_default()": len(RUST_UNWRAP_OR_DEFAULT_RE.findall(a_clean)),
-    }
+    b_scopes = _extract_rust_scopes(b_clean)
+    a_scopes = _extract_rust_scopes(a_clean)
+    zero = {"Option<Regex>": 0, ".ok()": 0, ".unwrap_or_default()": 0}
 
-    increased = [k for k in b_counts if a_counts[k] > b_counts[k]]
-    if not increased:
-        return []
-
-    return [
-        _make_candidate(
-            logical_path,
-            "<file>",
-            "rust.fallible_error_swallow",
-            _fmt_counter_map(b_counts),
-            _fmt_counter_map(a_counts),
-        )
-    ]
+    candidates: list[Candidate] = []
+    for scope in sorted(a_scopes):
+        a_counts = a_scopes[scope]
+        b_counts = b_scopes.get(scope, zero)
+        if any(a_counts[k] > b_counts[k] for k in zero):
+            candidates.append(
+                _make_candidate(
+                    logical_path,
+                    scope,
+                    "rust.fallible_error_swallow",
+                    _fmt_counter_map(b_counts),
+                    _fmt_counter_map(a_counts),
+                )
+            )
+    return candidates
 
 
 def _extract_ts_waits(cleaned_src: str) -> tuple[list[str], list[str]]:
@@ -778,7 +1036,7 @@ def _is_test_file(logical_path: str, language: str, before_src: str) -> bool:
     norm = logical_path.replace("\\", "/")
     if TEST_PATH_RE.search(norm) is not None:
         return True
-    return language == "rust" and ("#[test]" in before_src or "#[cfg(test)]" in before_src)
+    return language == "rust" and RUST_TEST_ATTR_RE.search(before_src) is not None
 
 
 def _scan_rust_raw_string_end(src: str, start: int) -> int | None:
@@ -786,12 +1044,19 @@ def _scan_rust_raw_string_end(src: str, start: int) -> int | None:
     if prev_is_ident:
         return None
     n = len(src)
-    j = start + 1
+    ch = src[start]
+    if ch == "r":
+        r_idx = start
+    elif ch in ("b", "c") and start + 1 < n and src[start + 1] == "r":
+        r_idx = start + 1
+    else:
+        return None
+    j = r_idx + 1
     while j < n and src[j] == "#":
         j += 1
     if j >= n or src[j] != '"':
         return None
-    end_delim = '"' + ("#" * (j - (start + 1)))
+    end_delim = '"' + ("#" * (j - (r_idx + 1)))
     end_pos = src.find(end_delim, j + 1)
     return n if end_pos == -1 else end_pos + len(end_delim)
 
@@ -814,8 +1079,13 @@ def _scan_string_literal_end(src: str, start: int, language: str) -> int | None:
     """If a string/char literal starts at `start`, return its exclusive end index."""
     ch = src[start]
     if language == "rust":
-        if ch == "r":
+        if ch == "r" or (ch in ("b", "c") and start + 1 < len(src) and src[start + 1] == "r"):
             return _scan_rust_raw_string_end(src, start)
+        if ch == "b" and start + 1 < len(src) and src[start + 1] == "'":
+            prev_is_ident = start > 0 and (src[start - 1].isalnum() or src[start - 1] == "_")
+            if not prev_is_ident:
+                m_bchar = RUST_CHAR_LIT_RE.match(src[start + 1 : start + 17])
+                return start + 1 + m_bchar.end() if m_bchar is not None else None
         if ch == "'":
             m_char = RUST_CHAR_LIT_RE.match(src[start : start + 16])
             return start + m_char.end() if m_char is not None else None
@@ -1082,9 +1352,16 @@ def _git_show_file(repo_root: pathlib.Path, rev: str, rel_path: str) -> str | No
     return res.stdout
 
 
-def _parse_git_diff_entries(stdout: str) -> list[tuple[str, str]]:
+@dataclass(frozen=True)
+class _GitDiffEntry:
+    status: str
+    old_rel: str
+    new_rel: str | None
+
+
+def _parse_git_diff_entries(stdout: str) -> list[_GitDiffEntry]:
     tokens = stdout.split("\0")
-    entries: list[tuple[str, str]] = []
+    entries: list[_GitDiffEntry] = []
     idx = 0
     while idx < len(tokens):
         status = tokens[idx]
@@ -1093,12 +1370,16 @@ def _parse_git_diff_entries(stdout: str) -> list[tuple[str, str]]:
             continue
         if status.startswith(("R", "C")):
             if idx + 2 < len(tokens):
-                entries.append((tokens[idx + 1], tokens[idx + 2]))
+                entries.append(_GitDiffEntry(status[0], tokens[idx + 1], tokens[idx + 2]))
             idx += 3
         elif status in ("M", "T"):
             if idx + 1 < len(tokens):
                 rel = tokens[idx + 1]
-                entries.append((rel, rel))
+                entries.append(_GitDiffEntry(status, rel, rel))
+            idx += 2
+        elif status == "D":
+            if idx + 1 < len(tokens):
+                entries.append(_GitDiffEntry("D", tokens[idx + 1], None))
             idx += 2
         else:
             idx += 2
@@ -1134,6 +1415,32 @@ def _load_git_pair_texts(
     return before_text, after_disk.read_text(encoding="utf-8", errors="replace")
 
 
+def _screen_deleted_git_entry(
+    repo_root: pathlib.Path,
+    resolved_base: str,
+    old_rel: str,
+) -> list[Candidate]:
+    before_text = _git_show_file(repo_root, resolved_base, old_rel)
+    if before_text is None:
+        return []
+    lang = infer_language(old_rel)
+    is_test = (lang is not None and _is_test_file(old_rel, lang, before_text)) or (
+        TEST_PATH_RE.search(old_rel.replace("\\", "/")) is not None
+    )
+    if not is_test:
+        return []
+    line_count = len(before_text.splitlines())
+    return [
+        _make_candidate(
+            old_rel,
+            "<file>",
+            "test.file_deleted",
+            f"test file present ({line_count} lines)",
+            "<deleted>",
+        )
+    ]
+
+
 def screen_git_diff(
     repo_root: pathlib.Path,
     base_rev: str,
@@ -1156,11 +1463,19 @@ def screen_git_diff(
     candidates: list[Candidate] = []
     with tempfile.TemporaryDirectory(prefix="alt-screener-git-") as tmp_str:
         tmp_dir = pathlib.Path(tmp_str)
-        for pair_idx, (old_rel, new_rel) in enumerate(entries):
+        for pair_idx, entry in enumerate(entries):
+            if entry.status == "D" or entry.new_rel is None:
+                candidates.extend(
+                    _screen_deleted_git_entry(repo_root, resolved_base, entry.old_rel)
+                )
+                continue
+            new_rel = entry.new_rel
             lang = infer_language(new_rel)
             if lang is None:
                 continue
-            texts = _load_git_pair_texts(repo_root, resolved_base, resolved_head, old_rel, new_rel)
+            texts = _load_git_pair_texts(
+                repo_root, resolved_base, resolved_head, entry.old_rel, new_rel
+            )
             if texts is None:
                 continue
             before_text, after_text = texts
