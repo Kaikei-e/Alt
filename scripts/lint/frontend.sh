@@ -94,14 +94,49 @@ if errors:
     sys.exit(1)
 PY
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+canary_audit_script="${script_dir}/canary_audit.py"
+if [ -f "${canary_audit_script}" ]; then
+  echo "==> [${project_rel}] canary audit (biome)"
+  if ! python3 "${canary_audit_script}" frontend-canary \
+    --project-dir "${project_dir}"; then
+    exit 1
+  fi
+elif [ -f "${repo_root}/scripts/lint/run.sh" ]; then
+  echo "error: missing canary audit helper: ${canary_audit_script}" >&2
+  exit 1
+fi
+
 cd "$project_dir"
 
 lint_rc=0
-if bun run lint:check; then
-  lint_status="pass"
-else
+lint_policy="${LINT_POLICY:-fix-existing}"
+if [ "$lint_policy" = "block-new" ]; then
+  biome_json="$(mktemp "${TMPDIR:-/tmp}/alt-biome-lint-XXXXXX.json")"
+  set +e
+  ./node_modules/.bin/biome lint --reporter=json . > "$biome_json"
   lint_rc=$?
-  lint_status="fail"
+  set -e
+  if [ "$lint_rc" -eq 0 ]; then
+    lint_status="pass"
+  elif python3 "${script_dir}/check_ratchet.py" check-fingerprints \
+    --repo-root "${repo_root}" \
+    --project-dir "${project_dir}" \
+    --biome-json "$biome_json" \
+    --require-findings; then
+    lint_rc=0
+    lint_status="pass (block-new)"
+  else
+    lint_status="fail"
+  fi
+  rm -f "$biome_json"
+else
+  if bun run lint:check; then
+    lint_status="pass"
+  else
+    lint_rc=$?
+    lint_status="fail"
+  fi
 fi
 
 check_rc=0

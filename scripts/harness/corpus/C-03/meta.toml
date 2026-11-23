@@ -20,7 +20,7 @@ notes = "sloglint autofix across Go modules replaced test slog loggers with slog
 
 [detection]
 planned_checks = ["EXEC-01", "CHECK-01"]
-active_checks = []
-currently_caught = false
-current_method = "テスト"
-expected_signal = ""
+active_checks = ["CHECK-01"]
+currently_caught = true
+current_method = "CHECK-01"
+expected_signal = "go.test_logger_discard_change"

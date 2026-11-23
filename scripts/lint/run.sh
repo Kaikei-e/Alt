@@ -1,12 +1,67 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  echo "usage: run.sh [--policy <fix-existing|block-new>] <target|--list|all>" >&2
+}
+
+policy="${LINT_POLICY:-fix-existing}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --policy)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        usage
+        exit 2
+      fi
+      policy="$2"
+      shift 2
+      ;;
+    --policy=*)
+      policy="${1#--policy=}"
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-  echo "usage: run.sh <target|--list|all>" >&2
+  usage
   exit 2
 fi
 
+case "$policy" in
+  fix-existing|block-new)
+    export LINT_POLICY="$policy"
+    ;;
+  *)
+    echo "invalid lint policy '$policy': expected 'fix-existing' or 'block-new'" >&2
+    exit 2
+    ;;
+esac
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+check_disk_space() {
+  local min_kb="${ALT_LINT_MIN_FREE_KB:-10485760}"
+  local avail_kb=""
+  if [ -n "${ALT_LINT_FAKE_FREE_KB:-}" ]; then
+    avail_kb="$ALT_LINT_FAKE_FREE_KB"
+  else
+    avail_kb="$(df -Pk "$repo_root" | awk 'NR==2 {print $4}')"
+  fi
+  if ! [[ "$min_kb" =~ ^[0-9]+$ ]] || ! [[ "$avail_kb" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: failed to determine free disk space (available='${avail_kb}', required='${min_kb}')" >&2
+    exit 1
+  fi
+  if [ "$avail_kb" -lt "$min_kb" ]; then
+    local avail_mb=$((avail_kb / 1024))
+    local req_mb=$((min_kb / 1024))
+    echo "ERROR: ディスク空き容量不足 (available: ${avail_mb} MB, required: ${req_mb} MB)" >&2
+    exit 1
+  fi
+}
 
 detect_marker_kind() {
   local dir="$1"
@@ -151,6 +206,8 @@ if [ "$1" = "--list" ]; then
   list_targets
   exit 0
 fi
+
+check_disk_space
 
 if [ "$1" = "all" ]; then
   run_all

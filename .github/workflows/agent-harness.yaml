@@ -29,6 +29,26 @@ jobs:
           BASE_REF: ${{ github.base_ref || 'main' }}
         run: git fetch --no-tags origin "$BASE_REF"
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"
+          check-latest: true
+          cache: false
+
+      - name: Resolve pinned buf version
+        id: buf_version
+        run: |
+          buf_version="$(sed -n 's/^readonly BUF_VERSION="\([^"]*\)"/\1/p' scripts/lint/proto.sh | head -n 1)"
+          test -n "$buf_version"
+          echo "version=$buf_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buf
+        uses: bufbuild/buf-action@37ac33d8960807670a6e9719080e885197b09cc6  # v1.7.0
+        with:
+          setup_only: true
+          version: ${{ steps.buf_version.outputs.version }}
+
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
@@ -57,8 +77,23 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve lint base
+        id: lint_base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "base=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$BEFORE_SHA" ] && [[ ! "$BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            echo "base=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run agent harness checks
         env:
           TARGET: harness
-          LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+          LINT_BASE: ${{ steps.lint_base.outputs.base }}
         run: ./scripts/lint/run.sh "$TARGET"

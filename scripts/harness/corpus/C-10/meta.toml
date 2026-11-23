@@ -20,7 +20,7 @@ notes = "Replacing Playwright waitForTimeout() to silence Biome noPlaywrightWait
 
 [detection]
 planned_checks = ["CHECK-01"]
-active_checks = []
-currently_caught = false
-current_method = "E2E 実行"
-expected_signal = ""
+active_checks = ["CHECK-01"]
+currently_caught = true
+current_method = "CHECK-01"
+expected_signal = "ts.playwright_wait_change"

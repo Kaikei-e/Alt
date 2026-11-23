@@ -96,8 +96,8 @@ benchmark: deps ## Run benchmarks
 dev-setup: deps ## Setup development environment
 	@echo "$(BLUE)🛠️ Setting up development environment...$(NC)"
 	@echo "$(YELLOW)Installing development tools...$(NC)"
-	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install golang.org/x/tools/cmd/goimports@v0.42.0
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 	@echo "$(GREEN)✅ Development environment setup completed$(NC)"
 
 local-test: build-local ## Test the proxy sidecar locally (requires manual verification)

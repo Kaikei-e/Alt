@@ -386,7 +386,7 @@ class Settings(BaseSettings):
         missing = sorted(declared - covered)
         if missing:
             msg = (
-                "genre_thresholds_path_ja: threshold coverage gap — classifier "  # noqa: S608  # error message text, not SQL
+                "genre_thresholds_path_ja: threshold coverage gap — classifier "  # noqa: S608  # not-sql (trusted internal error message text)
                 f"declares {len(declared)} classes but {len(missing)} have no "
                 f"threshold entry: {missing}. Update {thresholds_file} so every "
                 "class in classes_ has a threshold (or set classification_backend "

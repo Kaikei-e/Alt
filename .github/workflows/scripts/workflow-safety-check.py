@@ -49,11 +49,14 @@ Checks:
      its own workflow file and every local reusable workflow it calls via
      `uses: ./.github/workflows/<file>` at job level, without a later `!`
      negation excluding them.
- 12. Every swallowed failure (`|| true`, `|| :`, `|| echo`, `|| exit 0`, or
-     `continue-on-error: true`) on a non-comment line carries a
+ 12. Every swallowed failure (`|| true`, `|| :`, `|| echo`, `|| exit 0`,
+     `set +e`, or `continue-on-error: true`) on a non-comment line carries a
      `# swallow-ok: <reason>` comment (with at least 10 characters after the
      colon) either at the end of the same line or on the nearest previous
-     non-blank line.
+     non-blank line. In lint jobs (`lint`, `quality-gates`, `static-checks`,
+     `quality`) and lint steps (`./scripts/lint/run.sh`, `make lint`),
+     swallowed failures are unconditionally forbidden even with
+     `# swallow-ok:`.
  13. No job step invokes a lint/format/static-analysis tool directly in `run:`
      (`golangci-lint`, `gofmt`, `go vet`, `gosec`, `govulncheck`, `ruff`,
      `bandit`, `pyrefly`, `cargo fmt`, `cargo clippy`, `biome`,
@@ -111,13 +114,28 @@ GLOB_CHAR_RE = re.compile(r"[*?+[]")
 UNSUPPORTED_PATH_GLOB_RE = re.compile(r"[?+\[]")
 
 # --- Check 12 constants ------------------------------------------------
+RUN_SWALLOW_RE = re.compile(
+    r"(?:\|\|\s*(?:true\b|:(?=\s|$|[;#)])|echo\b|exit\s+0\b)"
+    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*(?:\+e|\+o\s+errexit)(?=\s|$|[;#)]))"
+)
 SWALLOW_RE = re.compile(
     r"(?:\|\|\s*(?:true\b|:(?=\s|$|[;#)])|echo\b|exit\s+0\b)"
+    r"|(?:^|[;&|(\s])set\s+(?:-[a-zA-Z]+\s+)*(?:\+e|\+o\s+errexit)(?=\s|$|[;#)])"
     r"|\bcontinue-on-error\s*:\s*(?:['\"]true['\"]|true)\b)"
 )
 SWALLOW_OK_COMMENT_RE = re.compile(r"^#\s*swallow-ok:(.*)$")
 SWALLOW_OK_SAME_LINE_RE = re.compile(r"(?:^|\s)#\s*swallow-ok:(.*)$")
+INLINE_COMMENT_RE = re.compile(r"\s#.*$")
 MIN_SWALLOW_REASON_LEN = 10
+LINT_JOB_NAME_RE = re.compile(
+    r"(?:^|[-_])(?:lint|quality-gates?|static-checks)(?:$|[-_])|^quality$",
+    re.IGNORECASE,
+)
+LINT_RUN_CMD_RE = re.compile(
+    r"(?:^|[;&|(\s\"'/])(?:\./)?scripts/lint/run\.sh\b"
+    r"|\bmake\s+(?:[^\n;|&]*\s+)?lint\b"
+)
+LINT_STEP_IF_RE = re.compile(r"\bjob-type\s*==\s*['\"]lint['\"]", re.IGNORECASE)
 
 # --- Check 13 constants ------------------------------------------------
 DIRECT_LINT_TOOLS = frozenset(
@@ -1006,6 +1024,123 @@ def _check_workflow_doc_details(
                     )
                     bad += 1
 
+    lint_swallow_errors, lint_swallow_bad = _check_lint_swallows_in_doc(path, doc)
+    errors.extend(lint_swallow_errors)
+    bad += lint_swallow_bad
+
+    return errors, bad
+
+
+def is_lint_job_name(job_name: str) -> bool:
+    """Return True if a job ID denotes a lint/quality-gate/static-check job."""
+    return bool(LINT_JOB_NAME_RE.search(job_name))
+
+
+def _strip_inline_comment(raw_line: str) -> str:
+    """Strip an unquoted `# ...` shell/YAML inline comment while respecting `'...'` and `\"...\"`."""
+    in_single = False
+    in_double = False
+    escaped = False
+    for idx, ch in enumerate(raw_line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and not in_single:
+            escaped = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if ch == "#" and not in_single and not in_double:
+            if idx == 0 or raw_line[idx - 1].isspace():
+                return raw_line[:idx]
+    return raw_line
+
+
+def is_lint_step(step: Mapping[str, Any]) -> bool:
+    """Return True if a step invokes ./scripts/lint/run.sh, make lint, or targets job-type == 'lint'."""
+    step_if = step.get("if")
+    if isinstance(step_if, str) and LINT_STEP_IF_RE.search(step_if):
+        return True
+    run = step.get("run")
+    if not isinstance(run, str):
+        return False
+    for raw_line in run.splitlines():
+        stripped = raw_line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if LINT_RUN_CMD_RE.search(_strip_inline_comment(raw_line)):
+            return True
+    return False
+
+
+def _is_forbidden_lint_continue_on_error(mapping: Mapping[str, Any]) -> bool:
+    """Return True if continue-on-error is set to anything other than literal boolean False."""
+    if "continue-on-error" not in mapping:
+        return False
+    val = mapping["continue-on-error"]
+    return val is not False and val is not None
+
+
+def _find_run_swallows(run_body: str) -> list[str]:
+    """Return distinct exit-code swallowing constructs inside a step `run:` body."""
+    hits: list[str] = []
+    for raw_line in run_body.splitlines():
+        stripped = raw_line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        code = _strip_inline_comment(raw_line)
+        for match in RUN_SWALLOW_RE.finditer(code):
+            token = " ".join(match.group(0).strip().split())
+            if token not in hits:
+                hits.append(token)
+    return hits
+
+
+def _check_lint_swallows_in_doc(
+    path: str, doc: Mapping[str, Any]
+) -> tuple[list[str], int]:
+    """Unconditionally reject exit-code swallowing in lint jobs and lint steps."""
+    errors: list[str] = []
+    bad = 0
+    for job_name, job in (doc.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        steps = [s for s in (job.get("steps") or []) if isinstance(s, dict)]
+        job_is_lint = is_lint_job_name(str(job_name))
+        job_has_lint_step = any(is_lint_step(s) for s in steps)
+        if (job_is_lint or job_has_lint_step) and _is_forbidden_lint_continue_on_error(job):
+            coe_val = job.get("continue-on-error")
+            errors.append(
+                f"::error file={path}::lint job {job_name!r} sets "
+                f"continue-on-error: {coe_val!r}; swallowing lint exit codes is "
+                f"unconditionally forbidden even with '# swallow-ok:'."
+            )
+            bad += 1
+        for step in steps:
+            if not (job_is_lint or is_lint_step(step)):
+                continue
+            if _is_forbidden_lint_continue_on_error(step):
+                coe_val = step.get("continue-on-error")
+                errors.append(
+                    f"::error file={path}::lint step in job {job_name!r} sets "
+                    f"continue-on-error: {coe_val!r}; swallowing lint exit codes is "
+                    f"unconditionally forbidden even with '# swallow-ok:'."
+                )
+                bad += 1
+            run = step.get("run")
+            if isinstance(run, str):
+                for swallow in _find_run_swallows(run):
+                    errors.append(
+                        f"::error file={path}::lint step in job {job_name!r} "
+                        f"swallows exit code via {swallow!r}; swallowing lint "
+                        f"exit codes is unconditionally forbidden even with "
+                        f"'# swallow-ok:'."
+                    )
+                    bad += 1
     return errors, bad
 
 
@@ -1031,7 +1166,9 @@ def _has_swallow_ok_reason(lines: list[str], idx: int) -> bool:
     return False
 
 
-def _check_workflow_text_details(path: str, text: str) -> tuple[list[str], int]:
+def _check_workflow_text_details(
+    path: str, text: str, *, include_lint_doc_check: bool = True
+) -> tuple[list[str], int]:
     """Return (errors, failure_count) for raw-text checks (rule 12)."""
     errors: list[str] = []
     bad = 0
@@ -1040,7 +1177,8 @@ def _check_workflow_text_details(path: str, text: str) -> tuple[list[str], int]:
         stripped = raw_line.lstrip()
         if not stripped or stripped.startswith("#"):
             continue
-        if SWALLOW_RE.search(raw_line) and not _has_swallow_ok_reason(lines, idx):
+        code = _strip_inline_comment(raw_line)
+        if SWALLOW_RE.search(code) and not _has_swallow_ok_reason(lines, idx):
             lineno = idx + 1
             errors.append(
                 f"::error file={path},line={lineno}::{path}:{lineno}: "
@@ -1049,6 +1187,15 @@ def _check_workflow_text_details(path: str, text: str) -> tuple[list[str], int]:
                 f"or let the step fail."
             )
             bad += 1
+    if include_lint_doc_check:
+        try:
+            parsed = yaml.safe_load(text)
+        except yaml.YAMLError:
+            parsed = None
+        if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), dict):
+            lint_errors, lint_bad = _check_lint_swallows_in_doc(path, parsed)
+            errors.extend(lint_errors)
+            bad += lint_bad
     return errors, bad
 
 
@@ -1073,7 +1220,9 @@ def main() -> int:
         with open(path) as fh:
             raw_text = fh.read()
 
-        text_errors, text_bad = _check_workflow_text_details(path, raw_text)
+        text_errors, text_bad = _check_workflow_text_details(
+            path, raw_text, include_lint_doc_check=False
+        )
         for error in text_errors:
             print(error, file=sys.stderr)
         bad += text_bad

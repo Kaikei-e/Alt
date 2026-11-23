@@ -17,7 +17,11 @@ notes = "While fixing gosec G112 (ReadHeaderTimeout) on auth-hub's plaintext htt
 
 [detection]
 planned_checks = ["ARCH-02", "CHECK-01", "VERIFY-03"]
-active_checks = ["ARCH-02"]
+active_checks = ["ARCH-02", "CHECK-01"]
 currently_caught = true
-current_method = "ARCH-02"
-expected_signal = "go-no-raw-http-server"
+current_method = "ARCH-02+CHECK-01"
+expected_signal = ""
+
+[detection.expected_signals]
+ARCH-02 = "go-no-raw-http-server"
+CHECK-01 = "go.http_server_fields_change"

@@ -1,0 +1,18 @@
+# Allowlist for intentional 0-byte untracked files (CHECK-06).
+#
+# Policy:
+# - Tracked files that were already 0 bytes in HEAD (e.g., __init__.py, .gitkeep,
+#   lock placeholders) are permitted automatically by comparing against HEAD.
+# - Tracked files that were non-empty in HEAD and truncated to 0 bytes in the
+#   working tree are NEVER allowed and always fail with [hygiene.zero-byte-tracked].
+# - Untracked (non-ignored) 0-byte files fail with [hygiene.zero-byte-untracked]
+#   unless matched by a glob listed under [untracked_empty].globs.
+
+version = 1
+
+[untracked_empty]
+globs = [
+    "**/__init__.py",
+    "**/.gitkeep",
+    "**/py.typed",
+]

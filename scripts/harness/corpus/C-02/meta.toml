@@ -17,7 +17,7 @@ notes = "golangci-lint --fix (errorlint) rewrote `if _, ok := err.(viper.ConfigF
 
 [detection]
 planned_checks = ["CHECK-01", "EXEC-01"]
-active_checks = []
-currently_caught = false
-current_method = "ビルド・差分読み"
-expected_signal = ""
+active_checks = ["CHECK-01"]
+currently_caught = true
+current_method = "CHECK-01"
+expected_signal = "go.condition_operator_change"

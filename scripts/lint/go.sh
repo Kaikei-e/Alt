@@ -78,10 +78,11 @@ if [ ! -f "${CANARY_AUDIT_SCRIPT}" ]; then
 fi
 
 canary_dir="$(mktemp -d "${TMPDIR:-/tmp}/alt-go-canary-XXXXXX")"
-cleanup_canary() {
-  rm -rf "${canary_dir}"
+govuln_json="$(mktemp "${TMPDIR:-/tmp}/alt-govulncheck-XXXXXX.json")"
+cleanup_tmp() {
+  rm -rf "${canary_dir}" "${govuln_json}"
 }
-trap cleanup_canary EXIT
+trap cleanup_tmp EXIT
 
 echo "==> [${PROJECT_REL}] canary audit (golangci-lint incl. gosec SARIF)"
 if ! python3 "${CANARY_AUDIT_SCRIPT}" go-canary \
@@ -116,6 +117,8 @@ mkdir -p ./_reports
 rm -f ./_reports/golangci-lint.sarif ./_reports/gosec.sarif ./_reports/gosec.sarif.tmp \
       ./_reports/govulncheck.sarif ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.stderr
 
+LINT_POLICY_MODE="${LINT_POLICY:-fix-existing}"
+
 echo "==> [${PROJECT_REL}] golangci-lint (incl. gosec SARIF)"
 if "${GOLANGCI_LINT_BIN}" run --config "${CONFIG_FILE}" \
   --output.text.path stdout \
@@ -124,10 +127,7 @@ if "${GOLANGCI_LINT_BIN}" run --config "${CONFIG_FILE}" \
 else
   golangci_rc=$?
 fi
-if [ "${golangci_rc}" -eq 1 ]; then
-  status_golangci="FAIL"
-  overall_rc=1
-elif [ "${golangci_rc}" -ne 0 ]; then
+if [ "${golangci_rc}" -ne 0 ] && [ "${golangci_rc}" -ne 1 ]; then
   rm -f ./_reports/golangci-lint.sarif
   echo "ERROR: golangci-lint failed to run (exit code ${golangci_rc})" >&2
   exit "${golangci_rc}"
@@ -137,6 +137,24 @@ if [ ! -s ./_reports/golangci-lint.sarif ]; then
   rm -f ./_reports/golangci-lint.sarif
   echo "ERROR: golangci-lint did not produce ./_reports/golangci-lint.sarif (exit code ${golangci_rc})" >&2
   exit 1
+fi
+
+if [ "${golangci_rc}" -eq 1 ]; then
+  if [ "${LINT_POLICY_MODE}" = "block-new" ]; then
+    if python3 "${SCRIPT_DIR}/check_ratchet.py" check-fingerprints \
+      --repo-root "${REPO_ROOT}" \
+      --project-dir "${PROJECT_DIR}" \
+      --golangci-sarif ./_reports/golangci-lint.sarif \
+      --require-findings; then
+      status_golangci="PASS (block-new)"
+    else
+      status_golangci="FAIL"
+      overall_rc=1
+    fi
+  else
+    status_golangci="FAIL"
+    overall_rc=1
+  fi
 fi
 
 jq '
@@ -180,8 +198,21 @@ fi
 
 gosec_issue_count="$(jq '[.runs[]?.results[]?] | length' ./_reports/gosec.sarif)"
 if [ "${gosec_issue_count}" -gt 0 ]; then
-  status_gosec="FAIL"
-  overall_rc=1
+  if [ "${LINT_POLICY_MODE}" = "block-new" ]; then
+    if python3 "${SCRIPT_DIR}/check_ratchet.py" check-fingerprints \
+      --repo-root "${REPO_ROOT}" \
+      --project-dir "${PROJECT_DIR}" \
+      --golangci-sarif ./_reports/gosec.sarif \
+      --require-findings; then
+      status_gosec="PASS (block-new)"
+    else
+      status_gosec="FAIL"
+      overall_rc=1
+    fi
+  else
+    status_gosec="FAIL"
+    overall_rc=1
+  fi
 fi
 
 echo "==> [${PROJECT_REL}] govulncheck (SARIF)"
@@ -198,6 +229,23 @@ if [ ! -s ./_reports/govulncheck.sarif ]; then
   echo "ERROR: govulncheck did not produce a non-empty ./_reports/govulncheck.sarif" >&2
   exit 1
 fi
+
+if ! "${GOVULNCHECK_BIN}" -format=json ./... > "${govuln_json}" 2>./_reports/govulncheck.stderr; then
+  [ -s ./_reports/govulncheck.stderr ] && cat ./_reports/govulncheck.stderr >&2
+  rm -f ./_reports/govulncheck.stderr
+  echo "ERROR: govulncheck JSON coverage run failed" >&2
+  exit 1
+fi
+[ -s ./_reports/govulncheck.stderr ] && cat ./_reports/govulncheck.stderr >&2
+rm -f ./_reports/govulncheck.stderr
+
+if ! python3 "${CANARY_AUDIT_SCRIPT}" go-verify-govulncheck \
+  --project-dir "${PROJECT_DIR}" \
+  --govulncheck-sarif ./_reports/govulncheck.sarif \
+  --govulncheck-json "${govuln_json}"; then
+  exit 1
+fi
+
 jq '(.runs[]?.results[]?.stacks | select(type == "array")) |= unique' ./_reports/govulncheck.sarif > ./_reports/govulncheck.sarif.tmp
 mv ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.sarif
 

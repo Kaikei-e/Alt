@@ -460,16 +460,223 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
         )
         self.assertEqual(self.mod.check_workflow_text("sample.yaml", commented_out), [])
 
-        # 7) `|| echo`, `|| exit 0`, and `|| :` (with flexible whitespace) are detected.
+        # 7) `|| echo`, `|| exit 0`, `|| :`, and `set +e` (with flexible whitespace) are detected.
         for snippet in (
             "      - run: curl -fsS http://localhost || echo '{}'\n",
             "      - run: some-cmd ||  exit 0\n",
             "      - run: some-cmd || :\n",
+            "      - run: |\n          set +e\n          some-cmd\n",
+            "      - run: set +e; some-cmd\n",
         ):
             with self.subTest(snippet=snippet):
                 errs = self.mod.check_workflow_text("sample.yaml", snippet)
                 self.assertEqual(len(errs), 1)
-                self.assertIn("sample.yaml:1: swallowed failure without a reason.", errs[0])
+                self.assertIn("swallowed failure without a reason.", errs[0])
+
+        # 8) `set +e` in a non-lint step passes when annotated with `# swallow-ok:`.
+        set_plus_e_ok = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          # swallow-ok: capture diagnostic exit code from probe command\n"
+            "          set +e\n"
+            "          probe-cmd\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", set_plus_e_ok), [])
+
+    def test_lint_jobs_and_steps_unconditionally_forbid_swallowed_failures(self) -> None:
+        # 1) Lint jobs (`lint`, `quality-gates`, `static-checks`) forbid all swallows
+        # even when `# swallow-ok:` is provided.
+        for job_name in ("lint", "quality-gates", "static-checks"):
+            for case_name, body in (
+                (
+                    "job continue-on-error",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    # swallow-ok: attempting to bypass lint failure\n"
+                    "    continue-on-error: true\n"
+                    "    steps:\n      - run: ./scripts/lint/run.sh repo\n",
+                ),
+                (
+                    "step continue-on-error",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - name: Lint\n"
+                    "        # swallow-ok: attempting to bypass lint failure\n"
+                    "        continue-on-error: true\n"
+                    "        run: ./scripts/lint/run.sh repo\n",
+                ),
+                (
+                    "or-true",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - run: ./scripts/lint/run.sh repo || true  # swallow-ok: trying to ignore lint error\n",
+                ),
+                (
+                    "or-colon",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - run: |\n          # swallow-ok: trying to ignore lint error\n          ./scripts/lint/run.sh repo || :\n",
+                ),
+                (
+                    "or-echo",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - run: ./scripts/lint/run.sh repo || echo ok  # swallow-ok: trying to ignore lint error\n",
+                ),
+                (
+                    "or-exit-0",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - run: ./scripts/lint/run.sh repo || exit 0  # swallow-ok: trying to ignore lint error\n",
+                ),
+                (
+                    "set-plus-e",
+                    f"jobs:\n  {job_name}:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                    "    steps:\n      - run: |\n"
+                    "          # swallow-ok: trying to disable errexit in lint job\n"
+                    "          set +e\n"
+                    "          ./scripts/lint/run.sh repo\n",
+                ),
+            ):
+                with self.subTest(job=job_name, case=case_name):
+                    wf_text = (
+                        "name: sample\non:\n  pull_request:\npermissions:\n  contents: read\n"
+                        + body
+                    )
+                    text_errs = self.mod.check_workflow_text("sample.yaml", wf_text)
+                    doc_errs = self.mod.check_workflow_doc("sample.yaml", yaml.safe_load(wf_text))
+                    self.assertTrue(
+                        text_errs or doc_errs,
+                        f"Expected lint swallow rejection for {job_name}/{case_name}",
+                    )
+                    self.assertTrue(
+                        len(text_errs) >= 1,
+                        f"Expected check_workflow_text to reject {job_name}/{case_name}, got {text_errs}",
+                    )
+                    self.assertTrue(
+                        len(doc_errs) >= 1,
+                        f"Expected check_workflow_doc to reject {job_name}/{case_name}, got {doc_errs}",
+                    )
+
+        # 2) Lint steps (`./scripts/lint/run.sh` or `make lint`) inside a non-lint job
+        # unconditionally forbid swallows, while sibling non-lint diagnostic steps keep `# swallow-ok:`.
+        mixed_job_ok = (
+            "name: sample\non:\n  pull_request:\npermissions:\n  contents: read\n"
+            "jobs:\n"
+            "  python-job:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    timeout-minutes: 10\n"
+            "    steps:\n"
+            "      - name: Diagnostics\n"
+            "        run: |\n"
+            "          # swallow-ok: diagnostic directory listing must not fail the job\n"
+            "          ls -la . || true\n"
+            "      - name: Run lint\n"
+            "        run: ./scripts/lint/run.sh scripts\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", mixed_job_ok), [])
+        self.assertEqual(
+            self.mod.check_workflow_doc("sample.yaml", yaml.safe_load(mixed_job_ok)),
+            [],
+        )
+
+        for lint_cmd in ("./scripts/lint/run.sh scripts", "make lint TARGET=scripts"):
+            for swallow_variant in (
+                f"      - name: Run lint\n        # swallow-ok: should still be forbidden\n        continue-on-error: true\n        run: {lint_cmd}\n",
+                f"      - name: Run lint\n        run: {lint_cmd} || true  # swallow-ok: should still be forbidden\n",
+                f"      - name: Run lint\n        run: |\n          # swallow-ok: should still be forbidden\n          set +e\n          {lint_cmd}\n",
+            ):
+                with self.subTest(lint_cmd=lint_cmd, variant=swallow_variant.splitlines()[1]):
+                    wf_text = (
+                        "name: sample\non:\n  pull_request:\npermissions:\n  contents: read\n"
+                        "jobs:\n"
+                        "  python-job:\n"
+                        "    runs-on: ubuntu-latest\n"
+                        "    timeout-minutes: 10\n"
+                        "    steps:\n"
+                        + swallow_variant
+                    )
+                    self.assertTrue(
+                        len(self.mod.check_workflow_text("sample.yaml", wf_text)) >= 1,
+                        f"Expected check_workflow_text to reject lint step swallow for {lint_cmd}",
+                    )
+                    self.assertTrue(
+                        len(self.mod.check_workflow_doc("sample.yaml", yaml.safe_load(wf_text))) >= 1,
+                        f"Expected check_workflow_doc to reject lint step swallow for {lint_cmd}",
+                    )
+
+        # 3) Six adversarial bypass regressions (#17.4 / #16.6)
+        bypass_cases = [
+            (
+                "quote-aware inline comment stripping",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                '          echo "step #1" && ./scripts/lint/run.sh repo || true\n',
+            ),
+            (
+                "job-level continue-on-error on non-lint-named job with lint step",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    # swallow-ok: attempting job-level swallow on execute job\n"
+                "    continue-on-error: true\n"
+                "    steps:\n"
+                '      - run: ./scripts/lint/run.sh "$PROJECT_DIR"\n',
+            ),
+            (
+                "step with if referencing job-type == lint",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - name: Conditional lint step\n"
+                "        if: ${{ inputs.job-type == 'lint' }}\n"
+                "        run: |\n"
+                "          # swallow-ok: trying to swallow conditional lint step\n"
+                "          set +e\n"
+                "          echo running\n",
+            ),
+            (
+                "expression continue-on-error on lint job",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    continue-on-error: ${{ true }}\n"
+                "    steps:\n"
+                "      - run: ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "expression continue-on-error on lint step",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - name: Run lint\n"
+                "        continue-on-error: ${{ true }}\n"
+                "        run: ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "set +o errexit in lint job",
+                "jobs:\n  lint:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                "          # swallow-ok: trying set +o errexit\n"
+                "          set +o errexit\n"
+                "          ./scripts/lint/run.sh repo\n",
+            ),
+            (
+                "path-prefixed GITHUB_WORKSPACE/scripts/lint/run.sh",
+                "jobs:\n  execute:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: |\n"
+                '          "$GITHUB_WORKSPACE/scripts/lint/run.sh" repo || true  # swallow-ok: trying path prefix bypass\n',
+            ),
+        ]
+        for label, body in bypass_cases:
+            with self.subTest(bypass=label):
+                wf_text = (
+                    "name: sample\non:\n  pull_request:\npermissions:\n  contents: read\n"
+                    + body
+                )
+                text_errs = self.mod.check_workflow_text("sample.yaml", wf_text)
+                doc_errs = self.mod.check_workflow_doc("sample.yaml", yaml.safe_load(wf_text))
+                self.assertTrue(
+                    len(text_errs) >= 1,
+                    f"Expected check_workflow_text to reject bypass '{label}', got {text_errs}",
+                )
+                self.assertTrue(
+                    len(doc_errs) >= 1,
+                    f"Expected check_workflow_doc to reject bypass '{label}', got {doc_errs}",
+                )
 
     def test_direct_lint_tool_invocations_in_run_are_rejected(self) -> None:
         forbidden_commands = [

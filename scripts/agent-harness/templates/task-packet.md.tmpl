@@ -16,6 +16,7 @@ scope:
     - "PTH123"
   stop_condition: "対象ルールの解消または max_files / max_functions 上限到達時点で Hand-off を作成して終了する"
 execution_policy:
+  policy: "fix-existing"
   foreground_only: true
   forbid_repo_wide_test_build: true
   forbid_bulk_autofix: true

@@ -17,7 +17,7 @@ notes = "Splitting HybridPrioritySemaphore.acquire into private helpers in news-
 
 [detection]
 planned_checks = ["CHECK-01", "VERIFY-01"]
-active_checks = []
-currently_caught = false
-current_method = "pyrefly・テスト"
-expected_signal = ""
+active_checks = ["CHECK-01"]
+currently_caught = true
+current_method = "CHECK-01"
+expected_signal = "python.control_flow_return_change"

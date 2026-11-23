@@ -17,7 +17,7 @@ notes = "Five untracked ELF binaries produced by ad-hoc go build invocations rem
 
 [detection]
 planned_checks = ["CHECK-06"]
-active_checks = []
-currently_caught = false
-current_method = "ホストの目視"
-expected_signal = ""
+active_checks = ["CHECK-06"]
+currently_caught = true
+current_method = "CHECK-06"
+expected_signal = "hygiene.binary-artifact"

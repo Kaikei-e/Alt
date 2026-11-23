@@ -127,11 +127,37 @@ case "$bandit_dep_state" in
     ;;
 esac
 
-echo "==> canary audit (ruff${bandit_canary_suffix})"
+pyrefly_dep_state=""
+pyrefly_dep_rc=0
+set +e
+pyrefly_dep_state="$(query_dev_dep pyrefly)"
+pyrefly_dep_rc=$?
+set -e
+if [[ $pyrefly_dep_rc -ne 0 ]]; then
+  echo "error: failed to inspect pyproject.toml for pyrefly (exit ${pyrefly_dep_rc})" >&2
+  exit 1
+fi
+case "$pyrefly_dep_state" in
+  declared)
+    check_pyrefly="true"
+    pyrefly_canary_suffix=", pyrefly"
+    ;;
+  not-declared)
+    check_pyrefly="false"
+    pyrefly_canary_suffix=""
+    ;;
+  *)
+    echo "error: unexpected dev-dependency check output for pyrefly: ${pyrefly_dep_state}" >&2
+    exit 1
+    ;;
+esac
+
+echo "==> canary audit (ruff${bandit_canary_suffix}${pyrefly_canary_suffix})"
 if ! uv run --frozen --only-group dev python "${canary_audit_script}" python-canary \
   --project-dir "${target_dir}" \
   --work-dir "${work_tmp}/canary" \
-  --check-bandit "${check_bandit}"; then
+  --check-bandit "${check_bandit}" \
+  --check-pyrefly "${check_pyrefly}"; then
   exit 1
 fi
 rm -rf "${work_tmp}/canary"
@@ -156,7 +182,38 @@ elif [[ -f "${repo_root}/scripts/lint/run.sh" ]]; then
   exit 1
 fi
 
-run_step "ruff check" uv run --frozen --only-group dev ruff check .
+lint_policy="${LINT_POLICY:-fix-existing}"
+if [[ "$lint_policy" == "block-new" ]]; then
+  ruff_json="${work_tmp}/ruff.json"
+  ruff_rc=0
+  echo "==> ruff check (policy=block-new)"
+  steps+=("ruff check")
+  set +e
+  uv run --frozen --only-group dev ruff check --output-format json . > "${ruff_json}"
+  ruff_rc=$?
+  set -e
+  if [[ "$ruff_rc" -eq 0 ]]; then
+    statuses+=("pass")
+  elif [[ "$ruff_rc" -eq 1 ]]; then
+    if python3 "${script_dir}/check_ratchet.py" check-fingerprints \
+      --repo-root "${repo_root}" \
+      --project-dir "${target_dir}" \
+      --ruff-json "${ruff_json}" \
+      --require-findings; then
+      statuses+=("pass (block-new)")
+    else
+      fp_rc=$?
+      statuses+=("fail (block-new exit ${fp_rc})")
+      failed=1
+    fi
+  else
+    cat "${ruff_json}" >&2 || true
+    statuses+=("fail (ruff exit ${ruff_rc})")
+    failed=1
+  fi
+else
+  run_step "ruff check" uv run --frozen --only-group dev ruff check .
+fi
 run_step "ruff format" uv run --frozen --only-group dev ruff format --check .
 
 if [[ "$bandit_dep_state" == "declared" ]]; then

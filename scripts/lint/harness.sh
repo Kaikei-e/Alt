@@ -28,16 +28,25 @@ resolve_base() {
 
   raw_base="${LINT_BASE:-}"
   if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
-    if ! target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+    if target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+      if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+        echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
+        return 1
+      fi
+      if [ "$merge_base" = "$head_sha" ]; then
+        if ! merge_base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+          echo "error: LINT_BASE '${raw_base}' matches HEAD and HEAD~1 cannot be resolved (shallow clone?)" >&2
+          return 1
+        fi
+      fi
+      printf '%s\n' "$merge_base"
+      return 0
+    fi
+    if [[ ! "$raw_base" =~ ^[0-9a-fA-F]{40}$ ]]; then
       echo "error: LINT_BASE '${raw_base}' cannot be resolved to a commit" >&2
       return 1
     fi
-    if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
-      echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
-      return 1
-    fi
-    printf '%s\n' "$merge_base"
-    return 0
+    echo "warn: LINT_BASE '${raw_base}' not found (force-push?); falling back to origin/main / HEAD~1" >&2
   fi
 
   if ! target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then
@@ -73,6 +82,17 @@ status_python_pki_sync="pass"
 status_python_pki_tests="pass"
 status_python_version_tests="pass"
 status_pytest_randomized_tests="pass"
+status_behavior_screener_tests="pass"
+status_suppression_ratchet="pass"
+status_suppression_ratchet_tests="pass"
+status_suppression_diff_report="pass"
+status_suppression_diff_tests="pass"
+status_generated_code="pass"
+status_generated_code_tests="pass"
+status_worktree_hygiene="pass"
+status_worktree_hygiene_tests="pass"
+status_canary_ledger="pass"
+status_entrypoint_canary="pass"
 status_corpus="pass"
 corpus_capture_rate=""
 
@@ -148,6 +168,72 @@ if ! python3 scripts/tests/test-pytest-randomized.py; then
   rc=1
 fi
 
+echo "==> [harness] test-behavior-screener.py"
+if ! python3 scripts/tests/test-behavior-screener.py; then
+  status_behavior_screener_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] check_ratchet.py"
+if ! python3 scripts/lint/check_ratchet.py; then
+  status_suppression_ratchet="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-check-ratchet.py"
+if ! python3 scripts/tests/test-check-ratchet.py; then
+  status_suppression_ratchet_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] suppression_diff_report.py --base ${base}"
+if ! python3 scripts/lint/suppression_diff_report.py --base "$base"; then
+  status_suppression_diff_report="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-suppression-diff-report.py"
+if ! python3 scripts/tests/test-suppression-diff-report.py; then
+  status_suppression_diff_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] check_generated_code.py --base ${base}"
+if ! python3 scripts/lint/check_generated_code.py --base "$base"; then
+  status_generated_code="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-check-generated-code.py"
+if ! python3 scripts/tests/test-check-generated-code.py; then
+  status_generated_code_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] check_worktree_hygiene.py"
+if ! python3 scripts/lint/check_worktree_hygiene.py; then
+  status_worktree_hygiene="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-worktree-hygiene.py"
+if ! python3 scripts/tests/test-worktree-hygiene.py; then
+  status_worktree_hygiene_tests="fail"
+  rc=1
+fi
+
+echo "==> [harness] canary_audit.py verify-ledger --repo-root ."
+if ! python3 scripts/lint/canary_audit.py verify-ledger --repo-root .; then
+  status_canary_ledger="fail"
+  rc=1
+fi
+
+echo "==> [harness] entrypoint_canary.py --languages proto --skip-baseline"
+if ! python3 scripts/lint/entrypoint_canary.py --languages proto --skip-baseline; then
+  status_entrypoint_canary="fail"
+  rc=1
+fi
+
 echo "==> [harness] test-corpus.py"
 corpus_out_file="$(mktemp "${TMPDIR:-/tmp}/alt-harness-corpus-XXXXXX")"
 trap 'rm -f "$corpus_out_file"' EXIT
@@ -175,6 +261,17 @@ printf '  %-32s %s\n' "python_pki_sync" "$status_python_pki_sync"
 printf '  %-32s %s\n' "python_pki_tests" "$status_python_pki_tests"
 printf '  %-32s %s\n' "python_version_tests" "$status_python_version_tests"
 printf '  %-32s %s\n' "pytest_randomized_tests" "$status_pytest_randomized_tests"
+printf '  %-32s %s\n' "behavior_screener_tests" "$status_behavior_screener_tests"
+printf '  %-32s %s\n' "suppression_ratchet" "$status_suppression_ratchet"
+printf '  %-32s %s\n' "suppression_ratchet_tests" "$status_suppression_ratchet_tests"
+printf '  %-32s %s\n' "suppression_diff_report" "$status_suppression_diff_report"
+printf '  %-32s %s\n' "suppression_diff_tests" "$status_suppression_diff_tests"
+printf '  %-32s %s\n' "generated_code" "$status_generated_code"
+printf '  %-32s %s\n' "generated_code_tests" "$status_generated_code_tests"
+printf '  %-32s %s\n' "worktree_hygiene" "$status_worktree_hygiene"
+printf '  %-32s %s\n' "worktree_hygiene_tests" "$status_worktree_hygiene_tests"
+printf '  %-32s %s\n' "canary_ledger" "$status_canary_ledger"
+printf '  %-32s %s\n' "entrypoint_canary" "$status_entrypoint_canary"
 printf '  %-32s %s\n' "corpus" "$status_corpus"
 if [ -n "$corpus_capture_rate" ]; then
   printf '  %s\n' "$corpus_capture_rate"

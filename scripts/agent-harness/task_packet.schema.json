@@ -89,6 +89,11 @@
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/AllowedPath" }
         },
+        "allow_generated_code_edits": {
+          "type": "boolean",
+          "default": false,
+          "description": "CHECK-05: explicit opt-in required to modify files carrying a generated-code DO NOT EDIT header."
+        },
         "max_files": {
           "type": "integer",
           "description": "Maximum number of files allowed to be modified (recommended default: 10, hard cap: 25).",
@@ -127,6 +132,12 @@
         "verification_command"
       ],
       "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["fix-existing", "block-new"],
+          "default": "fix-existing",
+          "description": "CHECK-02 lint enforcement policy: fix-existing (resolve all existing findings) or block-new (ratchet/baseline existing findings and block new ones)."
+        },
         "foreground_only": {
           "const": true,
           "description": "All commands must run synchronously in the foreground; background '&' is forbidden."
@@ -220,6 +231,36 @@
         }
       }
     },
+    "BehaviorCandidateResponse": {
+      "type": "object",
+      "description": "CHECK-01 explicit disposition for an AST behavior-change screener candidate.",
+      "additionalProperties": false,
+      "required": ["disposition"],
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "file": {
+          "$ref": "#/$defs/RepoRelativeFilePath"
+        },
+        "function": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "kind": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": ["intended", "unintended_reverted"]
+        },
+        "test_name": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
     "RuntimeBehaviorImpact": {
       "type": "object",
       "description": "Explicit evaluation of potential runtime behavior changes.",
@@ -250,6 +291,13 @@
         "summary": {
           "$ref": "#/$defs/NonEmptyString",
           "description": "Non-empty confirmation of runtime impact; must explicitly state evidence or '変更なし' even when has_change is false."
+        },
+        "candidate_responses": {
+          "type": "array",
+          "description": "CHECK-01 per-candidate disposition responses answering behavior screener output.",
+          "items": {
+            "$ref": "#/$defs/BehaviorCandidateResponse"
+          }
         }
       }
     },

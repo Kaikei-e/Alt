@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,6 +38,8 @@ PACKET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$")
 TARGET_RE = re.compile(r"^(?!.*\.\.)(?!/)[A-Za-z0-9._/-]+$")
 
 HARNESS_DIR = Path(__file__).resolve().parent
+REPO_ROOT_DEFAULT = HARNESS_DIR.parents[1]
+SCREENER_SCRIPT_PATH = REPO_ROOT_DEFAULT / "scripts" / "lint" / "behavior_screener.py"
 SCHEMA_PATH = HARNESS_DIR / "task_packet.schema.json"
 TEMPLATES_DIR = HARNESS_DIR / "templates"
 PACKET_TEMPLATE_PATH = TEMPLATES_DIR / "task-packet.md.tmpl"
@@ -51,12 +55,18 @@ PLACEHOLDER_STRINGS = frozenset(
         "--",
         "—",
         "todo",
+        "none",
+        "null",
+        "なし",
+        "無し",
         "未記入",
         "未定",
         "xxx",
         "...",
     }
 )
+EXCLUDED_GENERATED_PREFIXES = ("stopped-using-k8s/", "scripts/harness/corpus/")
+SUBPROCESS_TIMEOUT_SECONDS = 60
 
 TIME_FIELD_RE = re.compile(
     r"(?:^|_)(?:timeout|minutes?|seconds?|hours?|duration|deadline|time_limit|time_budget|ttl)(?:$|_)",
@@ -86,10 +96,17 @@ BG_PROSE_AFFIRMATIVE_RE = re.compile(
 NOHUP_RE = re.compile(r"(?:^|[\s`('\"])nohup\s+")
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 RUN_SH_CALL_RE = re.compile(
-    r"""(?:^|[\s;&|()])(?:\./)?scripts/lint/run\.sh\s+(?:"([^"\n]+)"|'([^'\n]+)'|([^\s;&|()'"]+))""",
+    r"""(?:^|[\s;&|()])(?:\./)?scripts/lint/run\.sh\s+(?:--policy(?:=|\s+)(?:"[^"\n]+"|'[^'\n]+'|[^\s;&|()'"]+)\s+)?(?:"([^"\n]+)"|'([^'\n]+)'|([^\s;&|()'"]+))""",
 )
 MAKE_LINT_RE = re.compile(r"(?:^|[\s;&|()])make\s+([^\n;&|)]*)")
 MAKE_LINT_TARGET_RE = re.compile(r"\bTARGET=(?:\"([^\"\n]*)\"|'([^'\n]*)'|([^\s;&|()'\"#]+))")
+CMD_LINT_POLICY_RE = re.compile(
+    r"""(?:^|[\s;&|()])(?:LINT_POLICY=|--policy(?:=|\s+))(?:"([^"\n]+)"|'([^'\n]+)'|([^\s;&|()'"]+))""",
+)
+GENERATED_HEADER_SCAN_LINES = 40
+GENERATED_HEADER_RE = re.compile(
+    r"^\s*(?://|#|/\*|\*|--|<!--|;)\s*Code generated\b[^\n]*DO NOT EDIT\.?"
+)
 
 PACKET_REQUIRED_HEADINGS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^##\s+1\.\s*範囲と作業量制約"), "## 1. 範囲と作業量制約"),
@@ -1125,6 +1142,281 @@ def _matches_any_glob(file_path: str, patterns: list[str]) -> bool:
     return False
 
 
+def _extract_command_policies(command: str) -> list[str]:
+    policies: list[str] = []
+    for match in CMD_LINT_POLICY_RE.finditer(command):
+        val = (match.group(1) or match.group(2) or match.group(3) or "").strip()
+        if val:
+            policies.append(val)
+    return policies
+
+
+def _check_policy_command_match(
+    command: str,
+    *,
+    declared_policy: str,
+    json_path: str,
+    issues: list[ValidationIssue],
+) -> None:
+    explicit_policies = _extract_command_policies(command)
+    if declared_policy == "block-new" and not explicit_policies:
+        issues.append(
+            ValidationIssue(
+                "POLICY_COMMAND_MISMATCH",
+                json_path,
+                "execution_policy.policy='block-new' requires verification command to explicitly "
+                "include '--policy block-new' or 'LINT_POLICY=block-new'",
+            )
+        )
+    issues.extend(
+        ValidationIssue(
+            "POLICY_COMMAND_MISMATCH",
+            json_path,
+            f"execution_policy.policy={declared_policy!r} conflicts with command policy {explicit!r}",
+        )
+        for explicit in explicit_policies
+        if explicit != declared_policy
+    )
+
+
+def _has_generated_header_text(text: str) -> bool:
+    for line in text.splitlines()[:GENERATED_HEADER_SCAN_LINES]:
+        if GENERATED_HEADER_RE.search(line) is not None:
+            return True
+    return False
+
+
+def _file_has_generated_header(path: Path) -> bool:
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return False
+    if b"\x00" in raw[:4096]:
+        return False
+    text = raw[:8192].decode("utf-8", errors="replace")
+    return _has_generated_header_text(text)
+
+
+def _repo_rel_is_generated_code(repo_root: Path, rel_path: str) -> bool:
+    norm = _normalize_repo_rel_path(rel_path)
+    if not norm:
+        return False
+    repo_root_resolved = repo_root.resolve()
+    disk_path = repo_root / norm
+    if (
+        disk_path.is_file()
+        and not disk_path.is_symlink()
+        and disk_path.resolve().is_relative_to(repo_root_resolved)
+    ):
+        return _file_has_generated_header(disk_path)
+    git_bin = shutil.which("git")
+    if git_bin is None or not (repo_root / ".git").exists():
+        return False
+    res = subprocess.run(  # noqa: S603 -- inspects HEAD file header inside explicit repo_root
+        [git_bin, "-C", str(repo_root), "show", "--end-of-options", f"HEAD:{norm}"],
+        capture_output=True,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if res.returncode != 0 or b"\x00" in res.stdout[:4096]:
+        return False
+    text = res.stdout[:8192].decode("utf-8", errors="replace")
+    return _has_generated_header_text(text)
+
+
+def list_generated_forbidden_paths(repo_root: Path) -> list[str]:
+    git_bin = shutil.which("git")
+    candidates: list[str] = []
+    if git_bin is not None and (repo_root / ".git").exists():
+        res = subprocess.run(  # noqa: S603 -- lists tracked files inside explicit repo_root
+            [git_bin, "-C", str(repo_root), "ls-files", "-z"],
+            capture_output=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if res.returncode == 0:
+            candidates = [
+                entry.decode("utf-8", errors="surrogateescape")
+                for entry in res.stdout.split(b"\x00")
+                if entry
+            ]
+    if not candidates:
+        candidates = [
+            p.relative_to(repo_root).as_posix()
+            for p in repo_root.rglob("*")
+            if p.is_file() and ".git" not in p.parts
+        ]
+
+    repo_root_resolved = repo_root.resolve()
+    generated: list[str] = []
+    for rel in sorted(set(candidates)):
+        if rel.startswith(EXCLUDED_GENERATED_PREFIXES):
+            continue
+        full = repo_root / rel
+        if (
+            full.is_file()
+            and not full.is_symlink()
+            and full.resolve().is_relative_to(repo_root_resolved)
+            and _file_has_generated_header(full)
+        ):
+            generated.append(rel)
+    return generated
+
+
+def _run_behavior_screener_for_base(repo_root: Path, base_commit: str) -> list[dict[str, Any]]:
+    if not base_commit or not base_commit.strip() or base_commit.startswith("-"):
+        msg = f"invalid --base-commit revision: {base_commit!r}"
+        raise DocumentParseError(msg)
+    if not SCREENER_SCRIPT_PATH.is_file():
+        msg = f"behavior screener script not found: {SCREENER_SCRIPT_PATH}"
+        raise DocumentParseError(msg)
+    try:
+        res = subprocess.run(  # noqa: S603 -- invokes repo-owned behavior_screener.py with fixed argv
+            [
+                sys.executable,
+                str(SCREENER_SCRIPT_PATH),
+                "--repo-root",
+                str(repo_root),
+                "--base",
+                base_commit,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        msg = f"behavior_screener.py timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        raise DocumentParseError(msg) from exc
+    if res.returncode != 0:
+        msg = f"behavior_screener.py failed (rc={res.returncode}): {res.stderr.strip()}"
+        raise DocumentParseError(msg)
+    return _parse_screener_candidates_text(res.stdout, source="--base-commit")
+
+
+def _parse_screener_candidates_text(raw: str, *, source: str) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        msg = f"invalid screener report JSON ({source}): {exc}"
+        raise DocumentParseError(msg) from exc
+    if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
+        msg = f"screener report ({source}) must be a JSON array of candidate objects"
+        raise DocumentParseError(msg)
+    return parsed
+
+
+def _candidate_matches_response(
+    candidate: dict[str, Any],
+    response: dict[str, Any],
+) -> bool:
+    cand_id = candidate.get("id")
+    resp_id = response.get("candidate_id")
+    if isinstance(cand_id, str) and cand_id and isinstance(resp_id, str) and resp_id == cand_id:
+        return True
+    c_file = candidate.get("file")
+    r_file = response.get("file")
+    if not (isinstance(c_file, str) and isinstance(r_file, str)):
+        return False
+    return (
+        _normalize_repo_rel_path(c_file) == _normalize_repo_rel_path(r_file)
+        and candidate.get("function") == response.get("function")
+        and candidate.get("kind") == response.get("kind")
+    )
+
+
+def _validate_behavior_candidates(
+    data: dict[str, Any],
+    screener_candidates: list[dict[str, Any]] | None,
+    issues: list[ValidationIssue],
+) -> None:
+    impact = data.get("runtime_behavior_impact")
+    has_change = impact.get("has_change") if isinstance(impact, dict) else None
+    raw_responses = impact.get("candidate_responses", []) if isinstance(impact, dict) else []
+    responses: list[tuple[int, dict[str, Any]]] = [
+        (idx, item) for idx, item in enumerate(raw_responses) if isinstance(item, dict)
+    ]
+
+    for idx, resp in responses:
+        if resp.get("disposition") == "intended":
+            if has_change is False:
+                issues.append(
+                    ValidationIssue(
+                        "CONTRADICTORY_BEHAVIOR_IMPACT",
+                        f"$.runtime_behavior_impact.candidate_responses[{idx}].disposition",
+                        "runtime_behavior_impact.has_change=false contradicts candidate response "
+                        "with disposition='intended'",
+                    )
+                )
+            test_name = resp.get("test_name")
+            if not isinstance(test_name, str) or _is_placeholder(test_name):
+                issues.append(
+                    ValidationIssue(
+                        "MISSING_CANDIDATE_TEST_NAME",
+                        f"$.runtime_behavior_impact.candidate_responses[{idx}].test_name",
+                        "candidate response with disposition='intended' requires a non-empty, "
+                        "non-placeholder test_name",
+                    )
+                )
+
+    if not screener_candidates:
+        return
+
+    for cand in screener_candidates:
+        matched: tuple[int, dict[str, Any]] | None = next(
+            ((idx, resp) for idx, resp in responses if _candidate_matches_response(cand, resp)),
+            None,
+        )
+        cand_label = f"id={cand.get('id')!r} ({cand.get('file')}:{cand.get('function')} [{cand.get('kind')}])"
+        if matched is None:
+            issues.append(
+                ValidationIssue(
+                    "UNANSWERED_BEHAVIOR_CANDIDATE",
+                    "$.runtime_behavior_impact.candidate_responses",
+                    f"active CHECK-01 behavior candidate {cand_label} has no matching response",
+                )
+            )
+            continue
+
+        resp_idx, resp = matched
+        if resp.get("disposition") == "unintended_reverted":
+            issues.append(
+                ValidationIssue(
+                    "UNREVERTED_UNINTENDED_CANDIDATE",
+                    f"$.runtime_behavior_impact.candidate_responses[{resp_idx}]",
+                    f"candidate {cand_label} is marked 'unintended_reverted' but is still present "
+                    "in the active screener report",
+                )
+            )
+
+
+def _validate_generated_code_edits(
+    handoff: dict[str, Any],
+    *,
+    repo_root: Path | None,
+    allow_generated: bool,
+    issues: list[ValidationIssue],
+) -> None:
+    if repo_root is None or allow_generated:
+        return
+    modified_files = handoff.get("modified_files")
+    if not isinstance(modified_files, list):
+        return
+    for idx, entry in enumerate(modified_files):
+        if not isinstance(entry, dict):
+            continue
+        rel = entry.get("path")
+        if isinstance(rel, str) and _repo_rel_is_generated_code(repo_root, rel):
+            issues.append(
+                ValidationIssue(
+                    "GENERATED_CODE_MODIFIED",
+                    f"$.modified_files[{idx}].path",
+                    f"modified file '{rel}' carries a generated-code DO NOT EDIT header; "
+                    "set scope.allow_generated_code_edits=true only when explicitly regenerating",
+                )
+            )
+
+
 # ---------------------------------------------------------------------------
 # High-level validation functions
 # ---------------------------------------------------------------------------
@@ -1156,6 +1448,7 @@ def validate_packet_doc(doc: ParsedDocument, schema: dict[str, Any]) -> list[Val
     if isinstance(policy, dict):
         verify_cmd = policy.get("verification_command")
         forbid_wide = policy.get("forbid_repo_wide_test_build") is True
+        declared_policy = policy.get("policy", "fix-existing")
         if isinstance(verify_cmd, str) and verify_cmd.strip():
             _check_verification_command(
                 verify_cmd,
@@ -1164,6 +1457,16 @@ def validate_packet_doc(doc: ParsedDocument, schema: dict[str, Any]) -> list[Val
                 forbid_repo_wide=forbid_wide,
                 issues=issues,
             )
+            if isinstance(declared_policy, str) and declared_policy in (
+                "fix-existing",
+                "block-new",
+            ):
+                _check_policy_command_match(
+                    verify_cmd,
+                    declared_policy=declared_policy,
+                    json_path="$.execution_policy.verification_command",
+                    issues=issues,
+                )
 
     if doc.is_markdown:
         _check_markdown_headings(doc.body_lines, PACKET_REQUIRED_HEADINGS, issues)
@@ -1252,6 +1555,9 @@ def validate_handoff_doc(
     doc: ParsedDocument,
     schema: dict[str, Any],
     packet_doc: ParsedDocument | None = None,
+    *,
+    screener_candidates: list[dict[str, Any]] | None = None,
+    repo_root: Path | None = None,
 ) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     _validate_schema_node(
@@ -1274,6 +1580,19 @@ def validate_handoff_doc(
 
     _validate_handoff_impact(doc.data, issues)
     _validate_handoff_verification_and_files(doc.data, issues)
+    _validate_behavior_candidates(doc.data, screener_candidates, issues)
+
+    allow_generated = (
+        packet_doc is not None
+        and isinstance(packet_doc.data.get("scope"), dict)
+        and packet_doc.data["scope"].get("allow_generated_code_edits") is True
+    )
+    _validate_generated_code_edits(
+        doc.data,
+        repo_root=repo_root,
+        allow_generated=allow_generated,
+        issues=issues,
+    )
 
     if doc.is_markdown:
         _check_markdown_headings(doc.body_lines, HANDOFF_REQUIRED_HEADINGS, issues)
@@ -1282,6 +1601,48 @@ def validate_handoff_doc(
         _cross_validate_handoff_against_packet(doc.data, packet_doc, schema, issues)
 
     return issues
+
+
+def _cross_validate_modified_files(
+    modified_files: object,
+    scope: dict[str, Any],
+    issues: list[ValidationIssue],
+) -> None:
+    if not isinstance(modified_files, list):
+        return
+    max_files = scope["max_files"]
+    allowed_paths: list[str] = scope["allowed_paths"]
+    forbidden_paths: list[str] = scope.get("forbidden_paths", [])
+    if len(modified_files) > max_files:
+        issues.append(
+            ValidationIssue(
+                "MAX_FILES_EXCEEDED",
+                "$.modified_files",
+                f"modified_files count {len(modified_files)} exceeds packet max_files={max_files}",
+            )
+        )
+    for idx, entry in enumerate(modified_files):
+        if not isinstance(entry, dict):
+            continue
+        rel = entry.get("path")
+        if not isinstance(rel, str):
+            continue
+        if not _matches_any_glob(rel, allowed_paths):
+            issues.append(
+                ValidationIssue(
+                    "PATH_OUTSIDE_ALLOWED_PATHS",
+                    f"$.modified_files[{idx}].path",
+                    f"modified file '{rel}' is outside packet scope.allowed_paths {allowed_paths!r}",
+                )
+            )
+        if forbidden_paths and _matches_any_glob(rel, forbidden_paths):
+            issues.append(
+                ValidationIssue(
+                    "PATH_IN_FORBIDDEN_PATHS",
+                    f"$.modified_files[{idx}].path",
+                    f"modified file '{rel}' matches packet scope.forbidden_paths {forbidden_paths!r}",
+                )
+            )
 
 
 def _cross_validate_handoff_against_packet(
@@ -1315,44 +1676,9 @@ def _cross_validate_handoff_against_packet(
         )
 
     scope = packet["scope"]
-    max_files = scope["max_files"]
+    _cross_validate_modified_files(handoff.get("modified_files", []), scope, issues)
+
     max_functions = scope["max_functions"]
-    allowed_paths: list[str] = scope["allowed_paths"]
-    forbidden_paths: list[str] = scope.get("forbidden_paths", [])
-
-    modified_files = handoff.get("modified_files", [])
-    if isinstance(modified_files, list):
-        if len(modified_files) > max_files:
-            issues.append(
-                ValidationIssue(
-                    "MAX_FILES_EXCEEDED",
-                    "$.modified_files",
-                    f"modified_files count {len(modified_files)} exceeds packet max_files={max_files}",
-                )
-            )
-        for idx, entry in enumerate(modified_files):
-            if not isinstance(entry, dict):
-                continue
-            rel = entry.get("path")
-            if not isinstance(rel, str):
-                continue
-            if not _matches_any_glob(rel, allowed_paths):
-                issues.append(
-                    ValidationIssue(
-                        "PATH_OUTSIDE_ALLOWED_PATHS",
-                        f"$.modified_files[{idx}].path",
-                        f"modified file '{rel}' is outside packet scope.allowed_paths {allowed_paths!r}",
-                    )
-                )
-            if forbidden_paths and _matches_any_glob(rel, forbidden_paths):
-                issues.append(
-                    ValidationIssue(
-                        "PATH_IN_FORBIDDEN_PATHS",
-                        f"$.modified_files[{idx}].path",
-                        f"modified file '{rel}' matches packet scope.forbidden_paths {forbidden_paths!r}",
-                    )
-                )
-
     mod_funcs = handoff.get("modified_functions_count")
     if isinstance(mod_funcs, int) and not isinstance(mod_funcs, bool) and mod_funcs > max_functions:
         issues.append(
@@ -1365,6 +1691,9 @@ def _cross_validate_handoff_against_packet(
 
     policy = packet.get("execution_policy", {})
     forbid_wide = isinstance(policy, dict) and policy.get("forbid_repo_wide_test_build") is True
+    declared_policy = (
+        policy.get("policy", "fix-existing") if isinstance(policy, dict) else "fix-existing"
+    )
     verification = handoff.get("verification")
     if isinstance(verification, dict):
         verify_cmd = verification.get("command")
@@ -1379,6 +1708,16 @@ def _cross_validate_handoff_against_packet(
                 forbid_repo_wide=forbid_wide,
                 issues=issues,
             )
+            if isinstance(declared_policy, str) and declared_policy in (
+                "fix-existing",
+                "block-new",
+            ):
+                _check_policy_command_match(
+                    verify_cmd,
+                    declared_policy=declared_policy,
+                    json_path="$.verification.command",
+                    issues=issues,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1445,21 +1784,52 @@ def _cmd_validate_packet(args: argparse.Namespace) -> int:
     )
 
 
-def _cmd_validate_handoff(args: argparse.Namespace) -> int:
+def _resolve_handoff_paths(
+    args: argparse.Namespace,
+) -> tuple[tuple[Path, Path | None, Path | None, Path | None] | None, str]:
     handoff_path = Path(args.handoff_path)
     if not handoff_path.is_file():
-        sys.stderr.write(f"error: handoff file not found: {handoff_path}\n")
-        return EXIT_USAGE
+        return None, f"error: handoff file not found: {handoff_path}\n"
 
     packet_path: Path | None = Path(args.packet) if args.packet else None
     if packet_path is not None and not packet_path.is_file():
-        sys.stderr.write(f"error: packet file not found: {packet_path}\n")
+        return None, f"error: packet file not found: {packet_path}\n"
+
+    screener_report_path: Path | None = Path(args.screener_report) if args.screener_report else None
+    if screener_report_path is not None and not screener_report_path.is_file():
+        return None, f"error: screener report file not found: {screener_report_path}\n"
+
+    repo_root: Path | None = Path(args.repo_root) if args.repo_root else REPO_ROOT_DEFAULT
+    if repo_root is not None and not repo_root.is_dir():
+        return None, f"error: repo root directory not found: {repo_root}\n"
+
+    if args.base_commit is not None and (
+        not args.base_commit.strip() or args.base_commit.startswith("-")
+    ):
+        return None, f"error: invalid --base-commit revision: {args.base_commit!r}\n"
+
+    return (handoff_path, packet_path, screener_report_path, repo_root), ""
+
+
+def _cmd_validate_handoff(args: argparse.Namespace) -> int:
+    resolved, err_msg = _resolve_handoff_paths(args)
+    if resolved is None:
+        sys.stderr.write(err_msg)
         return EXIT_USAGE
+    handoff_path, packet_path, screener_report_path, repo_root = resolved
 
     try:
         schema = load_schema()
         handoff_doc = load_document(handoff_path)
         packet_doc = load_document(packet_path) if packet_path is not None else None
+        screener_candidates: list[dict[str, Any]] | None = None
+        if screener_report_path is not None:
+            screener_candidates = _parse_screener_candidates_text(
+                screener_report_path.read_text(encoding="utf-8"),
+                source=str(screener_report_path),
+            )
+        elif args.base_commit is not None and repo_root is not None:
+            screener_candidates = _run_behavior_screener_for_base(repo_root, args.base_commit)
     except OSError as exc:
         sys.stderr.write(f"error: unable to read file: {exc}\n")
         return EXIT_USAGE
@@ -1472,7 +1842,13 @@ def _cmd_validate_handoff(args: argparse.Namespace) -> int:
             output_format=args.output_format,
         )
 
-    issues = validate_handoff_doc(handoff_doc, schema, packet_doc=packet_doc)
+    issues = validate_handoff_doc(
+        handoff_doc,
+        schema,
+        packet_doc=packet_doc,
+        screener_candidates=screener_candidates,
+        repo_root=repo_root,
+    )
     return _emit_result(
         kind="handoff",
         target_path=handoff_path,
@@ -1480,6 +1856,20 @@ def _cmd_validate_handoff(args: argparse.Namespace) -> int:
         issues=issues,
         output_format=args.output_format,
     )
+
+
+def _cmd_list_generated_forbidden_paths(args: argparse.Namespace) -> int:
+    repo_root = Path(args.repo_root).resolve()
+    if not repo_root.is_dir():
+        sys.stderr.write(f"error: repo root directory not found: {repo_root}\n")
+        return EXIT_USAGE
+    paths = list_generated_forbidden_paths(repo_root)
+    if args.output_format == "json":
+        sys.stdout.write(json.dumps(paths, ensure_ascii=False, indent=2) + "\n")
+    else:
+        for rel in paths:
+            sys.stdout.write(f"{rel}\n")
+    return EXIT_OK
 
 
 def _cmd_render_template(args: argparse.Namespace) -> int:
@@ -1605,6 +1995,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_ho.add_argument("handoff_path", help="Path to TaskHandoff JSON or Markdown file")
     p_ho.add_argument("--packet", default=None, help="Optional TaskPacket path for cross-check")
+    screener_group = p_ho.add_mutually_exclusive_group()
+    screener_group.add_argument(
+        "--screener-report",
+        default=None,
+        help="Optional CHECK-01 behavior_screener.py JSON report path",
+    )
+    screener_group.add_argument(
+        "--base-commit",
+        default=None,
+        help="Optional base git commit to auto-run CHECK-01 behavior_screener.py against",
+    )
+    p_ho.add_argument(
+        "--repo-root",
+        default=None,
+        help="Optional repository root for CHECK-01 --base-commit and CHECK-05 generated-file checks",
+    )
     p_ho.add_argument(
         "--format",
         dest="output_format",
@@ -1613,6 +2019,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format (default: text)",
     )
     p_ho.set_defaults(func=_cmd_validate_handoff)
+
+    p_gen = subparsers.add_parser(
+        "list-generated-forbidden-paths",
+        help="CHECK-05: list tracked files carrying a generated-code DO NOT EDIT header",
+    )
+    p_gen.add_argument(
+        "--repo-root",
+        default=str(REPO_ROOT_DEFAULT),
+        help="Repository root directory to scan (default: repo root)",
+    )
+    p_gen.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_gen.set_defaults(func=_cmd_list_generated_forbidden_paths)
 
     p_tmpl = subparsers.add_parser("render-template", help="Render a standard packet or handoff")
     p_tmpl.add_argument("--kind", choices=("packet", "handoff"), required=True)

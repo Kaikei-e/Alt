@@ -17,7 +17,11 @@ notes = "In rask-log-forwarder/app/src/domain/redact.rs (4a877d2f9 / 669bb6fa5),
 
 [detection]
 planned_checks = ["ARCH-02", "CHECK-01"]
-active_checks = ["ARCH-02"]
+active_checks = ["ARCH-02", "CHECK-01"]
 currently_caught = true
-current_method = "ARCH-02"
-expected_signal = "rust-no-silent-option-regex"
+current_method = "ARCH-02+CHECK-01"
+expected_signal = ""
+
+[detection.expected_signals]
+ARCH-02 = "rust-no-silent-option-regex"
+CHECK-01 = "rust.fallible_error_swallow"
