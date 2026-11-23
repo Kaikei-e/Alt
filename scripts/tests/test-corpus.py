@@ -39,7 +39,7 @@ CORPUS_SCRIPT = ROOT / "scripts" / "harness" / "corpus.py"
 REAL_CORPUS_DIR = ROOT / "scripts" / "harness" / "corpus"
 
 DEFAULT_MIN_CASES = 22
-MIN_CAUGHT_CASES = 21
+MIN_CAUGHT_CASES = 22
 MAX_SNIPPET_LINES = 120
 MAX_SNIPPET_BYTES = 8192
 EXIT_OK = 0
@@ -1496,6 +1496,198 @@ def test_check01_check05_check06_runners() -> None:
         )
 
 
+def test_verify01_runner() -> None:
+    sys.stdout.write("VERIFY-01 sequence characterization diff runner\n")
+    corpus_mod = load_corpus_module()
+
+    expected_process_impl = frozenset(
+        {"VERIFY-01", "LOOP-01", "LOOP-02", "LOOP-03", "EXEC-01", "EXEC-02", "EXEC-03"}
+    )
+    check(
+        "VERIFY-01/LOOP-01..03/EXEC-01..03 are in IMPLEMENTED_CHECKS and VERIFY-01 in DIFF_CHECKS",
+        expected_process_impl <= getattr(corpus_mod, "IMPLEMENTED_CHECKS", frozenset())
+        and "VERIFY-01" in getattr(corpus_mod, "DIFF_CHECKS", frozenset())
+        and "VERIFY-01" in getattr(corpus_mod, "PROCESS_CHECKS", frozenset())
+        and expected_process_impl.isdisjoint(
+            getattr(corpus_mod, "UNIMPLEMENTED_CHECKS", frozenset())
+        ),
+        f"impl={getattr(corpus_mod, 'IMPLEMENTED_CHECKS', None)!r}, "
+        f"unimpl={getattr(corpus_mod, 'UNIMPLEMENTED_CHECKS', None)!r}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+
+        char_test = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            'dir="$(cd "$(dirname "$0")" && pwd)"\n'
+            'out="$("$dir/check-compose-variables.sh")"\n'
+            '[[ "$out" == "ok-no-env-file" ]]\n'
+        )
+        before_sh = "#!/usr/bin/env bash\nset -euo pipefail\necho ok-no-env-file\n"
+        after_sh = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            'echo "ERROR: --env-file is required" >&2\n'
+            "exit 2\n"
+        )
+
+        # 1. Clean pass on before, SEQUENCE_FINAL_TEST_FAILED on after
+        c_v01 = tmp / "verify01-ok"
+        case_dir = write_case(
+            c_v01,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="unrequested CLI breaking change caught by VERIFY-01",
+                    category="unrequested-behavior-change",
+                    language="shell",
+                    before_file="before.sh",
+                    after_file="after.sh",
+                    support_files=("test_characterization.sh",),
+                    evaluation_mode="diff",
+                    origin_files=("scripts/check-compose-variables.sh",),
+                    planned_checks=("VERIFY-01",),
+                    active_checks=("VERIFY-01",),
+                    currently_caught=True,
+                    current_method="VERIFY-01",
+                    expected_signal="SEQUENCE_FINAL_TEST_FAILED",
+                )
+            ),
+            files={
+                "before.sh": before_sh,
+                "after.sh": after_sh,
+                "test_characterization.sh": char_test,
+            },
+        )
+        res = run_corpus_cli(c_v01, min_cases=1)
+        check(
+            "VERIFY-01 runner passes on before and catches regression with SEQUENCE_FINAL_TEST_FAILED",
+            res.returncode == EXIT_OK and "CORPUS CAPTURE RATE: 1/1 (100.0%)" in res.stdout,
+            f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}",
+        )
+
+        # 2. Direct _run_verify01_diff call checks (baseline pass + regression signal)
+        run_v01 = getattr(corpus_mod, "_run_verify01_diff", None)
+        if callable(run_v01):
+            loaded, errs = corpus_mod.load_case(case_dir)
+            assert loaded is not None, repr(errs)
+            base_out = run_v01(loaded, case_dir / "before.sh", case_dir / "before.sh", ROOT)
+            reg_out = run_v01(loaded, case_dir / "before.sh", case_dir / "after.sh", ROOT)
+            check(
+                "_run_verify01_diff returns exit 0 on (before, before) and SEQUENCE_FINAL_TEST_FAILED on (before, after)",
+                base_out.exit_code == 0
+                and not base_out.runner_error
+                and reg_out.exit_code != 0
+                and "SEQUENCE_FINAL_TEST_FAILED" in reg_out.output,
+                f"base={base_out!r}, reg={reg_out!r}",
+            )
+        else:
+            check("_run_verify01_diff helper defined on corpus module", False, "missing")
+
+        # 3. False-positive detection when characterization test fails on baseline (before)
+        c_fp = tmp / "verify01-fp"
+        write_case(
+            c_fp,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="broken characterization test fails on baseline",
+                    category="unrequested-behavior-change",
+                    language="shell",
+                    before_file="before.sh",
+                    after_file="after.sh",
+                    support_files=("test_characterization.sh",),
+                    evaluation_mode="diff",
+                    origin_files=("scripts/check-compose-variables.sh",),
+                    planned_checks=("VERIFY-01",),
+                    active_checks=("VERIFY-01",),
+                    currently_caught=True,
+                    current_method="VERIFY-01",
+                    expected_signal="SEQUENCE_FINAL_TEST_FAILED",
+                )
+            ),
+            files={
+                "before.sh": before_sh,
+                "after.sh": after_sh,
+                "test_characterization.sh": "#!/usr/bin/env bash\nexit 1\n",
+            },
+        )
+        res_fp = run_corpus_cli(c_fp, min_cases=1)
+        out_fp = res_fp.stdout + res_fp.stderr
+        check(
+            "VERIFY-01 flags baseline test failure as false-positive with SEQUENCE_BASELINE_TEST_FAILED",
+            res_fp.returncode == EXIT_FAIL
+            and "false-positive" in out_fp
+            and "SEQUENCE_BASELINE_TEST_FAILED" in out_fp,
+            f"rc={res_fp.returncode}\nout={out_fp}",
+        )
+
+        # 4. Missing test script in support_files fails closed with runner-error
+        c_missing = tmp / "verify01-missing-test"
+        write_case(
+            c_missing,
+            "C-01",
+            meta_toml=build_meta_toml(
+                MetaSpec(
+                    case_id="C-01",
+                    title="missing characterization test fails closed",
+                    category="unrequested-behavior-change",
+                    language="shell",
+                    before_file="before.sh",
+                    after_file="after.sh",
+                    support_files=(),
+                    evaluation_mode="diff",
+                    origin_files=("scripts/check-compose-variables.sh",),
+                    planned_checks=("VERIFY-01",),
+                    active_checks=("VERIFY-01",),
+                    currently_caught=True,
+                    current_method="VERIFY-01",
+                    expected_signal="SEQUENCE_FINAL_TEST_FAILED",
+                )
+            ),
+            files={"before.sh": before_sh, "after.sh": after_sh},
+        )
+        res_missing = run_corpus_cli(c_missing, min_cases=1)
+        out_missing = res_missing.stdout + res_missing.stderr
+        check(
+            "VERIFY-01 fails closed with runner-error when support_files has no test script",
+            res_missing.returncode == EXIT_FAIL and "runner-error" in out_missing,
+            f"rc={res_missing.returncode}\nout={out_missing}",
+        )
+
+        # 5. Delegation to task_packet.py verify-sequence when supported
+        if callable(run_v01):
+            fake_root = tmp / "fake-root"
+            stub_tp = fake_root / "scripts" / "agent-harness" / "task_packet.py"
+            stub_tp.parent.mkdir(parents=True, exist_ok=True)
+            stub_tp.write_text(
+                "import sys\n"
+                "args = sys.argv[1:]\n"
+                "if '--help' in args:\n"
+                "    print('subcommands: verify-sequence')\n"
+                "    sys.exit(0)\n"
+                "assert args[0] == 'verify-sequence', args\n"
+                "assert '--repo-root' in args and '--base-commit' in args and '--test-command' in args, args\n"
+                "print('DELEGATED_OK ' + ' '.join(args))\n"
+                "sys.exit(0)\n",
+                encoding="utf-8",
+            )
+            loaded, _ = corpus_mod.load_case(case_dir)
+            assert loaded is not None
+            delegated = run_v01(loaded, case_dir / "before.sh", case_dir / "before.sh", fake_root)
+            check(
+                "_run_verify01_diff delegates to task_packet.py verify-sequence when available",
+                delegated.exit_code == 0
+                and "DELEGATED_OK verify-sequence" in delegated.output
+                and "bash ./test_characterization.sh" in delegated.output,
+                repr(delegated),
+            )
+
+
 def test_real_corpus(*, allow_missing_corpus_dir: bool) -> None:
     sys.stdout.write("real repository corpus verification\n")
     has_cases = REAL_CORPUS_DIR.is_dir() and any(REAL_CORPUS_DIR.iterdir())
@@ -1563,6 +1755,7 @@ def main(argv: list[str] | None = None) -> int:
     test_directory_symlinks_and_timeout()
     test_arch02_arch03_arch06_runners()
     test_check01_check05_check06_runners()
+    test_verify01_runner()
     test_real_corpus(allow_missing_corpus_dir=args.allow_missing_corpus_dir)
 
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
