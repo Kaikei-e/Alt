@@ -42,9 +42,13 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 | `packet_version` | `const: "1.0"` | 必須 | スキーマバージョン |
 | `packet_id` | `string` (`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`) | 必須 | パケット一意識別子 |
 | `title` / `owner` | 非空文字列 | 任意 | 人間向けタイトル・担当識別子 |
+| `base_commit` | `^[0-9a-f]{7,40}$` | 任意 | `verify-handoff` / `verify-sequence` の基準コミット SHA |
+| `task_kind` | `"lint-fix"` / `"refactor"` / `"migration"` / `"bugfix"` / `"feature"` | 任意 | タスク種別（既定 `"lint-fix"`）。`lint-fix` では不要コメント追加とテスト期待値改変を追加禁止 |
+| `behavior_preserving` | `boolean` | 任意 | 観測可能な実行時挙動を不変に保つか（`verify-sequence` 既定 `true`） |
 | `scope.target` | ターゲット文字列 または 非空一意配列 | 必須 | `./scripts/lint/run.sh <target>` の検証対象 |
 | `scope.allowed_paths` | 非空一意配列（`..` / 絶対パス / `\` 禁止） | 必須 | 編集許可パス / グロブ |
 | `scope.forbidden_paths` | 一意配列（`..` / 絶対パス / `\` 禁止） | 任意 | 明示的に編集禁止とするパス / グロブ |
+| `scope.allow_test_expectation_changes` | `boolean`（既定 `false`） | 任意 | `lint-fix` タスクでテスト期待値変更・テスト削除を明示許可するオプトイン |
 | `scope.max_files` | 整数 `1..25`（推奨デフォルト `10`） | 必須 | 変更ファイル数の上限 |
 | `scope.max_functions` | 整数 `1..20`（推奨デフォルト `3`） | 必須 | 変更関数数の上限 |
 | `scope.allowed_rules` | 非空一意配列（`*` / `ALL` 禁止） | 必須 | 修正対象のルール ID / カテゴリ |
@@ -53,6 +57,8 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 | `execution_policy.forbid_repo_wide_test_build` | `boolean`（デフォルト `true`） | 必須 | リポジトリ全体ビルド・全体テストの禁止 |
 | `execution_policy.forbid_bulk_autofix` | `const: true` | 必須 | GUARD-01 一括自動修正の禁止 |
 | `execution_policy.verification_command` | 非空文字列 | 必須 | 全 `scope.target` の `./scripts/lint/run.sh <target>` を含む検証コマンド |
+| `execution_policy.max_command_budget_s` | 整数 `1..600`（既定 `180`） | 任意 | LOOP-02: ホスト検証コマンドの許容実行時間上限（秒） |
+| `execution_policy.measured` | `{ duration_s>=0, exit_code, at_commit, command_sha256? }` | 必須 | LOOP-02: 委譲前にホストで実測した検証コマンド記録（未計測・上限超過・コマンド乖離は拒否） |
 | `handoff_requirements.*` | 3 フラグすべて `const: true` | 必須 | 必須 3 項目の強制 |
 
 ### 2.2 `TaskHandoff` フィールド定義
@@ -103,11 +109,23 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 python3 scripts/agent-harness/task_packet.py render-template --kind packet --packet-id TASK-001 --target scripts
 python3 scripts/agent-harness/task_packet.py render-template --kind handoff --packet-id TASK-001
 
-# パケット単体検証（JSON / Markdown 両対応、--format json 可）
+# LOOP-02: パケットの検証コマンドをホスト実測して execution_policy.measured へ記録
+python3 scripts/agent-harness/task_packet.py measure path/to/task-packet.md
+
+# パケット単体検証（JSON / Markdown 両対応、--format json 可。未計測・予算超過・コマンド乖離を拒否）
 python3 scripts/agent-harness/task_packet.py validate-packet path/to/task-packet.md
 
 # Hand-off 単体検証およびパケットとのクロス検証（max_files / max_functions / allowed_paths / packet_id）
 python3 scripts/agent-harness/task_packet.py validate-handoff path/to/handoff.md --packet path/to/task-packet.md
+
+# LOOP-01: Git 実差分・AST 変更関数数・検証コマンド再実行・CHECK-01・lint-fix 厳格検査による実地検証
+python3 scripts/agent-harness/task_packet.py verify-handoff path/to/handoff.md --packet path/to/task-packet.md --base-commit <sha>
+
+# VERIFY-01: テスト先行コミット順検証（behavior-preserving 既定、--bugfix で RED→GREEN 検証）
+python3 scripts/agent-harness/task_packet.py verify-sequence --base-commit <sha> --test-command "<cmd>"
+
+# ホスト最終統合ゲート（worktree hygiene + 対象 lint + repo lint + 任意テスト + verify-handoff + git status）
+./scripts/verify/host-final-check.sh --target scripts --handoff path/to/handoff.md --packet path/to/task-packet.md --base-commit <sha>
 
 # スキーマと同梱テンプレートの自己検証
 python3 scripts/agent-harness/task_packet.py check-templates

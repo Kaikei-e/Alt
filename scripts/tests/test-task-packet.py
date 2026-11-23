@@ -8,7 +8,9 @@ Run:
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -23,12 +25,15 @@ PACKET_TMPL_PATH = ROOT / "scripts" / "agent-harness" / "templates" / "task-pack
 HANDOFF_TMPL_PATH = ROOT / "scripts" / "agent-harness" / "templates" / "task-handoff.md.tmpl"
 SPEC_DOC_PATH = ROOT / "docs" / "best_practices" / "agent-task-packet-standard.md"
 RULE_DOC_PATH = ROOT / ".agents" / "rules" / "task-packet.md"
+HOST_FINAL_CHECK_PATH = ROOT / "scripts" / "verify" / "host-final-check.sh"
+CORPUS_DIR = ROOT / "scripts" / "harness" / "corpus"
 
 EXIT_OK = 0
 EXIT_INVALID = 1
 EXIT_USAGE = 2
 MAX_FILES_DEFAULT = 10
 MAX_FUNCTIONS_DEFAULT = 3
+SHA256_HEX_LEN = 64
 
 
 class _Results:
@@ -50,13 +55,23 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         RESULTS.failed += 1
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 -- fixed argv invoking repo CLI with sys.executable
-        [sys.executable, str(SCRIPT_PATH), *args],
+def _run_proc(
+    argv: list[str],
+    *,
+    cwd: pathlib.Path | None = None,
+    check_rc: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 -- fixed argv test helper invoking repo CLI or git/bash
+        argv,
+        cwd=str(cwd) if cwd is not None else None,
         capture_output=True,
         text=True,
-        check=False,
+        check=check_rc,
     )
+
+
+def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return _run_proc([sys.executable, str(SCRIPT_PATH), *args])
 
 
 def base_packet() -> dict[str, Any]:
@@ -80,6 +95,12 @@ def base_packet() -> dict[str, Any]:
             "forbid_repo_wide_test_build": True,
             "forbid_bulk_autofix": True,
             "verification_command": "./scripts/lint/run.sh scripts",
+            "max_command_budget_s": 180,
+            "measured": {
+                "duration_s": 1.25,
+                "exit_code": 0,
+                "at_commit": "0123456",
+            },
         },
         "handoff_requirements": {
             "require_modified_files_and_lines": True,
@@ -147,6 +168,11 @@ def valid_packet_markdown(extra_body: str = "") -> str:
         "  forbid_repo_wide_test_build: true\n"
         "  forbid_bulk_autofix: true\n"
         '  verification_command: "./scripts/lint/run.sh scripts"\n'
+        "  max_command_budget_s: 180\n"
+        "  measured:\n"
+        "    duration_s: 1.5\n"
+        "    exit_code: 0\n"
+        '    at_commit: "0123456"\n'
         "handoff_requirements:\n"
         "  require_modified_files_and_lines: true\n"
         "  require_runtime_behavior_impact: true\n"
@@ -834,15 +860,16 @@ def test_templates_and_cli_utilities(tmp: pathlib.Path) -> None:
         )
 
 
-def _run_git(repo: pathlib.Path, *git_args: str) -> None:
+def _run_git(repo: pathlib.Path, *git_args: str) -> str:
     git_bin = shutil.which("git")
     assert git_bin is not None
-    subprocess.run(  # noqa: S603 -- test helper invoking resolved git binary in temp repo
+    res = subprocess.run(  # noqa: S603 -- test helper invoking resolved git binary in temp repo
         [git_bin, "-C", str(repo), *git_args],
         check=True,
         capture_output=True,
         text=True,
     )
+    return res.stdout.strip()
 
 
 def _make_c01_test_repo(tmp: pathlib.Path) -> pathlib.Path:
@@ -1559,6 +1586,956 @@ def test_wave2_test_existence_and_header_deletion(tmp: pathlib.Path) -> None:
     )
 
 
+def _init_temp_git_repo(repo: pathlib.Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    _run_git(repo, "init", "-q")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Test")
+
+
+def _write_stub_run_sh(repo: pathlib.Path, exit_code: int = 0, sleep_s: float = 0.0) -> None:
+    run_sh = repo / "scripts" / "lint" / "run.sh"
+    run_sh.parent.mkdir(parents=True, exist_ok=True)
+    sleep_line = f"sleep {sleep_s}\n" if sleep_s > 0 else ""
+    run_sh.write_text(
+        f"#!/usr/bin/env bash\nset -euo pipefail\n{sleep_line}exit {exit_code}\n",
+        encoding="utf-8",
+    )
+    run_sh.chmod(0o755)
+
+
+def test_loop02_validation(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[13a] LOOP-02 validate-packet & render-template checks\n")
+
+    # 1. Missing measured => UNMEASURED_VERIFICATION_COMMAND
+    p_unmeasured = copy.deepcopy(base_packet())
+    del p_unmeasured["execution_policy"]["measured"]
+    _assert_packet_rejected(
+        tmp,
+        "LOOP-02 rejects packet missing execution_policy.measured",
+        p_unmeasured,
+        "UNMEASURED_VERIFICATION_COMMAND",
+    )
+
+    # 2. Over-budget duration_s => VERIFICATION_BUDGET_EXCEEDED
+    p_over = copy.deepcopy(base_packet())
+    p_over["execution_policy"]["max_command_budget_s"] = 30
+    p_over["execution_policy"]["measured"]["duration_s"] = 30.5
+    _assert_packet_rejected(
+        tmp,
+        "LOOP-02 rejects measured.duration_s > max_command_budget_s",
+        p_over,
+        "VERIFICATION_BUDGET_EXCEEDED",
+    )
+
+    # 3. Stale command_sha256 => STALE_MEASURED_COMMAND
+    p_stale = copy.deepcopy(base_packet())
+    p_stale["execution_policy"]["measured"]["command_sha256"] = "0" * SHA256_HEX_LEN
+    _assert_packet_rejected(
+        tmp,
+        "LOOP-02 rejects mismatched measured.command_sha256",
+        p_stale,
+        "STALE_MEASURED_COMMAND",
+    )
+
+    # 4. Matching command_sha256 + non-zero measured exit_code (fix-existing baseline) => PASS
+    p_match = copy.deepcopy(base_packet())
+    cmd = p_match["execution_policy"]["verification_command"]
+    p_match["execution_policy"]["measured"]["command_sha256"] = hashlib.sha256(
+        cmd.encode("utf-8")
+    ).hexdigest()
+    p_match["execution_policy"]["measured"]["exit_code"] = 1
+    p_match["base_commit"] = "abcdef1"
+    p_match["task_kind"] = "lint-fix"
+    p_match["behavior_preserving"] = True
+    p_match["scope"]["allow_test_expectation_changes"] = False
+    p_match_path = write_json(tmp, "loop02_match.json", p_match)
+    res_match = run_cli("validate-packet", str(p_match_path))
+    check(
+        "LOOP-02 accepts packet with matching command_sha256, non-zero exit_code, and new fields",
+        res_match.returncode == EXIT_OK,
+        res_match.stderr or res_match.stdout,
+    )
+
+    # 5. render-template --target recomputes command_sha256 cleanly
+    res_rt = run_cli(
+        "render-template",
+        "--kind",
+        "packet",
+        "--packet-id",
+        "LOOP02-TARGET",
+        "--target",
+        "alt-backend/app",
+    )
+    rt_path = tmp / "loop02_rendered_target.md"
+    rt_path.write_text(res_rt.stdout, encoding="utf-8")
+    res_rt_val = run_cli("validate-packet", str(rt_path))
+    check(
+        "render-template --target recomputes command_sha256 and validates cleanly",
+        res_rt.returncode == EXIT_OK and res_rt_val.returncode == EXIT_OK,
+        res_rt_val.stderr or res_rt.stderr,
+    )
+
+
+def test_loop02_measure_cli(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[13b] LOOP-02 measure subcommand (JSON, Markdown, budget)\n")
+    repo = tmp / "loop02_repo"
+    _init_temp_git_repo(repo)
+    _write_stub_run_sh(repo, exit_code=0)
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "init")
+    head_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    p_raw = copy.deepcopy(base_packet())
+    del p_raw["execution_policy"]["measured"]
+    p_raw_json = write_json(tmp, "loop02_to_measure.json", p_raw)
+    res_m_json = run_cli("measure", str(p_raw_json), "--repo-root", str(repo))
+    measured_data = json.loads(p_raw_json.read_text(encoding="utf-8"))
+    m_obj = measured_data["execution_policy"].get("measured", {})
+    check(
+        "measure records duration_s, exit_code, at_commit, command_sha256 into JSON packet",
+        res_m_json.returncode == EXIT_OK
+        and m_obj.get("exit_code") == 0
+        and m_obj.get("at_commit") == head_sha
+        and isinstance(m_obj.get("duration_s"), (int, float))
+        and m_obj.get("command_sha256")
+        == hashlib.sha256(b"./scripts/lint/run.sh scripts").hexdigest(),
+        f"rc={res_m_json.returncode} m_obj={m_obj} err={res_m_json.stderr!r}",
+    )
+    res_val_after = run_cli("validate-packet", str(p_raw_json))
+    check(
+        "JSON packet passes validate-packet after measure",
+        res_val_after.returncode == EXIT_OK,
+        res_val_after.stderr or res_val_after.stdout,
+    )
+
+    md_unmeasured = valid_packet_markdown().replace(
+        '  measured:\n    duration_s: 1.5\n    exit_code: 0\n    at_commit: "0123456"\n',
+        "",
+    )
+    md_path = tmp / "loop02_to_measure.md"
+    md_path.write_text(md_unmeasured, encoding="utf-8")
+    res_m_md = run_cli("measure", str(md_path), "--repo-root", str(repo))
+    res_val_md = run_cli("validate-packet", str(md_path))
+    check(
+        "measure updates Markdown YAML frontmatter and passes validate-packet",
+        res_m_md.returncode == EXIT_OK and res_val_md.returncode == EXIT_OK,
+        f"m_rc={res_m_md.returncode} v_rc={res_val_md.returncode} err={res_m_md.stderr or res_val_md.stderr!r}",
+    )
+
+    slow_repo = tmp / "loop02_slow_repo"
+    _init_temp_git_repo(slow_repo)
+    _write_stub_run_sh(slow_repo, exit_code=0, sleep_s=1.2)
+    _run_git(slow_repo, "add", ".")
+    _run_git(slow_repo, "commit", "-q", "-m", "init")
+    p_slow = copy.deepcopy(base_packet())
+    p_slow["execution_policy"]["max_command_budget_s"] = 1
+    del p_slow["execution_policy"]["measured"]
+    p_slow_path = write_json(tmp, "loop02_slow.json", p_slow)
+    res_slow = run_cli("measure", str(p_slow_path), "--repo-root", str(slow_repo))
+    check(
+        "measure exits 1 with VERIFICATION_BUDGET_EXCEEDED when command exceeds budget",
+        res_slow.returncode == EXIT_INVALID and "VERIFICATION_BUDGET_EXCEEDED" in res_slow.stderr,
+        f"rc={res_slow.returncode} err={res_slow.stderr!r}",
+    )
+
+
+def _setup_loop01_repo(tmp: pathlib.Path, name: str) -> tuple[pathlib.Path, str]:
+    repo = tmp / name
+    _init_temp_git_repo(repo)
+    _write_stub_run_sh(repo, exit_code=0)
+    mod = repo / "pkg" / "worker.py"
+    mod.parent.mkdir(parents=True, exist_ok=True)
+    mod.write_text(
+        "def alpha(x: int) -> int:\n    return x + 1\n\ndef beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+    test_f = repo / "tests" / "test_worker.py"
+    test_f.parent.mkdir(parents=True, exist_ok=True)
+    test_f.write_text(
+        "from pkg.worker import alpha\n\ndef test_alpha():\n    assert alpha(1) == 2\n",
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "base")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+    return repo, base_sha
+
+
+def _make_loop01_packet(base_sha: str | None) -> dict[str, Any]:
+    pkt = copy.deepcopy(base_packet())
+    pkt["packet_id"] = "LOOP01-TEST"
+    pkt["task_kind"] = "lint-fix"
+    if base_sha is not None:
+        pkt["base_commit"] = base_sha
+    pkt["scope"]["allowed_paths"] = ["pkg/**", "tests/**"]
+    pkt["scope"]["forbidden_paths"] = ["pkg/secret.py"]
+    pkt["scope"]["max_files"] = 3
+    pkt["scope"]["max_functions"] = 2
+    return pkt
+
+
+def _make_loop01_handoff(
+    files: list[dict[str, Any]],
+    func_count: int,
+    exit_code: int = 0,
+) -> dict[str, Any]:
+    ho = copy.deepcopy(base_handoff())
+    ho["packet_id"] = "LOOP01-TEST"
+    ho["modified_files"] = files
+    ho["modified_functions_count"] = func_count
+    ho["verification"]["exit_code"] = exit_code
+    return ho
+
+
+def test_loop01_verify_handoff_core(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[14a] LOOP-01 verify-handoff ground-truth file/AST/rerun checks\n")
+    repo, base_sha = _setup_loop01_repo(tmp, "loop01_core")
+    runs_dir = tmp / "loop01_runs"
+
+    # Modify 1 function cleanly in pkg/worker.py
+    (repo / "pkg" / "worker.py").write_text(
+        "def alpha(x: int) -> int:\n    result = x + 1\n    return result\n\n"
+        "def beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+
+    pkt_path = write_json(tmp, "l01_pkt.json", _make_loop01_packet(base_sha))
+    ho_ok_path = write_json(
+        tmp,
+        "l01_ho_ok.json",
+        _make_loop01_handoff([{"path": "pkg/worker.py", "added_lines": 2, "deleted_lines": 1}], 1),
+    )
+
+    # 1. Clean verify-handoff passes & writes evidence JSON
+    res_ok = run_cli(
+        "verify-handoff",
+        str(ho_ok_path),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--runs-dir",
+        str(runs_dir),
+    )
+    evidence_files = list(runs_dir.glob("*/verify/LOOP01-TEST.json"))
+    ev_valid = False
+    if evidence_files:
+        ev = json.loads(evidence_files[0].read_text(encoding="utf-8"))
+        ev_valid = (
+            ev.get("packet_id") == "LOOP01-TEST"
+            and ev.get("exit_code") == 0
+            and ev.get("base_commit") == base_sha
+            and isinstance(ev.get("output_sha256"), str)
+            and len(ev["output_sha256"]) == SHA256_HEX_LEN
+        )
+    check(
+        "verify-handoff passes on truthful handoff and persists host rerun evidence JSON",
+        res_ok.returncode == EXIT_OK and ev_valid,
+        f"rc={res_ok.returncode} err={res_ok.stderr!r} ev_files={evidence_files}",
+    )
+
+    # 2. Missing base_commit (neither CLI nor packet) fails
+    pkt_no_base = write_json(tmp, "l01_pkt_nobase.json", _make_loop01_packet(None))
+    res_nb = run_cli(
+        "verify-handoff",
+        str(ho_ok_path),
+        "--packet",
+        str(pkt_no_base),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff fails when neither --base-commit nor packet.base_commit is provided",
+        res_nb.returncode == EXIT_INVALID and "MISSING_BASE_COMMIT" in res_nb.stderr,
+        f"rc={res_nb.returncode} err={res_nb.stderr!r}",
+    )
+
+    # 3. Phantom modified file => PHANTOM_MODIFIED_FILE
+    ho_phantom = write_json(
+        tmp,
+        "l01_ho_phantom.json",
+        _make_loop01_handoff(
+            [
+                {"path": "pkg/worker.py", "added_lines": 2, "deleted_lines": 1},
+                {"path": "pkg/ghost.py", "added_lines": 1, "deleted_lines": 0},
+            ],
+            1,
+        ),
+    )
+    res_ph = run_cli(
+        "verify-handoff",
+        str(ho_phantom),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff rejects phantom declared file with PHANTOM_MODIFIED_FILE",
+        res_ph.returncode == EXIT_INVALID and "PHANTOM_MODIFIED_FILE" in res_ph.stderr,
+        f"rc={res_ph.returncode} err={res_ph.stderr!r}",
+    )
+
+    # 4. Undeclared untracked file => UNDECLARED_MODIFIED_FILE + PATH_OUTSIDE_ALLOWED_PATHS
+    untracked = repo / "outside.txt"
+    untracked.write_text("sneaky\n", encoding="utf-8")
+    res_un = run_cli(
+        "verify-handoff",
+        str(ho_ok_path),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    untracked.unlink()
+    check(
+        "verify-handoff rejects undeclared untracked file (UNDECLARED_MODIFIED_FILE + PATH_OUTSIDE_ALLOWED_PATHS)",
+        res_un.returncode == EXIT_INVALID
+        and "UNDECLARED_MODIFIED_FILE" in res_un.stderr
+        and "PATH_OUTSIDE_ALLOWED_PATHS" in res_un.stderr,
+        f"rc={res_un.returncode} err={res_un.stderr!r}",
+    )
+
+    # 5. AST modified functions mismatch => MODIFIED_FUNCTIONS_MISMATCH
+    ho_bad_fn = write_json(
+        tmp,
+        "l01_ho_bad_fn.json",
+        _make_loop01_handoff([{"path": "pkg/worker.py", "added_lines": 2, "deleted_lines": 1}], 2),
+    )
+    res_fn = run_cli(
+        "verify-handoff",
+        str(ho_bad_fn),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff rejects false modified_functions_count with MODIFIED_FUNCTIONS_MISMATCH",
+        res_fn.returncode == EXIT_INVALID and "MODIFIED_FUNCTIONS_MISMATCH" in res_fn.stderr,
+        f"rc={res_fn.returncode} err={res_fn.stderr!r}",
+    )
+
+    # 6. Host rerun exit code mismatch & VERIFICATION_RERUN_FAILED
+    _write_stub_run_sh(repo, exit_code=1)
+    # Restore run.sh tracked state? No, put stub failing via separate repo so git diff stays clean!
+    fail_repo, fail_base = _setup_loop01_repo(tmp, "loop01_fail_rerun")
+    _write_stub_run_sh(fail_repo, exit_code=1)
+    _run_git(fail_repo, "add", ".")
+    _run_git(fail_repo, "commit", "-q", "-m", "failing lint")
+    fail_base = _run_git(fail_repo, "rev-parse", "HEAD")
+    (fail_repo / "pkg" / "worker.py").write_text(
+        "def alpha(x: int) -> int:\n    result = x + 1\n    return result\n\n"
+        "def beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+    fail_pkt = write_json(tmp, "l01_fail_pkt.json", _make_loop01_packet(fail_base))
+    res_rerun_fail = run_cli(
+        "verify-handoff",
+        str(ho_ok_path),
+        "--packet",
+        str(fail_pkt),
+        "--repo-root",
+        str(fail_repo),
+        "--runs-dir",
+        str(runs_dir),
+    )
+    check(
+        "verify-handoff catches lied exit_code on host rerun (VERIFICATION_EXIT_CODE_MISMATCH + VERIFICATION_RERUN_FAILED)",
+        res_rerun_fail.returncode == EXIT_INVALID
+        and "VERIFICATION_EXIT_CODE_MISMATCH" in res_rerun_fail.stderr
+        and "VERIFICATION_RERUN_FAILED" in res_rerun_fail.stderr,
+        f"rc={res_rerun_fail.returncode} err={res_rerun_fail.stderr!r}",
+    )
+
+
+def test_loop01_verify_handoff_lint_fix_extras(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[14b] LOOP-01 verify-handoff lint-fix comment & test-expectation guards\n")
+    repo, base_sha = _setup_loop01_repo(tmp, "loop01_extras")
+    pkt_path = write_json(tmp, "l01_ext_pkt.json", _make_loop01_packet(base_sha))
+
+    # 1. Unrequested plain comment added => UNREQUESTED_COMMENT_ADDED
+    (repo / "pkg" / "worker.py").write_text(
+        "# Added commentary nobody asked for\n"
+        "def alpha(x: int) -> int:\n    return x + 1\n\n"
+        "def beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+    ho_comment = write_json(
+        tmp,
+        "l01_ho_comment.json",
+        _make_loop01_handoff([{"path": "pkg/worker.py", "added_lines": 1, "deleted_lines": 0}], 0),
+    )
+    res_cmt = run_cli(
+        "verify-handoff",
+        str(ho_comment),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "lint-fix verify-handoff rejects unrequested comment with UNREQUESTED_COMMENT_ADDED",
+        res_cmt.returncode == EXIT_INVALID and "UNREQUESTED_COMMENT_ADDED" in res_cmt.stderr,
+        f"rc={res_cmt.returncode} err={res_cmt.stderr!r}",
+    )
+
+    # 2. Valid suppression comment is allowed (avoid raw directive token in test source)
+    suppression_line = "#" + " noqa: S101 -- ADR-000001 expires: 2027-01-01\n"
+    (repo / "pkg" / "worker.py").write_text(
+        suppression_line
+        + "def alpha(x: int) -> int:\n    return x + 1\n\n"
+        + "def beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+    res_supp = run_cli(
+        "verify-handoff",
+        str(ho_comment),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "lint-fix verify-handoff allows suppression/governance comments (ADR- / expires:)",
+        res_supp.returncode == EXIT_OK,
+        f"rc={res_supp.returncode} err={res_supp.stderr!r}",
+    )
+
+    # 3. Weakening test expectation in lint-fix => FORBIDDEN_TEST_EXPECTATION_CHANGE
+    _run_git(repo, "checkout", "--", "pkg/worker.py")
+    (repo / "tests" / "test_worker.py").write_text(
+        "from pkg.worker import alpha\n\ndef test_alpha():\n    assert alpha(1) == 999\n",
+        encoding="utf-8",
+    )
+    ho_test_chg = _make_loop01_handoff(
+        [{"path": "tests/test_worker.py", "added_lines": 1, "deleted_lines": 1}],
+        1,
+    )
+    ho_test_chg["runtime_behavior_impact"]["has_change"] = True
+    ho_test_chg["runtime_behavior_impact"]["candidate_responses"] = [
+        {
+            "file": "tests/test_worker.py",
+            "function": "<test>",
+            "kind": "test.expectation_change",
+            "disposition": "intended",
+            "test_name": "test_alpha",
+        }
+    ]
+    ho_tc_path = write_json(tmp, "l01_ho_tc.json", ho_test_chg)
+    res_tc = run_cli(
+        "verify-handoff",
+        str(ho_tc_path),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "lint-fix verify-handoff rejects test expectation change with FORBIDDEN_TEST_EXPECTATION_CHANGE",
+        res_tc.returncode == EXIT_INVALID and "FORBIDDEN_TEST_EXPECTATION_CHANGE" in res_tc.stderr,
+        f"rc={res_tc.returncode} err={res_tc.stderr!r}",
+    )
+
+    # 4. Opt-in allow_test_expectation_changes=true permits it (with candidate response)
+    pkt_allow_tc = _make_loop01_packet(base_sha)
+    pkt_allow_tc["scope"]["allow_test_expectation_changes"] = True
+    pkt_allow_tc_path = write_json(tmp, "l01_pkt_allow_tc.json", pkt_allow_tc)
+    res_tc_ok = run_cli(
+        "verify-handoff",
+        str(ho_tc_path),
+        "--packet",
+        str(pkt_allow_tc_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "lint-fix verify-handoff permits test expectation change when allow_test_expectation_changes=true",
+        res_tc_ok.returncode == EXIT_OK,
+        f"rc={res_tc_ok.returncode} err={res_tc_ok.stderr!r}",
+    )
+
+
+def test_verify01_sequence_rejections(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[15a] VERIFY-01 verify-sequence structural rejections\n")
+
+    repo_few = tmp / "v01_few"
+    _init_temp_git_repo(repo_few)
+    (repo_few / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _run_git(repo_few, "add", ".")
+    _run_git(repo_few, "commit", "-q", "-m", "base")
+    base_few = _run_git(repo_few, "rev-parse", "HEAD")
+    (repo_few / "test_app.py").write_text("from app import f\nassert f() == 1\n", encoding="utf-8")
+    _run_git(repo_few, "add", ".")
+    _run_git(repo_few, "commit", "-q", "-m", "only one commit")
+    res_few = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_few,
+        "--test-command",
+        "python3 test_app.py",
+        "--repo-root",
+        str(repo_few),
+    )
+    check(
+        "verify-sequence rejects <2 commits with SEQUENCE_TOO_FEW_COMMITS",
+        res_few.returncode == EXIT_INVALID and "SEQUENCE_TOO_FEW_COMMITS" in res_few.stderr,
+        f"rc={res_few.returncode} err={res_few.stderr!r}",
+    )
+
+    repo_mixed = tmp / "v01_mixed"
+    _init_temp_git_repo(repo_mixed)
+    (repo_mixed / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _run_git(repo_mixed, "add", ".")
+    _run_git(repo_mixed, "commit", "-q", "-m", "base")
+    base_mixed = _run_git(repo_mixed, "rev-parse", "HEAD")
+    (repo_mixed / "app.py").write_text("def f():\n    return 1 + 0\n", encoding="utf-8")
+    (repo_mixed / "test_app.py").write_text(
+        "from app import f\nassert f() == 1\n", encoding="utf-8"
+    )
+    _run_git(repo_mixed, "add", ".")
+    _run_git(repo_mixed, "commit", "-q", "-m", "mixed c1")
+    (repo_mixed / "app.py").write_text("def f():\n    val = 1\n    return val\n", encoding="utf-8")
+    _run_git(repo_mixed, "add", ".")
+    _run_git(repo_mixed, "commit", "-q", "-m", "impl c2")
+    res_mixed = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_mixed,
+        "--test-command",
+        "python3 test_app.py",
+        "--repo-root",
+        str(repo_mixed),
+    )
+    check(
+        "verify-sequence rejects non-test-only commit 1 with SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY",
+        res_mixed.returncode == EXIT_INVALID
+        and "SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY" in res_mixed.stderr,
+        f"rc={res_mixed.returncode} err={res_mixed.stderr!r}",
+    )
+
+    repo_mut = tmp / "v01_mut"
+    _init_temp_git_repo(repo_mut)
+    (repo_mut / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _run_git(repo_mut, "add", ".")
+    _run_git(repo_mut, "commit", "-q", "-m", "base")
+    base_mut = _run_git(repo_mut, "rev-parse", "HEAD")
+    (repo_mut / "test_app.py").write_text("from app import f\nassert f() == 1\n", encoding="utf-8")
+    _run_git(repo_mut, "add", ".")
+    _run_git(repo_mut, "commit", "-q", "-m", "c1 test")
+    (repo_mut / "app.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    (repo_mut / "test_app.py").write_text("from app import f\nassert f() == 2\n", encoding="utf-8")
+    _run_git(repo_mut, "add", ".")
+    _run_git(repo_mut, "commit", "-q", "-m", "c2 mutates test")
+    res_mut = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_mut,
+        "--test-command",
+        "python3 test_app.py",
+        "--repo-root",
+        str(repo_mut),
+    )
+    check(
+        "verify-sequence rejects test mutation in impl commit with SEQUENCE_TEST_MUTATED_IN_IMPL",
+        res_mut.returncode == EXIT_INVALID and "SEQUENCE_TEST_MUTATED_IN_IMPL" in res_mut.stderr,
+        f"rc={res_mut.returncode} err={res_mut.stderr!r}",
+    )
+
+
+def test_verify01_sequence_modes(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[15b] VERIFY-01 behavior-preserving vs --bugfix & worktree cleanup\n")
+
+    repo_bf = tmp / "v01_basefail"
+    _init_temp_git_repo(repo_bf)
+    (repo_bf / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _run_git(repo_bf, "add", ".")
+    _run_git(repo_bf, "commit", "-q", "-m", "base")
+    base_bf = _run_git(repo_bf, "rev-parse", "HEAD")
+    (repo_bf / "test_app.py").write_text("from app import f\nassert f() == 2\n", encoding="utf-8")
+    _run_git(repo_bf, "add", ".")
+    _run_git(repo_bf, "commit", "-q", "-m", "c1 red test")
+    (repo_bf / "app.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    _run_git(repo_bf, "add", ".")
+    _run_git(repo_bf, "commit", "-q", "-m", "c2 makes test green")
+    res_bf = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_bf,
+        "--test-command",
+        "python3 test_app.py",
+        "--repo-root",
+        str(repo_bf),
+    )
+    check(
+        "verify-sequence rejects failing baseline test with SEQUENCE_BASELINE_TEST_FAILED",
+        res_bf.returncode == EXIT_INVALID and "SEQUENCE_BASELINE_TEST_FAILED" in res_bf.stderr,
+        f"rc={res_bf.returncode} err={res_bf.stderr!r}",
+    )
+
+    res_bugfix_ok = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_bf,
+        "--test-command",
+        "python3 test_app.py",
+        "--bugfix",
+        "--repo-root",
+        str(repo_bf),
+    )
+    check(
+        "verify-sequence --bugfix passes when c1 is RED on base and GREEN on HEAD",
+        res_bugfix_ok.returncode == EXIT_OK,
+        res_bugfix_ok.stderr or res_bugfix_ok.stdout,
+    )
+
+    repo_ok = tmp / "v01_green_ok"
+    _init_temp_git_repo(repo_ok)
+    (repo_ok / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _run_git(repo_ok, "add", ".")
+    _run_git(repo_ok, "commit", "-q", "-m", "base")
+    base_ok = _run_git(repo_ok, "rev-parse", "HEAD")
+    (repo_ok / "test_app.py").write_text("from app import f\nassert f() == 1\n", encoding="utf-8")
+    _run_git(repo_ok, "add", ".")
+    _run_git(repo_ok, "commit", "-q", "-m", "c1 characterization test")
+    (repo_ok / "app.py").write_text("def f():\n    x = 1\n    return x\n", encoding="utf-8")
+    _run_git(repo_ok, "add", ".")
+    _run_git(repo_ok, "commit", "-q", "-m", "c2 behavior-preserving refactor")
+
+    res_not_red = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_ok,
+        "--test-command",
+        "python3 test_app.py",
+        "--bugfix",
+        "--repo-root",
+        str(repo_ok),
+    )
+    check(
+        "verify-sequence --bugfix rejects already-passing baseline with SEQUENCE_BUGFIX_NOT_RED",
+        res_not_red.returncode == EXIT_INVALID and "SEQUENCE_BUGFIX_NOT_RED" in res_not_red.stderr,
+        f"rc={res_not_red.returncode} err={res_not_red.stderr!r}",
+    )
+
+    res_bp_ok = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_ok,
+        "--test-command",
+        "python3 test_app.py",
+        "--repo-root",
+        str(repo_ok),
+    )
+    wt_list = _run_git(repo_ok, "worktree", "list", "--porcelain")
+    check(
+        "verify-sequence passes clean behavior-preserving sequence without leaking worktrees",
+        res_bp_ok.returncode == EXIT_OK and wt_list.count("worktree ") == 1,
+        f"rc={res_bp_ok.returncode} err={res_bp_ok.stderr!r} wt={wt_list!r}",
+    )
+
+
+def _test_verify01_c06(tmp: pathlib.Path) -> None:
+    repo_c06 = tmp / "v01_c06"
+    _init_temp_git_repo(repo_c06)
+    (repo_c06 / "semaphore.py").write_text(
+        (CORPUS_DIR / "C-06" / "before.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _run_git(repo_c06, "add", ".")
+    _run_git(repo_c06, "commit", "-q", "-m", "base C-06")
+    base_c06 = _run_git(repo_c06, "rev-parse", "HEAD")
+
+    (repo_c06 / "tests").mkdir()
+    (repo_c06 / "tests" / "test_semaphore.py").write_text(
+        "import asyncio\n"
+        "from semaphore import PrioritySemaphore\n\n"
+        "async def main() -> None:\n"
+        "    sem = PrioritySemaphore(lambda res, t0, hp: (1.5, 42))\n"
+        "    fut: asyncio.Future[str] = asyncio.get_running_loop().create_future()\n"
+        "    fut.set_result('ok')\n"
+        "    out = await sem.acquire(fut, 0.0, True)\n"
+        "    assert out == (1.5, 42), f'expected (1.5, 42), got {out!r}'\n\n"
+        "asyncio.run(main())\n",
+        encoding="utf-8",
+    )
+    _run_git(repo_c06, "add", ".")
+    _run_git(repo_c06, "commit", "-q", "-m", "c1 characterization test for C-06")
+
+    (repo_c06 / "semaphore.py").write_text(
+        (CORPUS_DIR / "C-06" / "after.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _run_git(repo_c06, "add", ".")
+    _run_git(repo_c06, "commit", "-q", "-m", "c2 C-06 refactor drops else return")
+
+    res_c06 = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_c06,
+        "--test-command",
+        "PYTHONPATH=. python3 tests/test_semaphore.py",
+        "--repo-root",
+        str(repo_c06),
+    )
+    check(
+        "VERIFY-01 catches C-06 (Python else: return drop) with SEQUENCE_FINAL_TEST_FAILED",
+        res_c06.returncode == EXIT_INVALID and "SEQUENCE_FINAL_TEST_FAILED" in res_c06.stderr,
+        f"rc={res_c06.returncode} err={res_c06.stderr!r}",
+    )
+
+
+def _test_verify01_c15(tmp: pathlib.Path) -> None:
+    repo_c15 = tmp / "v01_c15"
+    _init_temp_git_repo(repo_c15)
+    (repo_c15 / "go.mod").write_text(
+        "module example.com/c15\n\n"
+        "go 1.21\n\n"
+        "require github.com/labstack/echo/v5 v5.0.0\n\n"
+        "replace github.com/labstack/echo/v5 => ./stub/echo/v5\n",
+        encoding="utf-8",
+    )
+    stub_echo = repo_c15 / "stub" / "echo" / "v5"
+    (stub_echo / "middleware").mkdir(parents=True)
+    (stub_echo / "go.mod").write_text(
+        "module github.com/labstack/echo/v5\n\ngo 1.21\n", encoding="utf-8"
+    )
+    (stub_echo / "echo.go").write_text(
+        "package echo\n\n"
+        "type HandlerFunc func() error\n"
+        "type MiddlewareFunc func(HandlerFunc) HandlerFunc\n"
+        "type Group struct{ LastLimit int64 }\n"
+        "type Echo struct{ Groups []*Group }\n"
+        "func New() *Echo { return &Echo{} }\n"
+        "func (e *Echo) Group(_ string) *Group {\n"
+        "    g := &Group{}\n"
+        "    e.Groups = append(e.Groups, g)\n"
+        "    return g\n"
+        "}\n"
+        "var RecordedLimit int64\n"
+        "func (g *Group) Use(_ MiddlewareFunc) { g.LastLimit = RecordedLimit }\n"
+        "func (g *Group) POST(_ string, _ HandlerFunc) {}\n",
+        encoding="utf-8",
+    )
+    (stub_echo / "middleware" / "body_limit.go").write_text(
+        'package middleware\n\nimport "github.com/labstack/echo/v5"\n\n'
+        "func BodyLimit(limit int64) echo.MiddlewareFunc {\n"
+        "    echo.RecordedLimit = limit\n"
+        "    return func(next echo.HandlerFunc) echo.HandlerFunc { return next }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (repo_c15 / "bootstrap").mkdir()
+    (repo_c15 / "bootstrap" / "server.go").write_text(
+        (CORPUS_DIR / "C-15" / "before.go").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _run_git(repo_c15, "add", ".")
+    _run_git(repo_c15, "commit", "-q", "-m", "base C-15")
+    base_c15 = _run_git(repo_c15, "rev-parse", "HEAD")
+
+    (repo_c15 / "bootstrap" / "server_test.go").write_text(
+        'package bootstrap\n\nimport (\n    "testing"\n    "github.com/labstack/echo/v5"\n)\n\n'
+        "func TestSummarizeBodyLimit(t *testing.T) {\n"
+        "    e := echo.New()\n"
+        "    registerSummarizeGroup(e, func() error { return nil })\n"
+        "    if got := e.Groups[0].LastLimit; got != 1_000_000 {\n"
+        '        t.Fatalf("expected 1_000_000 bytes, got %d", got)\n'
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    _run_git(repo_c15, "add", ".")
+    _run_git(repo_c15, "commit", "-q", "-m", "c1 characterization test for C-15")
+
+    (repo_c15 / "bootstrap" / "server.go").write_text(
+        (CORPUS_DIR / "C-15" / "after.go").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _run_git(repo_c15, "add", ".")
+    _run_git(repo_c15, "commit", "-q", "-m", "c2 C-15 shifts limit to 1 << 20")
+
+    res_c15 = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_c15,
+        "--test-command",
+        "go test ./bootstrap",
+        "--repo-root",
+        str(repo_c15),
+    )
+    check(
+        "VERIFY-01 catches C-15 (Go BodyLimit 1_000_000 vs 1 << 20) with SEQUENCE_FINAL_TEST_FAILED",
+        res_c15.returncode == EXIT_INVALID and "SEQUENCE_FINAL_TEST_FAILED" in res_c15.stderr,
+        f"rc={res_c15.returncode} err={res_c15.stderr!r}",
+    )
+
+
+def _test_verify01_c18(tmp: pathlib.Path) -> None:
+    repo_c18 = tmp / "v01_c18"
+    _init_temp_git_repo(repo_c18)
+    chk_sh = repo_c18 / "scripts" / "check-compose-variables.sh"
+    chk_sh.parent.mkdir(parents=True)
+    chk_sh.write_text(
+        (CORPUS_DIR / "C-18" / "before.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    chk_sh.chmod(0o755)
+    _run_git(repo_c18, "add", ".")
+    _run_git(repo_c18, "commit", "-q", "-m", "base C-18")
+    base_c18 = _run_git(repo_c18, "rev-parse", "HEAD")
+
+    t_c18 = repo_c18 / "tests" / "test_check_compose_variables.sh"
+    t_c18.parent.mkdir(parents=True)
+    t_c18.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'tmp_dir="$(mktemp -d)"\n'
+        "trap 'rm -rf \"$tmp_dir\"' EXIT\n"
+        "cat > \"$tmp_dir/docker\" <<'EOF'\n"
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" > "$(dirname "$0")/args.txt"\n'
+        "exit 0\n"
+        "EOF\n"
+        'chmod +x "$tmp_dir/docker"\n'
+        'DOCKER_BIN="$tmp_dir/docker" bash scripts/check-compose-variables.sh\n'
+        'if grep -q -- "--no-env-resolution" "$tmp_dir/args.txt"; then\n'
+        '  echo "unexpected --no-env-resolution" >&2\n'
+        "  exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    t_c18.chmod(0o755)
+    _run_git(repo_c18, "add", ".")
+    _run_git(repo_c18, "commit", "-q", "-m", "c1 characterization test for C-18")
+
+    chk_sh.write_text(
+        (CORPUS_DIR / "C-18" / "after.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    chk_sh.chmod(0o755)
+    _run_git(repo_c18, "add", ".")
+    _run_git(repo_c18, "commit", "-q", "-m", "c2 C-18 requires --env-file and skips env resolution")
+
+    res_c18 = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_c18,
+        "--test-command",
+        "bash tests/test_check_compose_variables.sh",
+        "--repo-root",
+        str(repo_c18),
+    )
+    check(
+        "VERIFY-01 catches C-18 (shell check-compose-variables.sh) with SEQUENCE_FINAL_TEST_FAILED",
+        res_c18.returncode == EXIT_INVALID and "SEQUENCE_FINAL_TEST_FAILED" in res_c18.stderr,
+        f"rc={res_c18.returncode} err={res_c18.stderr!r}",
+    )
+
+
+def test_verify01_corpus_reproductions(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[15c] VERIFY-01 corpus reproductions (C-06, C-15, C-18)\n")
+    _test_verify01_c06(tmp)
+    _test_verify01_c15(tmp)
+    _test_verify01_c18(tmp)
+
+
+def test_host_final_check_script(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[16] scripts/verify/host-final-check.sh integration\n")
+    check(
+        "scripts/verify/host-final-check.sh exists and is executable",
+        HOST_FINAL_CHECK_PATH.is_file() and os.access(HOST_FINAL_CHECK_PATH, os.X_OK),
+        str(HOST_FINAL_CHECK_PATH),
+    )
+    if not HOST_FINAL_CHECK_PATH.is_file():
+        return
+
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+
+    repo, base_sha = _setup_loop01_repo(tmp, "hfc_repo")
+    # Copy hygiene checker into temp repo so host-final-check.sh can invoke it
+    hygiene_dst = repo / "scripts" / "lint" / "check_worktree_hygiene.py"
+    hygiene_dst.write_text(
+        (ROOT / "scripts" / "lint" / "check_worktree_hygiene.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "add hygiene")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    (repo / "pkg" / "worker.py").write_text(
+        "def alpha(x: int) -> int:\n    result = x + 1\n    return result\n\n"
+        "def beta(y: int) -> int:\n    return y * 2\n",
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "clean fix")
+
+    pkt_path = write_json(tmp, "hfc_pkt.json", _make_loop01_packet(base_sha))
+    ho_path = write_json(
+        tmp,
+        "hfc_ho.json",
+        _make_loop01_handoff([{"path": "pkg/worker.py", "added_lines": 2, "deleted_lines": 1}], 1),
+    )
+    runs_dir = tmp / "hfc_runs"
+
+    res_pass = _run_proc(
+        [
+            bash_bin,
+            str(HOST_FINAL_CHECK_PATH),
+            "--repo-root",
+            str(repo),
+            "--target",
+            "scripts",
+            "--skip-repo-lint",
+            "--test-cmd",
+            "python3 -c 'import sys; sys.exit(0)'",
+            "--handoff",
+            str(ho_path),
+            "--packet",
+            str(pkt_path),
+            "--base-commit",
+            base_sha,
+            "--runs-dir",
+            str(runs_dir),
+        ]
+    )
+    check(
+        "host-final-check.sh passes on clean repo with lint, test-cmd, and verify-handoff",
+        res_pass.returncode == EXIT_OK,
+        f"rc={res_pass.returncode} out={res_pass.stdout!r} err={res_pass.stderr!r}",
+    )
+
+    # Dirty worktree fails host-final-check.sh
+    (repo / "dirty.tmp").write_text("leftover\n", encoding="utf-8")
+    res_dirty = _run_proc(
+        [
+            bash_bin,
+            str(HOST_FINAL_CHECK_PATH),
+            "--repo-root",
+            str(repo),
+            "--target",
+            "scripts",
+            "--skip-repo-lint",
+        ]
+    )
+    (repo / "dirty.tmp").unlink()
+    check(
+        "host-final-check.sh fails when git status --porcelain is non-empty",
+        res_dirty.returncode != EXIT_OK,
+        f"rc={res_dirty.returncode} out={res_dirty.stdout!r} err={res_dirty.stderr!r}",
+    )
+
+
 def main() -> int:
     sys.stdout.write("Task Packet specification & validator tests\n")
     test_schema_structure()
@@ -1577,6 +2554,14 @@ def main() -> int:
         test_wave4_hardening(tmp)
         test_wave4_exclusions_and_security(tmp)
         test_wave2_test_existence_and_header_deletion(tmp)
+        test_loop02_validation(tmp)
+        test_loop02_measure_cli(tmp)
+        test_loop01_verify_handoff_core(tmp)
+        test_loop01_verify_handoff_lint_fix_extras(tmp)
+        test_verify01_sequence_rejections(tmp)
+        test_verify01_sequence_modes(tmp)
+        test_verify01_corpus_reproductions(tmp)
+        test_host_final_check_script(tmp)
 
     sys.stdout.write(
         f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n",

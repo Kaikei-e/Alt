@@ -94,6 +94,11 @@
           "default": false,
           "description": "CHECK-05: explicit opt-in required to modify files carrying a generated-code DO NOT EDIT header."
         },
+        "allow_test_expectation_changes": {
+          "type": "boolean",
+          "default": false,
+          "description": "LOOP-01: explicit opt-in required to modify test expectations or delete test files in lint-fix tasks."
+        },
         "max_files": {
           "type": "integer",
           "description": "Maximum number of files allowed to be modified (recommended default: 10, hard cap: 25).",
@@ -121,6 +126,29 @@
         }
       }
     },
+    "MeasuredExecution": {
+      "type": "object",
+      "description": "LOOP-02: host measurement record proving the verification command ran within budget before dispatch.",
+      "additionalProperties": false,
+      "required": ["duration_s", "exit_code", "at_commit"],
+      "properties": {
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "at_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "command_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "ExecutionPolicy": {
       "type": "object",
       "description": "Deterministic execution and GUARD-01 safety constraints.",
@@ -129,7 +157,8 @@
         "foreground_only",
         "forbid_repo_wide_test_build",
         "forbid_bulk_autofix",
-        "verification_command"
+        "verification_command",
+        "measured"
       ],
       "properties": {
         "policy": {
@@ -154,6 +183,16 @@
         "verification_command": {
           "$ref": "#/$defs/NonEmptyString",
           "description": "Deterministic foreground verification command invoking ./scripts/lint/run.sh <target>."
+        },
+        "max_command_budget_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600,
+          "default": 180,
+          "description": "LOOP-02: maximum allowed wall-clock duration in seconds for the host verification command (1..600, default 180)."
+        },
+        "measured": {
+          "$ref": "#/$defs/MeasuredExecution"
         }
       }
     },
@@ -201,6 +240,21 @@
         },
         "owner": {
           "$ref": "#/$defs/NonEmptyString"
+        },
+        "base_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "Optional base commit SHA used by LOOP-01 verify-handoff and VERIFY-01 verify-sequence."
+        },
+        "task_kind": {
+          "type": "string",
+          "enum": ["lint-fix", "refactor", "migration", "bugfix", "feature"],
+          "default": "lint-fix",
+          "description": "Task classification controlling lint-fix strictness and verification mode."
+        },
+        "behavior_preserving": {
+          "type": "boolean",
+          "description": "Whether the task preserves observable runtime behavior (used by VERIFY-01 verify-sequence)."
         },
         "scope": {
           "$ref": "#/$defs/Scope"

@@ -4,6 +4,9 @@
 Subcommands:
   validate-packet <path> [--format text|json]
   validate-handoff <handoff-path> [--packet <packet-path>] [--format text|json]
+  measure <packet-path> [--repo-root <dir>] [--format text|json]
+  verify-handoff <handoff-path> --packet <packet-path> [--base-commit <rev>] [--repo-root <dir>] [--runs-dir <dir>] [--no-rerun] [--format text|json]
+  verify-sequence --base-commit <rev> --test-command <cmd> [--packet <packet-path>] [--behavior-preserving | --bugfix] [--repo-root <dir>] [--format text|json]
   render-template --kind packet|handoff [--packet-id ID] [--target TARGET] [--format markdown|json]
   check-templates
 
@@ -16,14 +19,23 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
+import importlib.util
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 EXIT_OK = 0
 EXIT_INVALID = 1
@@ -34,8 +46,51 @@ DEFAULT_PACKET_ID = "EXAMPLE-TASK-001"
 DEFAULT_TARGET = "scripts"
 QUOTED_MIN_LEN = 2
 INT_PATTERN = re.compile(r"^-?[0-9]+$")
+FLOAT_PATTERN = re.compile(
+    r"^-?(?:[0-9]+\.[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$|^-?[0-9]+[eE][+-]?[0-9]+$"
+)
 PACKET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$")
 TARGET_RE = re.compile(r"^(?!.*\.\.)(?!/)[A-Za-z0-9._/-]+$")
+DEFAULT_COMMAND_BUDGET_S = 180
+MEASURE_TIMEOUT_SLACK_S = 30
+TIMEOUT_EXIT_CODE = 124
+SEQUENCE_MIN_COMMITS = 2
+HARNESS_STATE_PREFIX = ".harness/"
+DEFAULT_TEMPLATE_VERIFY_CMD = f"./scripts/lint/run.sh {DEFAULT_TARGET}"
+DEFAULT_TEMPLATE_VERIFY_SHA = hashlib.sha256(
+    DEFAULT_TEMPLATE_VERIFY_CMD.encode("utf-8")
+).hexdigest()
+SEQUENCE_TEST_FILE_RE = re.compile(
+    r"(?:^|/)(?:"
+    r"(?:tests?|__tests__|e2e)/.+"
+    r"|[^/]+_test\.go"
+    r"|test_[^/]+\.py|test-[^/]+\.py|[^/]+_test\.py"
+    r"|[^/]*test[^/]*\.sh"
+    r"|[^/]+\.(?:spec|test)\.(?:[cm]?[jt]sx?|svelte)"
+    r"|[^/]+_test\.[cm]?[jt]sx?"
+    r"|tests\.rs|[^/]+_tests?\.rs"
+    r")$",
+    re.IGNORECASE,
+)
+ALLOWED_LINT_FIX_COMMENT_RE = re.compile(
+    r"(?:#\s*noqa\b|(?://|#|/\*)\s*#?nosec\b|//\s*nolint\b|"
+    r"#!?\[\s*(?:allow|expect)\b|biome-ignore\b|deno-lint-ignore\b|"
+    r"\bADR-\d+|\bexpires\s*:|^#!)",
+    re.IGNORECASE,
+)
+GO_FUNC_DECL_RE = re.compile(
+    r"\bfunc\s+(?:\(([^)]*)\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*\("
+)
+TS_FUNC_DECL_RE = re.compile(
+    r"\b(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>]*>)?\s*\("
+)
+TS_ARROW_DECL_RE = re.compile(
+    r"\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=\n]+)?=\s*"
+    r"(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=\n]+)?=>"
+)
+BRANCH_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+MAX_BUDGET_SECONDS = 600
+GIT_EXEC_MODE = "100755"
 
 HARNESS_DIR = Path(__file__).resolve().parent
 REPO_ROOT_DEFAULT = HARNESS_DIR.parents[1]
@@ -312,6 +367,8 @@ def _parse_yaml_primitive(text: str) -> object:
         return literals[lower]
     if INT_PATTERN.match(text):
         return int(text)
+    if FLOAT_PATTERN.match(text):
+        return float(text)
     return text
 
 
@@ -595,6 +652,8 @@ def _resolve_ref(root_schema: dict[str, Any], ref: str) -> dict[str, Any]:
 def _matches_schema_type(value: object, expected: str) -> bool:
     if expected == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
     if expected == "null":
         return value is None
     type_map: dict[str, type[object]] = {
@@ -639,14 +698,14 @@ def _validate_string_keywords(
         )
 
 
-def _validate_integer_keywords(
-    value: int,
+def _validate_number_keywords(
+    value: int | float,
     node: dict[str, Any],
     json_path: str,
     issues: list[ValidationIssue],
 ) -> None:
     minimum = node.get("minimum")
-    if isinstance(minimum, int) and value < minimum:
+    if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and value < minimum:
         issues.append(
             ValidationIssue(
                 "SCHEMA_MINIMUM",
@@ -655,7 +714,7 @@ def _validate_integer_keywords(
             )
         )
     maximum = node.get("maximum")
-    if isinstance(maximum, int) and value > maximum:
+    if isinstance(maximum, (int, float)) and not isinstance(maximum, bool) and value > maximum:
         issues.append(
             ValidationIssue(
                 "SCHEMA_MAXIMUM",
@@ -790,8 +849,8 @@ def _validate_typed_keywords(
 ) -> None:
     if isinstance(value, str):
         _validate_string_keywords(value, node, json_path, issues)
-    elif isinstance(value, int) and not isinstance(value, bool):
-        _validate_integer_keywords(value, node, json_path, issues)
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        _validate_number_keywords(value, node, json_path, issues)
     elif isinstance(value, list):
         _validate_array_keywords(value, node, root_schema, json_path, issues)
     elif isinstance(value, dict):
@@ -1229,6 +1288,21 @@ def _file_has_generated_header(path: Path) -> bool:
     return _has_generated_header_text(text)
 
 
+def _run_subprocess_bytes(
+    argv: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout: int = SUBPROCESS_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(  # noqa: S603 -- centralized argv subprocess runner (screener, bash)
+        argv,
+        cwd=str(cwd) if cwd is not None else None,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
 def _run_git_bytes(repo_root: Path, git_bin: str, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(  # noqa: S603 -- runs resolved git binary inside explicit repo_root
         [git_bin, "-C", str(repo_root), *args],
@@ -1236,6 +1310,28 @@ def _run_git_bytes(repo_root: Path, git_bin: str, *args: str) -> subprocess.Comp
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
         check=False,
     )
+
+
+def _run_bash_command(
+    command: str,
+    *,
+    cwd: Path,
+    timeout: int,
+) -> tuple[int, float, bytes, bytes]:
+    bash_bin = shutil.which("bash")
+    if bash_bin is None:
+        msg = "bash executable not found in PATH"
+        raise DocumentParseError(msg)
+    t0 = time.monotonic()
+    try:
+        res = _run_subprocess_bytes([bash_bin, "-c", command], cwd=cwd, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        elapsed = round(time.monotonic() - t0, 3)
+        out = exc.stdout if isinstance(exc.stdout, bytes) else b""
+        err = exc.stderr if isinstance(exc.stderr, bytes) else b""
+        return TIMEOUT_EXIT_CODE, elapsed, out, err
+    elapsed = round(time.monotonic() - t0, 3)
+    return res.returncode, elapsed, res.stdout, res.stderr
 
 
 def _git_rev_has_generated_header(repo_root: Path, git_bin: str, rev: str, norm: str) -> bool:
@@ -1316,7 +1412,7 @@ def _run_behavior_screener_for_base(repo_root: Path, base_commit: str) -> list[d
         msg = f"behavior screener script not found: {SCREENER_SCRIPT_PATH}"
         raise DocumentParseError(msg)
     try:
-        res = subprocess.run(  # noqa: S603 -- invokes repo-owned behavior_screener.py with fixed argv
+        res = _run_subprocess_bytes(
             [
                 sys.executable,
                 str(SCREENER_SCRIPT_PATH),
@@ -1325,18 +1421,17 @@ def _run_behavior_screener_for_base(repo_root: Path, base_commit: str) -> list[d
                 "--base",
                 base_commit,
             ],
-            capture_output=True,
-            text=True,
             timeout=SUBPROCESS_TIMEOUT_SECONDS,
-            check=False,
         )
     except subprocess.TimeoutExpired as exc:
         msg = f"behavior_screener.py timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
         raise DocumentParseError(msg) from exc
     if res.returncode != 0:
-        msg = f"behavior_screener.py failed (rc={res.returncode}): {res.stderr.strip()}"
+        err_text = res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"behavior_screener.py failed (rc={res.returncode}): {err_text}"
         raise DocumentParseError(msg)
-    return _parse_screener_candidates_text(res.stdout, source="--base-commit")
+    out_text = res.stdout.decode("utf-8", errors="replace")
+    return _parse_screener_candidates_text(out_text, source="--base-commit")
 
 
 def _parse_screener_candidates_text(raw: str, *, source: str) -> list[dict[str, Any]]:
@@ -1747,6 +1842,74 @@ def _validate_generated_code_edits(
 # ---------------------------------------------------------------------------
 
 
+def _command_sha256(command: str) -> str:
+    return hashlib.sha256(command.strip().encode("utf-8")).hexdigest()
+
+
+def _resolve_command_budget(policy: dict[str, Any]) -> int:
+    raw = policy.get("max_command_budget_s", DEFAULT_COMMAND_BUDGET_S)
+    if isinstance(raw, int) and not isinstance(raw, bool) and 1 <= raw <= MAX_BUDGET_SECONDS:
+        return raw
+    return DEFAULT_COMMAND_BUDGET_S
+
+
+def _validate_measured_execution(
+    policy: dict[str, Any],
+    verify_cmd: object,
+    issues: list[ValidationIssue],
+) -> None:
+    if "measured" not in policy or policy.get("measured") is None:
+        issues[:] = [
+            item
+            for item in issues
+            if not (
+                item.path == "$.execution_policy.measured"
+                and item.code in ("SCHEMA_REQUIRED", "SCHEMA_TYPE")
+            )
+        ]
+        issues.append(
+            ValidationIssue(
+                "UNMEASURED_VERIFICATION_COMMAND",
+                "$.execution_policy.measured",
+                "LOOP-02: execution_policy.measured is required; run "
+                "'python3 scripts/agent-harness/task_packet.py measure <packet>' before dispatch",
+            )
+        )
+        return
+
+    measured = policy.get("measured")
+    if not isinstance(measured, dict):
+        return
+
+    budget = _resolve_command_budget(policy)
+    duration_s = measured.get("duration_s")
+    if (
+        isinstance(duration_s, (int, float))
+        and not isinstance(duration_s, bool)
+        and duration_s > budget
+    ):
+        issues.append(
+            ValidationIssue(
+                "VERIFICATION_BUDGET_EXCEEDED",
+                "$.execution_policy.measured.duration_s",
+                f"measured duration_s={duration_s} exceeds max_command_budget_s={budget}",
+            )
+        )
+
+    cmd_sha = measured.get("command_sha256")
+    if isinstance(cmd_sha, str) and cmd_sha and isinstance(verify_cmd, str) and verify_cmd.strip():
+        expected_sha = _command_sha256(verify_cmd)
+        if cmd_sha != expected_sha:
+            issues.append(
+                ValidationIssue(
+                    "STALE_MEASURED_COMMAND",
+                    "$.execution_policy.measured.command_sha256",
+                    f"measured command_sha256={cmd_sha} does not match verification_command "
+                    f"({expected_sha}); re-run 'task_packet.py measure'",
+                )
+            )
+
+
 def validate_packet_doc(doc: ParsedDocument, schema: dict[str, Any]) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     _validate_schema_node(
@@ -1792,6 +1955,7 @@ def validate_packet_doc(doc: ParsedDocument, schema: dict[str, Any]) -> list[Val
                     json_path="$.execution_policy.verification_command",
                     issues=issues,
                 )
+        _validate_measured_execution(policy, verify_cmd, issues)
 
     if doc.is_markdown:
         _check_markdown_headings(doc.body_lines, PACKET_REQUIRED_HEADINGS, issues)
@@ -2201,6 +2365,1151 @@ def _cmd_validate_handoff(args: argparse.Namespace) -> int:
     )
 
 
+# ---------------------------------------------------------------------------
+# LOOP-02 (measure), LOOP-01 (verify-handoff), VERIFY-01 (verify-sequence)
+# ---------------------------------------------------------------------------
+
+_SCREENER_MOD_CACHE: dict[str, ModuleType] = {}
+
+
+def _load_behavior_screener() -> ModuleType:
+    cached = _SCREENER_MOD_CACHE.get("mod")
+    if cached is not None:
+        return cached
+    if not SCREENER_SCRIPT_PATH.is_file():
+        msg = f"behavior screener script not found: {SCREENER_SCRIPT_PATH}"
+        raise DocumentParseError(msg)
+    spec = importlib.util.spec_from_file_location("alt_behavior_screener", SCREENER_SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        msg = f"unable to load behavior screener module from {SCREENER_SCRIPT_PATH}"
+        raise DocumentParseError(msg)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    _SCREENER_MOD_CACHE["mod"] = mod
+    return mod
+
+
+def _require_git_bin() -> str:
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found in PATH"
+        raise DocumentParseError(msg)
+    return git_bin
+
+
+def _resolve_git_commit(repo_root: Path, rev: str) -> str | None:
+    if not rev or not rev.strip() or rev.startswith("-"):
+        return None
+    git_bin = _require_git_bin()
+    res = _run_git_bytes(
+        repo_root, git_bin, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}"
+    )
+    if res.returncode != 0:
+        return None
+    return res.stdout.decode("utf-8", errors="replace").strip()
+
+
+def _current_head_sha(repo_root: Path) -> str:
+    resolved = _resolve_git_commit(repo_root, "HEAD") if (repo_root / ".git").exists() else None
+    return resolved or "0000000"
+
+
+def _current_branch_sanitized(repo_root: Path) -> str:
+    if not (repo_root / ".git").exists():
+        return "detached"
+    git_bin = _require_git_bin()
+    res = _run_git_bytes(repo_root, git_bin, "rev-parse", "--abbrev-ref", "HEAD")
+    raw = (
+        res.stdout.decode("utf-8", errors="replace").strip() if res.returncode == 0 else "detached"
+    )
+    if not raw or raw == "HEAD":
+        return "detached"
+    sanitized = BRANCH_SANITIZE_RE.sub("_", raw).strip("_")
+    return sanitized or "detached"
+
+
+def _format_measured_yaml_lines(indent: str, measured: dict[str, Any]) -> list[str]:
+    child = indent + "  "
+    lines = [
+        f"{indent}measured:",
+        f"{child}duration_s: {measured['duration_s']}",
+        f"{child}exit_code: {measured['exit_code']}",
+        f'{child}at_commit: "{measured["at_commit"]}"',
+    ]
+    if "command_sha256" in measured:
+        lines.append(f'{child}command_sha256: "{measured["command_sha256"]}"')
+    return lines
+
+
+def _update_yaml_frontmatter_measured(fm_lines: list[str], measured: dict[str, Any]) -> list[str]:
+    ep_idx = next(
+        (i for i, line in enumerate(fm_lines) if line.lstrip(" ").startswith("execution_policy:")),
+        None,
+    )
+    if ep_idx is None:
+        msg = "execution_policy block not found in YAML frontmatter"
+        raise DocumentParseError(msg)
+
+    ep_indent = len(fm_lines[ep_idx]) - len(fm_lines[ep_idx].lstrip(" "))
+    block_end = ep_idx + 1
+    while block_end < len(fm_lines):
+        raw = fm_lines[block_end]
+        if raw.strip():
+            cur_indent = len(raw) - len(raw.lstrip(" "))
+            if cur_indent <= ep_indent:
+                break
+        block_end += 1
+
+    child_indent = " " * (ep_indent + 2)
+    cleaned_ep: list[str] = []
+    idx = ep_idx + 1
+    while idx < block_end:
+        raw = fm_lines[idx]
+        stripped = raw.lstrip(" ")
+        cur_indent = len(raw) - len(stripped)
+        if stripped.startswith("measured:") and cur_indent > ep_indent:
+            child_indent = " " * cur_indent
+            idx += 1
+            while idx < block_end:
+                nxt = fm_lines[idx]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip(" "))) <= cur_indent:
+                    break
+                idx += 1
+            continue
+        if raw.strip() and cur_indent > ep_indent and not cleaned_ep:
+            child_indent = " " * cur_indent
+        cleaned_ep.append(raw)
+        idx += 1
+
+    measured_lines = _format_measured_yaml_lines(child_indent, measured)
+    return [*fm_lines[: ep_idx + 1], *cleaned_ep, *measured_lines, *fm_lines[block_end:]]
+
+
+def _write_measured_to_packet(path: Path, doc: ParsedDocument, measured: dict[str, Any]) -> None:
+    if not doc.is_markdown:
+        doc.data["execution_policy"]["measured"] = measured
+        path.write_text(json.dumps(doc.data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return
+
+    raw_text = path.read_text(encoding="utf-8")
+    lines = raw_text.splitlines()
+    fm_lines, body_lines = _extract_frontmatter(lines)
+    if fm_lines is not None and (set(parse_yaml_subset(fm_lines)) & STRUCTURED_PAYLOAD_KEYS):
+        updated_fm = _update_yaml_frontmatter_measured(fm_lines, measured)
+        rebuilt = ["---", *updated_fm, "---", *body_lines]
+        path.write_text("\n".join(rebuilt) + "\n", encoding="utf-8")
+        return
+
+    doc.data["execution_policy"]["measured"] = measured
+    replacement_json = json.dumps(doc.data, ensure_ascii=False, indent=2)
+    updated = re.sub(
+        r"```json\s*\n.*?\n```",
+        f"```json\n{replacement_json}\n```",
+        raw_text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    path.write_text(updated, encoding="utf-8")
+
+
+def _resolve_measure_inputs(
+    args: argparse.Namespace,
+) -> tuple[tuple[Path, Path, ParsedDocument] | None, str]:
+    packet_path = Path(args.packet_path)
+    if not packet_path.is_file():
+        return None, f"error: packet file not found: {packet_path}\n"
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else REPO_ROOT_DEFAULT
+    if not repo_root.is_dir():
+        return None, f"error: repo root directory not found: {repo_root}\n"
+    try:
+        doc = load_document(packet_path)
+    except (OSError, DocumentParseError) as exc:
+        return None, f"error: unable to load packet {packet_path}: {exc}\n"
+    return (packet_path, repo_root, doc), ""
+
+
+def _cmd_measure(args: argparse.Namespace) -> int:
+    resolved, err_msg = _resolve_measure_inputs(args)
+    if resolved is None:
+        sys.stderr.write(err_msg)
+        return EXIT_USAGE
+    packet_path, repo_root, doc = resolved
+
+    policy = doc.data.get("execution_policy")
+    verify_cmd = policy.get("verification_command") if isinstance(policy, dict) else None
+    pre_issues: list[ValidationIssue] = []
+    if not isinstance(policy, dict) or not isinstance(verify_cmd, str) or not verify_cmd.strip():
+        pre_issues.append(
+            ValidationIssue(
+                "MISSING_VERIFICATION_COMMAND",
+                "$.execution_policy.verification_command",
+                "packet missing non-empty execution_policy.verification_command",
+            )
+        )
+        return _emit_result(
+            kind="measure",
+            target_path=packet_path,
+            packet_id=doc.data.get("packet_id"),
+            issues=pre_issues,
+            output_format=args.output_format,
+        )
+
+    _check_verification_command(
+        verify_cmd,
+        json_path="$.execution_policy.verification_command",
+        expected_targets=[],
+        forbid_repo_wide=policy.get("forbid_repo_wide_test_build") is True,
+        issues=pre_issues,
+    )
+    if pre_issues:
+        return _emit_result(
+            kind="measure",
+            target_path=packet_path,
+            packet_id=doc.data.get("packet_id"),
+            issues=pre_issues,
+            output_format=args.output_format,
+        )
+
+    budget = _resolve_command_budget(policy)
+    try:
+        exit_code, duration_s, _, _ = _run_bash_command(
+            verify_cmd,
+            cwd=repo_root,
+            timeout=budget + MEASURE_TIMEOUT_SLACK_S,
+        )
+        measured: dict[str, Any] = {
+            "duration_s": duration_s,
+            "exit_code": exit_code,
+            "at_commit": _current_head_sha(repo_root),
+            "command_sha256": _command_sha256(verify_cmd),
+        }
+        _write_measured_to_packet(packet_path, doc, measured)
+    except (OSError, DocumentParseError) as exc:
+        sys.stderr.write(f"error: measure failed: {exc}\n")
+        return EXIT_USAGE
+
+    issues: list[ValidationIssue] = []
+    if duration_s > budget:
+        issues.append(
+            ValidationIssue(
+                "VERIFICATION_BUDGET_EXCEEDED",
+                "$.execution_policy.measured.duration_s",
+                f"verification_command took {duration_s}s, exceeding max_command_budget_s={budget}s",
+            )
+        )
+    return _emit_result(
+        kind="measure",
+        target_path=packet_path,
+        packet_id=doc.data.get("packet_id"),
+        issues=issues,
+        output_format=args.output_format,
+    )
+
+
+def _git_actual_modified_files(repo_root: Path, resolved_base: str) -> set[str]:
+    git_bin = _require_git_bin()
+    diff_res = _run_git_bytes(repo_root, git_bin, "diff", "--name-only", "-z", resolved_base, "--")
+    if diff_res.returncode != 0:
+        err = diff_res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"git diff failed against {resolved_base}: {err}"
+        raise DocumentParseError(msg)
+    untracked_res = _run_git_bytes(
+        repo_root, git_bin, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if untracked_res.returncode != 0:
+        err = untracked_res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"git ls-files failed: {err}"
+        raise DocumentParseError(msg)
+
+    paths: set[str] = set()
+    for raw_stdout in (diff_res.stdout, untracked_res.stdout):
+        for entry in raw_stdout.split(b"\x00"):
+            if not entry:
+                continue
+            rel = _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
+            if not rel or rel == ".harness" or rel.startswith(HARNESS_STATE_PREFIX):
+                continue
+            paths.add(rel)
+    return paths
+
+
+def _git_file_text_at_rev(repo_root: Path, rev: str, rel: str) -> str:
+    git_bin = _require_git_bin()
+    res = _run_git_bytes(repo_root, git_bin, "show", "--end-of-options", f"{rev}:{rel}")
+    if res.returncode != 0:
+        return ""
+    return res.stdout.decode("utf-8", errors="replace")
+
+
+def _read_worktree_text(repo_root: Path, rel: str) -> str:
+    full = repo_root / rel
+    if not full.is_file() or full.is_symlink():
+        return ""
+    if not full.resolve().is_relative_to(repo_root.resolve()):
+        return ""
+    return full.read_text(encoding="utf-8", errors="replace")
+
+
+def _py_func_fingerprint(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    filtered_body = [
+        stmt
+        for stmt in fn.body
+        if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    parts = [
+        type(fn).__name__,
+        fn.name,
+        ast.dump(fn.args, include_attributes=False),
+        ast.dump(fn.returns, include_attributes=False) if fn.returns is not None else "",
+        *(ast.dump(dec, include_attributes=False) for dec in fn.decorator_list),
+        *(ast.dump(stmt, include_attributes=False) for stmt in filtered_body),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _extract_python_func_bodies(source: str, rel: str) -> dict[str, str]:
+    if not source.strip():
+        return {}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        msg = f"failed to parse Python file {rel}: {exc}"
+        raise DocumentParseError(msg) from exc
+
+    funcs: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+
+    def walk(stmts: list[ast.stmt], prefix: str) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, ast.ClassDef):
+                cls_prefix = f"{prefix}.{stmt.name}" if prefix else stmt.name
+                walk(stmt.body, cls_prefix)
+            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                base = f"{prefix}.{stmt.name}" if prefix else stmt.name
+                counts[base] += 1
+                key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+                funcs[key] = _py_func_fingerprint(stmt)
+                walk(stmt.body, base)
+
+    walk(tree.body, "")
+    return funcs
+
+
+def _find_body_brace_after_params(clean: str, open_paren_idx: int, language: str) -> int | None:
+    screener = _load_behavior_screener()
+    pos = screener._find_balanced_close(clean, open_paren_idx, language)
+    n = len(clean)
+    paren_depth = 0
+    while pos < n:
+        ch = clean[pos]
+        if ch == "(":
+            paren_depth += 1
+        elif ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+        elif paren_depth == 0:
+            if ch == "{":
+                return pos
+            if ch in (";", "\n") and language == "go" and pos + 1 < n and clean[pos] == "\n":
+                # In Go, func signature without body ends at newline if interface/extern
+                nxt_line = clean[pos + 1 :].lstrip(" \t")
+                if nxt_line.startswith(("func ", "type ", "var ", "const ", "package ", "import ")):
+                    return None
+        pos += 1
+    return None
+
+
+def _extract_go_func_bodies(source: str) -> dict[str, str]:
+    if not source.strip():
+        return {}
+    screener = _load_behavior_screener()
+    clean = screener._strip_c_comments_keep_strings(source, "go")
+    funcs: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+    pos = 0
+    n = len(clean)
+    while pos < n:
+        match = GO_FUNC_DECL_RE.search(clean, pos)
+        if match is None:
+            break
+        prefix_depth = clean[: match.start()].count("{") - clean[: match.start()].count("}")
+        if prefix_depth != 0:
+            pos = match.end()
+            continue
+        open_paren = match.end() - 1
+        body_open = _find_body_brace_after_params(clean, open_paren, "go")
+        if body_open is None:
+            pos = match.end()
+            continue
+        body_close = screener._find_balanced_close(clean, body_open, "go")
+        recv = " ".join((match.group(1) or "").split())
+        name = match.group(2)
+        base = f"({recv}).{name}" if recv else name
+        counts[base] += 1
+        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+        normalized = " ".join(clean[match.start() : body_close].split())
+        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        pos = max(body_close, match.end())
+    return funcs
+
+
+def _extract_rust_func_bodies(source: str) -> dict[str, str]:
+    if not source.strip():
+        return {}
+    screener = _load_behavior_screener()
+    clean = screener._strip_c_comments_keep_strings(source, "rust")
+    funcs: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+    for match in screener.RUST_FN_DECL_RE.finditer(clean):
+        body_open = screener._find_rust_fn_body_open(clean, match.end())
+        if body_open is None:
+            continue
+        body_close = screener._find_rust_brace_close(clean, body_open)
+        base = match.group(1)
+        counts[base] += 1
+        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+        normalized = " ".join(clean[match.start() : body_close].split())
+        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return funcs
+
+
+def _extract_ts_func_bodies(source: str) -> dict[str, str]:
+    if not source.strip():
+        return {}
+    screener = _load_behavior_screener()
+    clean = screener._strip_c_comments_keep_strings(source, "typescript")
+    funcs: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+    for match in TS_FUNC_DECL_RE.finditer(clean):
+        body_open = _find_body_brace_after_params(clean, match.end() - 1, "typescript")
+        if body_open is None:
+            continue
+        body_close = screener._find_balanced_close(clean, body_open, "typescript")
+        base = match.group(1)
+        counts[base] += 1
+        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+        normalized = " ".join(clean[match.start() : body_close].split())
+        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    for match in TS_ARROW_DECL_RE.finditer(clean):
+        base = match.group(1)
+        tail_pos = match.end()
+        while tail_pos < len(clean) and clean[tail_pos].isspace():
+            tail_pos += 1
+        if tail_pos < len(clean) and clean[tail_pos] == "{":
+            body_close = screener._find_balanced_close(clean, tail_pos, "typescript")
+        else:
+            semi = clean.find(";", tail_pos)
+            nl = clean.find("\n", tail_pos)
+            ends = [idx for idx in (semi, nl) if idx != -1]
+            body_close = min(ends) if ends else len(clean)
+        counts[base] += 1
+        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+        normalized = " ".join(clean[match.start() : body_close].split())
+        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return funcs
+
+
+def _count_modified_functions_in_file(rel: str, before_text: str, after_text: str) -> int:
+    screener = _load_behavior_screener()
+    lang = screener.infer_language(rel)
+    if lang == "python":
+        b_map = _extract_python_func_bodies(before_text, rel)
+        a_map = _extract_python_func_bodies(after_text, rel)
+    elif lang == "go":
+        b_map = _extract_go_func_bodies(before_text)
+        a_map = _extract_go_func_bodies(after_text)
+    elif lang == "rust":
+        b_map = _extract_rust_func_bodies(before_text)
+        a_map = _extract_rust_func_bodies(after_text)
+    elif lang == "typescript":
+        b_map = _extract_ts_func_bodies(before_text)
+        a_map = _extract_ts_func_bodies(after_text)
+    else:
+        return 0
+
+    changed = set(b_map) ^ set(a_map)
+    for key in set(b_map) & set(a_map):
+        if b_map[key] != a_map[key]:
+            changed.add(key)
+    return len(changed)
+
+
+def _count_actual_modified_functions(
+    repo_root: Path,
+    resolved_base: str,
+    actual_files: set[str],
+) -> int:
+    total = 0
+    for rel in sorted(actual_files):
+        before_text = _git_file_text_at_rev(repo_root, resolved_base, rel)
+        after_text = _read_worktree_text(repo_root, rel)
+        if before_text == after_text:
+            continue
+        total += _count_modified_functions_in_file(rel, before_text, after_text)
+    return total
+
+
+@dataclass(frozen=True)
+class _VerifyDiffContext:
+    repo_root: Path
+    resolved_base: str
+    actual_files: set[str]
+
+
+def _verify_handoff_actual_files(
+    handoff: dict[str, Any],
+    packet: dict[str, Any],
+    repo_root: Path,
+    resolved_base: str,
+    issues: list[ValidationIssue],
+) -> set[str]:
+    actual_files = _git_actual_modified_files(repo_root, resolved_base)
+    declared_raw = handoff.get("modified_files", [])
+    declared_files: set[str] = {
+        _normalize_repo_rel_path(entry["path"])
+        for entry in declared_raw
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    }
+
+    issues.extend(
+        ValidationIssue(
+            "UNDECLARED_MODIFIED_FILE",
+            "$.modified_files",
+            f"git worktree modified/added '{rel}' since {resolved_base[:12]} "
+            "but it is missing from handoff.modified_files",
+        )
+        for rel in sorted(actual_files - declared_files)
+    )
+    issues.extend(
+        ValidationIssue(
+            "PHANTOM_MODIFIED_FILE",
+            "$.modified_files",
+            f"handoff declares modified file '{rel}' with no diff against {resolved_base[:12]}",
+        )
+        for rel in sorted(declared_files - actual_files)
+    )
+
+    scope = packet.get("scope")
+    if not isinstance(scope, dict):
+        return actual_files
+
+    max_files = scope.get("max_files")
+    if (
+        isinstance(max_files, int)
+        and not isinstance(max_files, bool)
+        and len(actual_files) > max_files
+        and not any(item.code == "MAX_FILES_EXCEEDED" for item in issues)
+    ):
+        issues.append(
+            ValidationIssue(
+                "MAX_FILES_EXCEEDED",
+                "$.modified_files",
+                f"actual git modified files count {len(actual_files)} exceeds packet max_files={max_files}",
+            )
+        )
+
+    allowed_paths: list[str] = scope.get("allowed_paths", [])
+    forbidden_paths: list[str] = scope.get("forbidden_paths", [])
+    allow_generated = scope.get("allow_generated_code_edits") is True
+    for rel in sorted(actual_files - declared_files):
+        if allowed_paths and not _matches_any_glob(rel, allowed_paths):
+            issues.append(
+                ValidationIssue(
+                    "PATH_OUTSIDE_ALLOWED_PATHS",
+                    f"git:{rel}",
+                    f"actual modified file '{rel}' is outside packet scope.allowed_paths {allowed_paths!r}",
+                )
+            )
+        if forbidden_paths and _matches_any_glob(rel, forbidden_paths):
+            issues.append(
+                ValidationIssue(
+                    "PATH_IN_FORBIDDEN_PATHS",
+                    f"git:{rel}",
+                    f"actual modified file '{rel}' matches packet scope.forbidden_paths {forbidden_paths!r}",
+                )
+            )
+        if not allow_generated and _repo_rel_is_generated_code(
+            repo_root, rel, base_commit=resolved_base
+        ):
+            issues.append(
+                ValidationIssue(
+                    "GENERATED_CODE_MODIFIED",
+                    f"git:{rel}",
+                    f"actual modified file '{rel}' carries a generated-code DO NOT EDIT header",
+                )
+            )
+    return actual_files
+
+
+def _verify_handoff_ast_functions(
+    handoff: dict[str, Any],
+    packet: dict[str, Any],
+    diff_ctx: _VerifyDiffContext,
+    issues: list[ValidationIssue],
+) -> None:
+    actual_count = _count_actual_modified_functions(
+        diff_ctx.repo_root, diff_ctx.resolved_base, diff_ctx.actual_files
+    )
+    declared_count = handoff.get("modified_functions_count")
+    if (
+        isinstance(declared_count, int)
+        and not isinstance(declared_count, bool)
+        and declared_count != actual_count
+    ):
+        issues.append(
+            ValidationIssue(
+                "MODIFIED_FUNCTIONS_MISMATCH",
+                "$.modified_functions_count",
+                f"handoff declares modified_functions_count={declared_count}, "
+                f"but AST diff found {actual_count} modified function(s)",
+            )
+        )
+    scope = packet.get("scope")
+    max_functions = scope.get("max_functions") if isinstance(scope, dict) else None
+    if (
+        isinstance(max_functions, int)
+        and not isinstance(max_functions, bool)
+        and actual_count > max_functions
+        and not any(item.code == "MAX_FUNCTIONS_EXCEEDED" for item in issues)
+    ):
+        issues.append(
+            ValidationIssue(
+                "MAX_FUNCTIONS_EXCEEDED",
+                "$.modified_functions_count",
+                f"actual AST modified functions count {actual_count} exceeds packet max_functions={max_functions}",
+            )
+        )
+
+
+@dataclass(frozen=True)
+class _VerifyRerunContext:
+    repo_root: Path
+    runs_dir: Path
+    resolved_base: str
+
+
+def _verify_handoff_host_rerun(
+    handoff: dict[str, Any],
+    packet: dict[str, Any],
+    ctx: _VerifyRerunContext,
+    issues: list[ValidationIssue],
+) -> None:
+    policy = packet.get("execution_policy")
+    if not isinstance(policy, dict):
+        return
+    verify_cmd = policy.get("verification_command")
+    if not isinstance(verify_cmd, str) or not verify_cmd.strip():
+        return
+    if _match_forbidden_autofix(verify_cmd) or _has_background_ampersand(verify_cmd):
+        return
+
+    budget = _resolve_command_budget(policy)
+    host_rc, duration_s, out_bytes, err_bytes = _run_bash_command(
+        verify_cmd,
+        cwd=ctx.repo_root,
+        timeout=budget + MEASURE_TIMEOUT_SLACK_S,
+    )
+    output_sha = hashlib.sha256(out_bytes + b"\n" + err_bytes).hexdigest()
+    packet_id = str(packet.get("packet_id") or handoff.get("packet_id") or "unknown")
+    branch_dir = _current_branch_sanitized(ctx.repo_root)
+    evidence_path = ctx.runs_dir / branch_dir / "verify" / f"{packet_id}.json"
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_payload = {
+        "packet_id": packet_id,
+        "command": verify_cmd,
+        "exit_code": host_rc,
+        "duration_s": duration_s,
+        "output_sha256": output_sha,
+        "base_commit": ctx.resolved_base,
+        "head_commit": _current_head_sha(ctx.repo_root),
+    }
+    evidence_path.write_text(
+        json.dumps(evidence_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    verification = handoff.get("verification")
+    claimed_rc = verification.get("exit_code") if isinstance(verification, dict) else None
+    if isinstance(claimed_rc, int) and not isinstance(claimed_rc, bool) and host_rc != claimed_rc:
+        issues.append(
+            ValidationIssue(
+                "VERIFICATION_EXIT_CODE_MISMATCH",
+                "$.verification.exit_code",
+                f"host re-execution exited with {host_rc}, but handoff claimed exit_code={claimed_rc}",
+            )
+        )
+    if handoff.get("status") == "completed" and host_rc != 0:
+        issues.append(
+            ValidationIssue(
+                "VERIFICATION_RERUN_FAILED",
+                "$.verification.exit_code",
+                f"host re-execution of verification_command failed with exit_code={host_rc} "
+                "while handoff status='completed'",
+            )
+        )
+
+
+def _added_lines_for_file(repo_root: Path, resolved_base: str, rel: str) -> list[str]:
+    git_bin = _require_git_bin()
+    res = _run_git_bytes(repo_root, git_bin, "diff", "-U0", resolved_base, "--", rel)
+    if res.returncode == 0 and res.stdout:
+        text = res.stdout.decode("utf-8", errors="replace")
+        return [
+            line[1:]
+            for line in text.splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        ]
+    if not _git_file_text_at_rev(repo_root, resolved_base, rel):
+        return _read_worktree_text(repo_root, rel).splitlines()
+    return []
+
+
+def _verify_handoff_lint_fix_extras(
+    packet: dict[str, Any],
+    diff_ctx: _VerifyDiffContext,
+    screener_candidates: list[dict[str, Any]],
+    issues: list[ValidationIssue],
+) -> None:
+    task_kind = packet.get("task_kind", "lint-fix")
+    if task_kind != "lint-fix":
+        return
+
+    for rel in sorted(diff_ctx.actual_files):
+        if SEQUENCE_TEST_FILE_RE.search(rel) is not None:
+            continue
+        for added in _added_lines_for_file(diff_ctx.repo_root, diff_ctx.resolved_base, rel):
+            stripped = added.strip()
+            if not stripped.startswith(("//", "#", "/*")):
+                continue
+            if ALLOWED_LINT_FIX_COMMENT_RE.search(stripped) is not None:
+                continue
+            issues.append(
+                ValidationIssue(
+                    "UNREQUESTED_COMMENT_ADDED",
+                    f"diff:{rel}",
+                    f"lint-fix task added unrequested comment line: {stripped[:80]!r}",
+                )
+            )
+            break
+
+    scope = packet.get("scope")
+    allow_test_changes = (
+        isinstance(scope, dict) and scope.get("allow_test_expectation_changes") is True
+    )
+    if not allow_test_changes:
+        for cand in screener_candidates:
+            kind = cand.get("kind")
+            if kind in ("test.expectation_change", "test.file_deleted"):
+                issues.append(
+                    ValidationIssue(
+                        "FORBIDDEN_TEST_EXPECTATION_CHANGE",
+                        f"diff:{cand.get('file')}",
+                        f"lint-fix task forbids {kind} in '{cand.get('file')}' unless "
+                        "scope.allow_test_expectation_changes=true",
+                    )
+                )
+
+
+def _resolve_verify_handoff_paths(
+    args: argparse.Namespace,
+) -> tuple[tuple[Path, Path, Path] | None, str]:
+    handoff_path = Path(args.handoff_path)
+    packet_path = Path(args.packet)
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else REPO_ROOT_DEFAULT
+    if not handoff_path.is_file():
+        return None, f"error: handoff file not found: {handoff_path}\n"
+    if not packet_path.is_file():
+        return None, f"error: packet file not found: {packet_path}\n"
+    if not repo_root.is_dir():
+        return None, f"error: repo root directory not found: {repo_root}\n"
+    if args.base_commit is not None and (
+        not args.base_commit.strip() or args.base_commit.startswith("-")
+    ):
+        return None, f"error: invalid --base-commit revision: {args.base_commit!r}\n"
+    return (handoff_path, packet_path, repo_root), ""
+
+
+def _resolve_verify_base(
+    args: argparse.Namespace,
+    packet_doc: ParsedDocument,
+    repo_root: Path,
+) -> tuple[str | None, ValidationIssue | None]:
+    raw_base = args.base_commit or packet_doc.data.get("base_commit")
+    if not isinstance(raw_base, str) or not raw_base.strip():
+        return None, ValidationIssue(
+            "MISSING_BASE_COMMIT",
+            "$.base_commit",
+            "verify-handoff requires --base-commit or packet.base_commit",
+        )
+    resolved_base = _resolve_git_commit(repo_root, raw_base.strip())
+    if resolved_base is None:
+        return None, ValidationIssue(
+            "INVALID_BASE_COMMIT",
+            "$.base_commit",
+            f"unable to resolve base_commit {raw_base!r} in {repo_root}",
+        )
+    return resolved_base, None
+
+
+def _cmd_verify_handoff(args: argparse.Namespace) -> int:
+    resolved_paths, err_msg = _resolve_verify_handoff_paths(args)
+    if resolved_paths is None:
+        sys.stderr.write(err_msg)
+        return EXIT_USAGE
+    handoff_path, packet_path, repo_root = resolved_paths
+
+    try:
+        schema = load_schema()
+        handoff_doc = load_document(handoff_path)
+        packet_doc = load_document(packet_path)
+    except OSError as exc:
+        sys.stderr.write(f"error: unable to read file: {exc}\n")
+        return EXIT_USAGE
+    except DocumentParseError as exc:
+        return _emit_result(
+            kind="verify-handoff",
+            target_path=handoff_path,
+            packet_id=None,
+            issues=[ValidationIssue("PARSE_ERROR", "$", str(exc))],
+            output_format=args.output_format,
+        )
+
+    resolved_base, base_issue = _resolve_verify_base(args, packet_doc, repo_root)
+    if resolved_base is None or base_issue is not None:
+        return _emit_result(
+            kind="verify-handoff",
+            target_path=handoff_path,
+            packet_id=handoff_doc.data.get("packet_id"),
+            issues=[base_issue] if base_issue is not None else [],
+            output_format=args.output_format,
+        )
+
+    issues: list[ValidationIssue] = []
+    try:
+        screener_candidates = _run_behavior_screener_for_base(repo_root, resolved_base)
+        issues = validate_handoff_doc(
+            handoff_doc,
+            schema,
+            packet_doc=packet_doc,
+            screener_candidates=screener_candidates,
+            repo_root=repo_root,
+        )
+        actual_files = _verify_handoff_actual_files(
+            handoff_doc.data, packet_doc.data, repo_root, resolved_base, issues
+        )
+        diff_ctx = _VerifyDiffContext(
+            repo_root=repo_root, resolved_base=resolved_base, actual_files=actual_files
+        )
+        _verify_handoff_ast_functions(handoff_doc.data, packet_doc.data, diff_ctx, issues)
+        if not args.no_rerun:
+            runs_dir = (
+                Path(args.runs_dir).resolve()
+                if args.runs_dir
+                else (repo_root / ".harness" / "runs")
+            )
+            _verify_handoff_host_rerun(
+                handoff_doc.data,
+                packet_doc.data,
+                _VerifyRerunContext(
+                    repo_root=repo_root, runs_dir=runs_dir, resolved_base=resolved_base
+                ),
+                issues,
+            )
+        _verify_handoff_lint_fix_extras(packet_doc.data, diff_ctx, screener_candidates, issues)
+    except (OSError, DocumentParseError) as exc:
+        issues.append(ValidationIssue("VERIFY_HANDOFF_ERROR", "$", str(exc)))
+
+    return _emit_result(
+        kind="verify-handoff",
+        target_path=handoff_path,
+        packet_id=handoff_doc.data.get("packet_id"),
+        issues=issues,
+        output_format=args.output_format,
+    )
+
+
+def _git_commit_files(repo_root: Path, git_bin: str, rev: str) -> list[str]:
+    res = _run_git_bytes(
+        repo_root, git_bin, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "-z", rev
+    )
+    if res.returncode != 0:
+        err = res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"git diff-tree failed for {rev}: {err}"
+        raise DocumentParseError(msg)
+    return [
+        _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
+        for entry in res.stdout.split(b"\x00")
+        if entry
+    ]
+
+
+def _git_dirty_files(repo_root: Path, git_bin: str) -> set[str]:
+    dirty: set[str] = set()
+    for diff_args in (
+        ("diff", "--name-only", "-z", "HEAD", "--"),
+        ("diff", "--cached", "--name-only", "-z", "--"),
+    ):
+        res = _run_git_bytes(repo_root, git_bin, *diff_args)
+        if res.returncode == 0:
+            for entry in res.stdout.split(b"\x00"):
+                if entry:
+                    dirty.add(
+                        _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
+                    )
+    return dirty
+
+
+def _git_blob_is_executable(repo_root: Path, git_bin: str, rev: str, rel: str) -> bool:
+    res = _run_git_bytes(repo_root, git_bin, "ls-tree", rev, "--", rel)
+    if res.returncode != 0:
+        return False
+    return res.stdout.decode("utf-8", errors="replace").startswith(f"{GIT_EXEC_MODE} ")
+
+
+def _overlay_commit_files(
+    repo_root: Path,
+    git_bin: str,
+    rev: str,
+    files: list[str],
+    wt_dir: Path,
+) -> None:
+    wt_resolved = wt_dir.resolve()
+    for rel in files:
+        dest = (wt_dir / rel).resolve()
+        if not dest.is_relative_to(wt_resolved):
+            msg = f"refusing to overlay path outside worktree: {rel}"
+            raise DocumentParseError(msg)
+        show_res = _run_git_bytes(repo_root, git_bin, "show", "--end-of-options", f"{rev}:{rel}")
+        if show_res.returncode != 0:
+            if dest.exists():
+                dest.unlink()
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(show_res.stdout)
+        if _git_blob_is_executable(repo_root, git_bin, rev, rel):
+            dest.chmod(0o755)
+
+
+def _run_test_in_detached_worktree(
+    repo_root: Path,
+    git_bin: str,
+    checkout_rev: str,
+    test_command: str,
+    *,
+    overlay: tuple[str, tuple[str, ...]] | None = None,
+) -> tuple[int, str]:
+    tmp_parent = Path(tempfile.mkdtemp(prefix="alt-verify-seq-"))
+    wt_dir = tmp_parent / "wt"
+    added = False
+    try:
+        add_res = _run_git_bytes(
+            repo_root, git_bin, "worktree", "add", "--detach", str(wt_dir), checkout_rev
+        )
+        if add_res.returncode != 0:
+            err = add_res.stderr.decode("utf-8", errors="replace").strip()
+            msg = f"git worktree add failed for {checkout_rev}: {err}"
+            raise DocumentParseError(msg)
+        added = True
+        if overlay is not None and overlay[1]:
+            _overlay_commit_files(repo_root, git_bin, overlay[0], list(overlay[1]), wt_dir)
+        rc, _, out_b, err_b = _run_bash_command(
+            test_command,
+            cwd=wt_dir,
+            timeout=DEFAULT_COMMAND_BUDGET_S + MEASURE_TIMEOUT_SLACK_S,
+        )
+        snippet = (err_b or out_b).decode("utf-8", errors="replace").strip()[-240:]
+        return rc, snippet
+    finally:
+        if added:
+            _run_git_bytes(repo_root, git_bin, "worktree", "remove", "--force", str(wt_dir))
+            _run_git_bytes(repo_root, git_bin, "worktree", "prune")
+        shutil.rmtree(tmp_parent, ignore_errors=True)
+
+
+def _resolve_sequence_mode(args: argparse.Namespace) -> tuple[bool, str | None]:
+    if args.bugfix:
+        return False, None
+    if args.behavior_preserving:
+        return True, None
+    if args.packet:
+        pkt_doc = load_document(Path(args.packet))
+        pkt_id = pkt_doc.data.get("packet_id")
+        bp = pkt_doc.data.get("behavior_preserving")
+        if isinstance(bp, bool):
+            return bp, str(pkt_id) if pkt_id else None
+        if pkt_doc.data.get("task_kind") == "bugfix":
+            return False, str(pkt_id) if pkt_id else None
+        return True, str(pkt_id) if pkt_id else None
+    return True, None
+
+
+def _check_sequence_commits(
+    repo_root: Path,
+    git_bin: str,
+    base_sha: str,
+    *,
+    behavior_preserving: bool,
+) -> tuple[list[str], list[str], list[ValidationIssue]]:
+    issues: list[ValidationIssue] = []
+    rev_res = _run_git_bytes(
+        repo_root, git_bin, "rev-list", "--reverse", "--no-merges", f"{base_sha}..HEAD"
+    )
+    if rev_res.returncode != 0:
+        err = rev_res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"git rev-list failed: {err}"
+        raise DocumentParseError(msg)
+    commits = [
+        line.strip()
+        for line in rev_res.stdout.decode("utf-8", errors="replace").splitlines()
+        if line.strip()
+    ]
+    if len(commits) < SEQUENCE_MIN_COMMITS:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_TOO_FEW_COMMITS",
+                "$.commits",
+                f"verify-sequence requires at least {SEQUENCE_MIN_COMMITS} non-merge commits in "
+                f"{base_sha[:12]}..HEAD (found {len(commits)})",
+            )
+        )
+        return commits, [], issues
+
+    c1_files = _git_commit_files(repo_root, git_bin, commits[0])
+    non_test_c1 = [rel for rel in c1_files if SEQUENCE_TEST_FILE_RE.search(rel) is None]
+    if not c1_files or non_test_c1:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY",
+                f"commit:{commits[0][:12]}",
+                f"first commit {commits[0][:12]} must modify only test files "
+                f"(files={c1_files!r}, non_test={non_test_c1!r})",
+            )
+        )
+        return commits, c1_files, issues
+
+    if behavior_preserving:
+        c1_set = set(c1_files)
+        for commit in commits[1:]:
+            mutated = sorted(c1_set & set(_git_commit_files(repo_root, git_bin, commit)))
+            if mutated:
+                issues.append(
+                    ValidationIssue(
+                        "SEQUENCE_TEST_MUTATED_IN_IMPL",
+                        f"commit:{commit[:12]}",
+                        f"behavior-preserving implementation commit {commit[:12]} mutated "
+                        f"commit 1 test file(s): {mutated!r}",
+                    )
+                )
+        dirty_mutated = sorted(c1_set & _git_dirty_files(repo_root, git_bin))
+        if dirty_mutated:
+            issues.append(
+                ValidationIssue(
+                    "SEQUENCE_TEST_MUTATED_IN_IMPL",
+                    "worktree",
+                    f"dirty worktree mutated commit 1 test file(s): {dirty_mutated!r}",
+                )
+            )
+    return commits, c1_files, issues
+
+
+def _validate_verify_sequence_args(args: argparse.Namespace) -> tuple[Path | None, str]:
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else REPO_ROOT_DEFAULT
+    if not repo_root.is_dir():
+        return None, f"error: repo root directory not found: {repo_root}\n"
+    if not args.base_commit or not args.base_commit.strip() or args.base_commit.startswith("-"):
+        return None, f"error: invalid --base-commit revision: {args.base_commit!r}\n"
+    if not args.test_command or not args.test_command.strip():
+        return None, "error: --test-command must be non-empty\n"
+    if args.packet and not Path(args.packet).is_file():
+        return None, f"error: packet file not found: {args.packet}\n"
+    return repo_root, ""
+
+
+def _cmd_verify_sequence(args: argparse.Namespace) -> int:
+    repo_root, err_msg = _validate_verify_sequence_args(args)
+    if repo_root is None:
+        sys.stderr.write(err_msg)
+        return EXIT_USAGE
+
+    try:
+        behavior_preserving, packet_id = _resolve_sequence_mode(args)
+        git_bin = _require_git_bin()
+        base_sha = _resolve_git_commit(repo_root, args.base_commit.strip())
+        head_sha = _resolve_git_commit(repo_root, "HEAD")
+    except (OSError, DocumentParseError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return EXIT_USAGE
+
+    if base_sha is None or head_sha is None:
+        return _emit_result(
+            kind="verify-sequence",
+            target_path=repo_root,
+            packet_id=packet_id,
+            issues=[
+                ValidationIssue(
+                    "INVALID_BASE_COMMIT",
+                    "$.base_commit",
+                    f"unable to resolve --base-commit {args.base_commit!r} or HEAD in {repo_root}",
+                )
+            ],
+            output_format=args.output_format,
+        )
+
+    try:
+        commits, c1_files, issues = _check_sequence_commits(
+            repo_root, git_bin, base_sha, behavior_preserving=behavior_preserving
+        )
+        if not issues:
+            base_rc, base_snippet = _run_test_in_detached_worktree(
+                repo_root,
+                git_bin,
+                base_sha,
+                args.test_command,
+                overlay=(commits[0], tuple(c1_files)),
+            )
+            if behavior_preserving and base_rc != 0:
+                issues.append(
+                    ValidationIssue(
+                        "SEQUENCE_BASELINE_TEST_FAILED",
+                        f"base:{base_sha[:12]}",
+                        f"commit 1 test failed on base_commit {base_sha[:12]} (rc={base_rc}): {base_snippet}",
+                    )
+                )
+            elif not behavior_preserving and base_rc == 0:
+                issues.append(
+                    ValidationIssue(
+                        "SEQUENCE_BUGFIX_NOT_RED",
+                        f"base:{base_sha[:12]}",
+                        f"bugfix commit 1 test unexpectedly passed (rc=0) on base_commit {base_sha[:12]}",
+                    )
+                )
+        if not issues:
+            final_rc, final_snippet = _run_test_in_detached_worktree(
+                repo_root,
+                git_bin,
+                head_sha,
+                args.test_command,
+            )
+            if final_rc != 0:
+                issues.append(
+                    ValidationIssue(
+                        "SEQUENCE_FINAL_TEST_FAILED",
+                        f"head:{head_sha[:12]}",
+                        f"test command failed on final HEAD {head_sha[:12]} (rc={final_rc}): {final_snippet}",
+                    )
+                )
+    except (OSError, DocumentParseError) as exc:
+        issues = [ValidationIssue("VERIFY_SEQUENCE_ERROR", "$", str(exc))]
+
+    return _emit_result(
+        kind="verify-sequence",
+        target_path=repo_root,
+        packet_id=packet_id,
+        issues=issues,
+        output_format=args.output_format,
+    )
+
+
 def _cmd_list_generated_forbidden_paths(args: argparse.Namespace) -> int:
     repo_root = Path(args.repo_root).resolve()
     if not repo_root.is_dir():
@@ -2238,11 +3547,10 @@ def _cmd_render_template(args: argparse.Namespace) -> int:
 
     rendered = tmpl_path.read_text(encoding="utf-8").replace(DEFAULT_PACKET_ID, packet_id)
     if target is not None:
+        new_verify_cmd = f"./scripts/lint/run.sh {target}"
         rendered = rendered.replace(f'target: "{DEFAULT_TARGET}"', f'target: "{target}"')
-        rendered = rendered.replace(
-            f"./scripts/lint/run.sh {DEFAULT_TARGET}",
-            f"./scripts/lint/run.sh {target}",
-        )
+        rendered = rendered.replace(DEFAULT_TEMPLATE_VERIFY_CMD, new_verify_cmd)
+        rendered = rendered.replace(DEFAULT_TEMPLATE_VERIFY_SHA, _command_sha256(new_verify_cmd))
 
     if args.output_format == "json":
         doc = parse_document_text(rendered)
@@ -2311,6 +3619,99 @@ def _cmd_check_templates(_args: argparse.Namespace) -> int:
         f"({PACKET_TEMPLATE_PATH.name}, {HANDOFF_TEMPLATE_PATH.name})\n"
     )
     return EXIT_OK
+
+
+def _add_loop_and_verify_subparsers(subparsers: argparse._SubParsersAction[Any]) -> None:
+    p_meas = subparsers.add_parser(
+        "measure",
+        help="LOOP-02: run verification_command synchronously and record execution_policy.measured",
+    )
+    p_meas.add_argument("packet_path", help="Path to TaskPacket JSON or Markdown file")
+    p_meas.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repository root directory in which to run verification_command (default: repo root)",
+    )
+    p_meas.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_meas.set_defaults(func=_cmd_measure)
+
+    p_vh = subparsers.add_parser(
+        "verify-handoff",
+        help="LOOP-01: ground-truth verify TaskHandoff against git diff, AST functions, CHECK-01, and host rerun",
+    )
+    p_vh.add_argument("handoff_path", help="Path to TaskHandoff JSON or Markdown file")
+    p_vh.add_argument("--packet", required=True, help="Path to corresponding TaskPacket")
+    p_vh.add_argument(
+        "--base-commit",
+        default=None,
+        help="Base git revision (falls back to packet.base_commit)",
+    )
+    p_vh.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repository root directory (default: repo root)",
+    )
+    p_vh.add_argument(
+        "--runs-dir",
+        default=None,
+        help="Directory for persisted rerun evidence JSON (default: <repo-root>/.harness/runs)",
+    )
+    p_vh.add_argument(
+        "--no-rerun",
+        action="store_true",
+        default=False,
+        help="Skip host re-execution of verification_command",
+    )
+    p_vh.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_vh.set_defaults(func=_cmd_verify_handoff)
+
+    p_seq = subparsers.add_parser(
+        "verify-sequence",
+        help="VERIFY-01: verify test-first commit sequence in isolated detached git worktrees",
+    )
+    p_seq.add_argument("--base-commit", required=True, help="Base git revision")
+    p_seq.add_argument(
+        "--test-command", required=True, help="Test command to run on base+c1 and HEAD"
+    )
+    p_seq.add_argument("--packet", default=None, help="Optional TaskPacket to infer sequence mode")
+    seq_mode = p_seq.add_mutually_exclusive_group()
+    seq_mode.add_argument(
+        "--behavior-preserving",
+        action="store_true",
+        default=False,
+        help="Require c1 test to pass on base_commit and stay unmodified in c2..HEAD (default)",
+    )
+    seq_mode.add_argument(
+        "--bugfix",
+        action="store_true",
+        default=False,
+        help="Require c1 test to fail (RED) on base_commit and pass (GREEN) on HEAD",
+    )
+    p_seq.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repository root directory (default: repo root)",
+    )
+    p_seq.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_seq.set_defaults(func=_cmd_verify_sequence)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2399,6 +3800,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Self-check schema and bundled Markdown templates",
     )
     p_chk.set_defaults(func=_cmd_check_templates)
+    _add_loop_and_verify_subparsers(subparsers)
     return parser
 
 
