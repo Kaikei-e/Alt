@@ -27,7 +27,7 @@ RUN_SH_PARTS: tuple[str, str, str] = ("scripts", "lint", "run.sh")
 RUN_SH_MIN_PARTS = 3
 
 WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
-    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}),
+    "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
     "sudo": frozenset({"-u", "-g", "-C", "-h", "-p", "-r", "-t", "-T", "-U", "--user", "--group"}),
     "timeout": frozenset({"-k", "--kill-after", "-s", "--signal"}),
     "nice": frozenset({"-n", "--adjustment"}),
@@ -53,6 +53,8 @@ WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
     ),
     "npx": frozenset({"-p", "--package"}),
     "bunx": frozenset({"-p", "--package"}),
+    "bun": frozenset({"-p", "--package", "--cwd", "-c", "--config"}),
+    "pnpm": frozenset({"-C", "--dir", "-F", "--filter", "--prefix", "-p", "--package"}),
     "uv": frozenset(
         {
             "-p",
@@ -68,6 +70,7 @@ WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
         }
     ),
 }
+SHELL_VALUE_FLAGS = frozenset({"--rcfile", "--init-file", "-o", "+o"})
 
 CARGO_VALUE_FLAGS = frozenset(
     {"-C", "--manifest-path", "--target-dir", "--config", "--color", "-Z"}
@@ -183,24 +186,75 @@ def _unwrap_python_module(tokens: list[Any], idx: int) -> int | None:
     return None
 
 
-def _unwrap_uv_or_bun(base: str, tokens: list[Any], idx: int) -> int | None:
+def _unwrap_env(
+    tokens: list[Any],
+    idx: int,
+    extra_scripts: list[str],
+) -> int:
+    j = idx + 1
     n = len(tokens)
-    if base == "uv":
+    while j < n:
+        text = tokens[j].text
+        if text == "--":
+            return j + 1
+        if text in ("-S", "--split-string"):
+            if j + 1 < n:
+                split_str = tokens[j + 1].text
+                extra_scripts.append(split_str)
+                tail = " ".join(t.text for t in tokens[j + 2 :])
+                if tail:
+                    extra_scripts.append(f"{split_str} {tail}")
+                j += 2
+                continue
+            return n
+        if text.startswith("--split-string="):
+            extra_scripts.append(text.split("=", 1)[1])
+            j += 1
+            continue
+        if text.startswith("-S") and len(text) > len("-S"):
+            extra_scripts.append(text[2:])
+            j += 1
+            continue
+        if text in WRAPPER_VALUE_FLAGS["env"]:
+            j += 2
+            continue
+        if text.startswith("-"):
+            j += 1
+            continue
+        break
+    return j
+
+
+def _unwrap_pkg_runner(base: str, tokens: list[Any], idx: int) -> int | None:
+    n = len(tokens)
+    result: int | None = None
+    if base == "uvx":
+        result = _skip_wrapper_flags(tokens, idx + 1, WRAPPER_VALUE_FLAGS["uv"])
+    elif base == "uv":
         j = _skip_wrapper_flags(tokens, idx + 1, WRAPPER_VALUE_FLAGS["uv"])
         if j < n and tokens[j].text == "run":
-            return _skip_wrapper_flags(tokens, j + 1, WRAPPER_VALUE_FLAGS["uv"])
-        return None
-    if base == "bun" and idx + 1 < n and tokens[idx + 1].text in ("x", "exec"):
-        return idx + 2
-    return None
+            result = _skip_wrapper_flags(tokens, j + 1, WRAPPER_VALUE_FLAGS["uv"])
+        elif j < n and tokens[j].text == "tool":
+            k = _skip_wrapper_flags(tokens, j + 1, WRAPPER_VALUE_FLAGS["uv"])
+            if k < n and tokens[k].text == "run":
+                result = _skip_wrapper_flags(tokens, k + 1, WRAPPER_VALUE_FLAGS["uv"])
+    elif base in ("bun", "pnpm"):
+        subcmds = ("x", "exec") if base == "bun" else ("dlx", "exec")
+        j = _skip_wrapper_flags(tokens, idx + 1, WRAPPER_VALUE_FLAGS[base])
+        if j < n and tokens[j].text in subcmds:
+            result = _skip_wrapper_flags(tokens, j + 1, WRAPPER_VALUE_FLAGS[base])
+    return result
 
 
-def _unwrap_command_prefix(tokens: list[Any]) -> tuple[list[Any], dict[str, str], bool]:
+def _unwrap_command_prefix(
+    tokens: list[Any],
+) -> tuple[list[Any], dict[str, str], bool, list[str]]:
     """Strip env assignments, shell keywords, and command wrappers.
 
-    Returns (remaining_tokens, env_vars, saw_nohup).
+    Returns (remaining_tokens, env_vars, saw_nohup, extra_scripts).
     """
     env_vars: dict[str, str] = {}
+    extra_scripts: list[str] = []
     saw_nohup = False
     idx = 0
     n = len(tokens)
@@ -212,20 +266,21 @@ def _unwrap_command_prefix(tokens: list[Any]) -> tuple[list[Any], dict[str, str]
             env_vars[key] = val
             idx += 1
             continue
-        if tok.quoted:
-            break
         base = PurePosixPath(tok.text).name
-        if base in CONTROL_KEYWORDS:
+        if not tok.quoted and base in CONTROL_KEYWORDS:
             idx += 1
             continue
         if base == "nohup":
             saw_nohup = True
             idx += 1
             continue
+        if base == "env":
+            idx = _unwrap_env(tokens, idx, extra_scripts)
+            continue
         if base in SIMPLE_WRAPPERS:
             idx = _skip_wrapper_flags(tokens, idx + 1, frozenset())
             continue
-        if base in ("env", "sudo", "nice", "xargs", "npx", "bunx", "timeout"):
+        if base in ("sudo", "nice", "xargs", "npx", "bunx", "timeout"):
             idx = _skip_wrapper_flags(
                 tokens,
                 idx + 1,
@@ -233,21 +288,17 @@ def _unwrap_command_prefix(tokens: list[Any]) -> tuple[list[Any], dict[str, str]
                 skip_one_positional=(base == "timeout"),
             )
             continue
-        if base in ("uv", "bun"):
-            next_idx = _unwrap_uv_or_bun(base, tokens, idx)
-            if next_idx is not None:
-                idx = next_idx
-                continue
-            break
-        if base in ("python", "python3"):
-            mod_idx = _unwrap_python_module(tokens, idx)
-            if mod_idx is not None:
-                idx = mod_idx
-                continue
-            break
+        next_idx = (
+            _unwrap_pkg_runner(base, tokens, idx)
+            if base in ("uv", "uvx", "bun", "pnpm")
+            else (_unwrap_python_module(tokens, idx) if base in ("python", "python3") else None)
+        )
+        if next_idx is not None:
+            idx = next_idx
+            continue
         break
 
-    return tokens[idx:], env_vars, saw_nohup
+    return tokens[idx:], env_vars, saw_nohup, extra_scripts
 
 
 def _check_cargo_e1(args: list[str]) -> str | None:
@@ -284,11 +335,19 @@ E1_FLAG_RULES: dict[str, tuple[str, str]] = {
 }
 
 
+def _normalize_tool_name(raw_cmd: str) -> str:
+    """Extract executable/package leaf name and strip any @version suffix."""
+    name = PurePosixPath(raw_cmd).name
+    if "@" in name and not name.startswith("@"):
+        return name.split("@", 1)[0]
+    return name
+
+
 def _check_e1_command(cmd_tokens: list[str]) -> str | None:
     """Return bulk-autofix label if cmd_tokens invokes a forbidden autofix (Rule E1)."""
     if not cmd_tokens:
         return None
-    base = PurePosixPath(cmd_tokens[0]).name
+    base = _normalize_tool_name(cmd_tokens[0])
     args = cmd_tokens[1:]
     if base == "cargo":
         return _check_cargo_e1(args)
@@ -355,6 +414,29 @@ def _check_make_lint(args: list[str], env_vars: dict[str, str]) -> str | None:
     return None
 
 
+def _extract_shell_c_script_exec(tokens: list[Any], start_idx: int) -> str | None:
+    """Extract script arg from sh/bash/zsh -c/-lc, handling value flags like --rcfile."""
+    i = start_idx + 1
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i].text
+        if tok == "--":
+            return None
+        if tok in SHELL_VALUE_FLAGS:
+            i += 2
+            continue
+        if tok.startswith(("--", "+")):
+            i += 1
+            continue
+        if tok.startswith("-"):
+            if "c" in tok[1:]:
+                return tokens[i + 1].text if i + 1 < n else None
+            i += 1
+            continue
+        return None
+    return None
+
+
 def _check_e2_command(cmd_tokens: list[str], env_vars: dict[str, str]) -> str | None:
     """Return repo-wide lint label if cmd_tokens violates Rule E2."""
     if not cmd_tokens:
@@ -366,11 +448,32 @@ def _check_e2_command(cmd_tokens: list[str], env_vars: dict[str, str]) -> str | 
         return _check_make_lint(cmd_tokens[1:], env_vars)
     if base in _ops.SHELL_NAMES:
         i = 1
-        while i < len(cmd_tokens) and cmd_tokens[i].startswith("-"):
-            i += 1
+        while i < len(cmd_tokens):
+            tok = cmd_tokens[i]
+            if tok in SHELL_VALUE_FLAGS:
+                i += 2
+                continue
+            if tok.startswith(("-", "+")):
+                i += 1
+                continue
+            break
         if i < len(cmd_tokens) and _is_run_sh_path(cmd_tokens[i]):
             return _check_run_sh_all(cmd_tokens[i + 1 :])
     return None
+
+
+def _extract_nested_scripts(remaining: list[Any]) -> list[str]:
+    base = PurePosixPath(remaining[0].text).name
+    if base == "eval":
+        args = [t.text for t in remaining[1:]]
+        if args and args[0] == "--":
+            args = args[1:]
+        joined = " ".join(args).strip()
+        return [joined] if joined else []
+    if base in _ops.SHELL_NAMES:
+        script = _extract_shell_c_script_exec(remaining, 0)
+        return [script] if script is not None else []
+    return []
 
 
 def _classify_segment(
@@ -380,12 +483,21 @@ def _classify_segment(
     enforce_e3: bool,
     depth: int,
 ) -> tuple[str, str] | None:
-    remaining, env_vars, saw_nohup = _unwrap_command_prefix(seg)
+    remaining, env_vars, saw_nohup, extra_scripts = _unwrap_command_prefix(seg)
     best: tuple[str, str] | None = None
     if enforce_e3 and saw_nohup:
         best = _pick_higher(best, ("E3", "nohup"))
 
-    if not remaining or remaining[0].quoted:
+    for script in extra_scripts:
+        nested = classify_command(
+            script,
+            enforce_e2=enforce_e2,
+            enforce_e3=enforce_e3,
+            depth=depth + 1,
+        )
+        best = _pick_higher(best, nested)
+
+    if not remaining:
         return best
 
     cmd_texts = [t.text for t in remaining]
@@ -398,17 +510,14 @@ def _classify_segment(
         if e2 is not None:
             best = _pick_higher(best, ("E2", e2))
 
-    base = PurePosixPath(remaining[0].text).name
-    if base in _ops.SHELL_NAMES:
-        script = _ops._extract_shell_c_script(remaining, 0)
-        if script is not None:
-            nested = classify_command(
-                script,
-                enforce_e2=enforce_e2,
-                enforce_e3=enforce_e3,
-                depth=depth + 1,
-            )
-            best = _pick_higher(best, nested)
+    for nested_script in _extract_nested_scripts(remaining):
+        nested = classify_command(
+            nested_script,
+            enforce_e2=enforce_e2,
+            enforce_e3=enforce_e3,
+            depth=depth + 1,
+        )
+        best = _pick_higher(best, nested)
 
     return best
 

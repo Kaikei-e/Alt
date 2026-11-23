@@ -108,7 +108,11 @@ def sanitize_branch_name(branch: str) -> str:
     return cleaned or "default"
 
 
-def resolve_repo_root(override: str | Path | None = None) -> Path:
+def resolve_repo_root(
+    override: str | Path | None = None,
+    *,
+    start_dir: str | Path | None = None,
+) -> Path:
     """Resolve repository root without spawning subprocesses."""
     if override is not None:
         return Path(override).resolve()
@@ -116,8 +120,8 @@ def resolve_repo_root(override: str | Path | None = None) -> Path:
     if env_root:
         return Path(env_root).resolve()
 
-    cwd = Path.cwd().resolve()
-    for candidate in (cwd, *cwd.parents):
+    probe_dir = Path(start_dir).resolve() if start_dir is not None else Path.cwd().resolve()
+    for candidate in (probe_dir, *probe_dir.parents):
         if (candidate / ".git").exists():
             return candidate
 
@@ -346,7 +350,8 @@ def compute_recommended_parallelism(
             f"mismatch={counts['mismatch']}; scaling down (-2, floor {PARALLELISM_MIN})"
         )
     elif (
-        counts["adopted"] > 0
+        len(window) >= PARALLELISM_WINDOW
+        and counts["adopted"] > 0
         and counts["reverted"] <= SCALE_UP_MAX_REVERTED
         and counts["mismatch"] == 0
     ):
@@ -360,9 +365,10 @@ def compute_recommended_parallelism(
         delta = 0
         recommended = clamped_base
         reason = (
-            f"last {len(window)} outcomes in steady band "
+            f"last {len(window)} outcomes in steady/warm-up band "
             f"(adopted={counts['adopted']}, reverted={counts['reverted']}, "
-            f"mismatch={counts['mismatch']}); holding parallelism"
+            f"mismatch={counts['mismatch']}, required_window={PARALLELISM_WINDOW}); "
+            "holding parallelism"
         )
 
     return {
@@ -439,19 +445,40 @@ def _extract_packet_id(data: dict[str, Any]) -> str:
     return raw_id
 
 
-def _cmd_activate_packet(args: argparse.Namespace, repo_root: Path) -> int:
-    src_path = Path(args.packet_path)
+def _load_and_validate_packet(src_path: Path) -> tuple[dict[str, Any] | None, str | None, int]:
     if not src_path.is_file():
         sys.stderr.write(f"error: packet file not found: {src_path}\n")
-        return EXIT_USAGE
+        return None, None, EXIT_USAGE
 
     try:
         parsed = _task_packet.load_document(src_path)
-        data = parsed.data
-        packet_id = _extract_packet_id(data)
+        schema = _task_packet.load_schema()
+        issues = _task_packet.validate_packet_doc(parsed, schema)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: failed to parse packet {src_path}: {exc}\n")
-        return EXIT_USAGE
+        return None, None, EXIT_USAGE
+
+    if issues:
+        sys.stderr.write(
+            f"error: packet {src_path} failed validation ({len(issues)} issue(s)):\n"
+            + "\n".join(f"  [{issue.code}] {issue.path}: {issue.message}" for issue in issues)
+            + "\n"
+        )
+        return None, None, EXIT_ERROR
+
+    try:
+        packet_id = _extract_packet_id(parsed.data)
+    except ValueError as exc:
+        sys.stderr.write(f"error: failed to extract packet_id from {src_path}: {exc}\n")
+        return None, None, EXIT_USAGE
+    return parsed.data, packet_id, EXIT_OK
+
+
+def _cmd_activate_packet(args: argparse.Namespace, repo_root: Path) -> int:
+    src_path = Path(args.packet_path)
+    data, packet_id, rc = _load_and_validate_packet(src_path)
+    if rc != EXIT_OK or data is None or packet_id is None:
+        return rc
 
     scope = data.get("scope")
     if not isinstance(scope, dict):

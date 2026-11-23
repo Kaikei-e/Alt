@@ -128,9 +128,24 @@ else
       fi
 
       mkdir -p "$cache_dir"
-      tmp_cached="${cache_dir}/bun.tmp.$$"
-      rm -f "$tmp_cached"
+      tmp_cached="$(mktemp "${cache_dir}/bun.tmp.XXXXXX")"
       cp "$extracted_bun" "$tmp_cached"
+      if [ -n "${ALT_LINT_BUN_SHA256:-}" ]; then
+        expected_sha="$(printf '%s' "$ALT_LINT_BUN_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        if [[ ! "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+          rm -f "$tmp_cached"
+          rm -rf "$tmp_dir"
+          echo "error: invalid ALT_LINT_BUN_SHA256 (expected 64 hex chars): '${ALT_LINT_BUN_SHA256}'" >&2
+          exit 1
+        fi
+        actual_sha="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$tmp_cached")"
+        if [ "$actual_sha" != "$expected_sha" ]; then
+          rm -f "$tmp_cached"
+          rm -rf "$tmp_dir"
+          echo "error: downloaded bun SHA-256 mismatch: expected ${expected_sha}, got ${actual_sha}" >&2
+          exit 1
+        fi
+      fi
       chmod +x "$tmp_cached"
       downloaded_ver="$(bun_version_of "$tmp_cached" || true)"
       if [ "$downloaded_ver" != "$expected_bun_version" ]; then

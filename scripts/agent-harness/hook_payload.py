@@ -27,6 +27,7 @@ class HookPayload:
     tool_name: str
     paths: tuple[str, ...]
     added_text: dict[str, str]
+    cwd: str | None = None
 
 
 def _append_unique(ordered: list[str], seen: set[str], path: str) -> None:
@@ -168,7 +169,10 @@ def parse_hook_stdin(raw: str) -> HookPayload | None:
         msg = f"guard could not read the hook payload: {tool_name} yielded no target path"
         raise HookPayloadError(msg)
 
-    return HookPayload(tool_name=tool_name, paths=tuple(ordered), added_text=added_text)
+    raw_cwd = payload.get("cwd")
+    cwd = raw_cwd.strip() if isinstance(raw_cwd, str) and raw_cwd.strip() else None
+
+    return HookPayload(tool_name=tool_name, paths=tuple(ordered), added_text=added_text, cwd=cwd)
 
 
 def read_hook_stdin_or_exit() -> HookPayload | None:
