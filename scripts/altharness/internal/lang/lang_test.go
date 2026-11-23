@@ -40,7 +40,7 @@ func TestProtoBreakingRef(t *testing.T) {
 		ref  string
 	}{
 		{"constant", ProtoBreakingAgainst},
-		{"argv", strings.Join(bufBreakingArgs(), " ")},
+		{"argv", strings.Join(bufBreakingArgs(findRepo(t)), " ")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

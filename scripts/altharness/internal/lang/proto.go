@@ -65,7 +65,7 @@ func RunProto(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	labels := []string{"buf-lint", "buf-breaking", "allowlist-drift"}
 	codes := []int{
 		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, "buf", "lint"),
-		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, bufBreakingArgs()...),
+		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, bufBreakingArgs(root)...),
 		allowlistDrift(ctx, root, target, tmp, stdout, stderr),
 	}
 	fail := 0
@@ -80,8 +80,15 @@ func RunProto(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	return fail
 }
 
-func bufBreakingArgs() []string {
-	return []string{"buf", "breaking", "--against", ProtoBreakingAgainst}
+func bufBreakingArgs(root string) []string {
+	against := "https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto"
+	if root != "" {
+		cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "origin/main^{commit}")
+		if cmd.Run() == nil {
+			against = filepath.Join(root, ".git") + "#branch=origin/main,subdir=proto"
+		}
+	}
+	return []string{"buf", "breaking", "--against", against}
 }
 
 func stepCode(ctx context.Context, stdout, stderr io.Writer, dir string, env []string, args ...string) int {

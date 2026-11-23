@@ -1744,8 +1744,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
     if bridge.is_file():
-        import importlib.util
-
         spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
         if spec is not None and spec.loader is not None:
             mod = importlib.util.module_from_spec(spec)

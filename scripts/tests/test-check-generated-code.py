@@ -955,8 +955,6 @@ def test_wave4_pins_and_security(mod: types.ModuleType) -> None:
 def main() -> int:
     bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
     if bridge.is_file():
-        import importlib.util
-
         spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
         if spec is not None and spec.loader is not None:
             bridge_mod = importlib.util.module_from_spec(spec)
