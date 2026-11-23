@@ -109,16 +109,26 @@ fi
 
 cd "$project_dir"
 
+fmt_rc=0
+fmt_status="pass"
 lint_rc=0
 lint_policy="${LINT_POLICY:-fix-existing}"
 if [ "$lint_policy" = "block-new" ]; then
+  if ./node_modules/.bin/biome format .; then
+    fmt_status="pass"
+  else
+    fmt_rc=$?
+    fmt_status="fail"
+  fi
   biome_json="$(mktemp "${TMPDIR:-/tmp}/alt-biome-lint-XXXXXX.json")"
   set +e
-  ./node_modules/.bin/biome lint --reporter=json . > "$biome_json"
+  ./node_modules/.bin/biome check --error-on-warnings --reporter=json . > "$biome_json"
   lint_rc=$?
   set -e
   if [ "$lint_rc" -eq 0 ]; then
     lint_status="pass"
+  elif [ "$fmt_rc" -ne 0 ]; then
+    lint_status="fail"
   elif python3 "${script_dir}/check_ratchet.py" check-fingerprints \
     --repo-root "${repo_root}" \
     --project-dir "${project_dir}" \
@@ -147,9 +157,12 @@ else
   check_status="fail"
 fi
 
+if [ "$lint_policy" = "block-new" ]; then
+  echo "format: ${fmt_status} (exit ${fmt_rc})"
+fi
 echo "lint:check: ${lint_status} (exit ${lint_rc})"
 echo "check: ${check_status} (exit ${check_rc})"
 
-if [ "$lint_rc" -ne 0 ] || [ "$check_rc" -ne 0 ]; then
+if [ "$fmt_rc" -ne 0 ] || [ "$lint_rc" -ne 0 ] || [ "$check_rc" -ne 0 ]; then
   exit 1
 fi

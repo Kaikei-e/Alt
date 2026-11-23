@@ -12,9 +12,11 @@ Run:
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
 import importlib.util
+import io
 import os
 import pathlib
 import shutil
@@ -225,15 +227,53 @@ def _check_allowlist_expires_cases(checker: types.ModuleType, repo: pathlib.Path
 
     extended_with_adr = MINIMAL_ALLOWLIST_TOML.replace(
         'status = "frozen-baseline"\nreason = "Pre-existing tag-generator bandit baseline"\nexpires = "2027-05-22"',
-        'status = "frozen-baseline"\nadr = "ADR-000979"\nreason = "Extended via ADR"\nexpires = "2028-05-22"',
+        'status = "frozen-baseline"\nadr = "ADR-000979"\nreason = "Extended via ADR"\nexpires = "2027-11-22"',
         1,
     )
     extended_adr_path = repo / "extended_with_adr.toml"
     extended_adr_path.write_text(extended_with_adr, encoding="utf-8")
     _, errs = checker.load_allowlist(extended_adr_path, repo, today=FIXED_TODAY)
     check(
-        "frozen-baseline entry extending expires past 2027-05-22 WITH valid ADR passes",
+        "frozen-baseline entry extending expires within 366-day horizon WITH valid ADR passes",
         errs == [],
+        repr(errs),
+    )
+
+    far_future_with_adr = MINIMAL_ALLOWLIST_TOML.replace(
+        'status = "frozen-baseline"\nreason = "Pre-existing tag-generator bandit baseline"\nexpires = "2027-05-22"',
+        'status = "frozen-baseline"\nadr = "ADR-000979"\nreason = "Far future bypass attempt"\nexpires = "2099-12-31"',
+        1,
+    )
+    far_future_path = repo / "far_future_with_adr.toml"
+    far_future_path.write_text(far_future_with_adr, encoding="utf-8")
+    _, errs = checker.load_allowlist(far_future_path, repo, today=FIXED_TODAY)
+    check(
+        "allowlist entry with expires = 2099-12-31 fails even WITH existing ADR",
+        "config.allowlist.expires-too-far" in rules_of(errs),
+        repr(errs),
+    )
+
+    horizon_boundary = MINIMAL_ALLOWLIST_TOML + (
+        '\n[[bandit]]\npath = "svc/pyproject.toml"\nadr = "ADR-000979"\n'
+        'reason = "Boundary 366 days from today"\nexpires = "2027-11-23"\n'
+        'exclude_dirs = ["tests"]\nskips = ["B101"]\n'
+    )
+    horizon_ok_path = repo / "horizon_ok.toml"
+    horizon_ok_path.write_text(horizon_boundary, encoding="utf-8")
+    _, errs = checker.load_allowlist(horizon_ok_path, repo, today=FIXED_TODAY)
+    check(
+        "allowlist entry at exact 366-day horizon passes",
+        errs == [],
+        repr(errs),
+    )
+
+    horizon_over = horizon_boundary.replace('expires = "2027-11-23"', 'expires = "2027-11-24"')
+    horizon_over_path = repo / "horizon_over.toml"
+    horizon_over_path.write_text(horizon_over, encoding="utf-8")
+    _, errs = checker.load_allowlist(horizon_over_path, repo, today=FIXED_TODAY)
+    check(
+        "allowlist entry at 367 days (> MAX_EXPIRES horizon) fails",
+        "config.allowlist.expires-too-far" in rules_of(errs),
         repr(errs),
     )
 
@@ -1313,6 +1353,160 @@ def test_exclusions_and_cli(checker: types.ModuleType) -> None:
         )
 
 
+def test_expires_horizon_and_same_diff_adr_update(checker: types.ModuleType) -> None:
+    sys.stdout.write("universal MAX_EXPIRES horizon and same-diff ADR update enforcement (F-02)\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        # 1. Source broad suppression far-future expires rejected even with valid existing ADR
+        rs_far_future = (
+            "// ADR-000979: wit-bindgen generated code requires allow\n"
+            "// expires: 2099-12-31\n"
+            "#[allow(clippy::too_many_arguments)]\n"
+            "mod bindings {}\n"
+        )
+        errs_rs = checker.check_rust_source(
+            "plecto/src/lib.rs", rs_far_future, repo, today=FIXED_TODAY
+        )
+        check(
+            "Rust broad suppression with expires: 2099-12-31 fails with source.broad.expires-too-far",
+            rules_of(errs_rs) == {"source.broad.expires-too-far"},
+            repr(errs_rs),
+        )
+
+        py_far_future = (
+            "# ADR-000979: vendored bridge requires file-level ignore (expires: 2028-01-01)\n"
+            "# ruff: noqa: F401\n"
+        )
+        errs_py = checker.check_python_source("app/a.py", py_far_future, repo, today=FIXED_TODAY)
+        check(
+            "Python file-level noqa exceeding 366-day horizon fails with source.broad.expires-too-far",
+            rules_of(errs_py) == {"source.broad.expires-too-far"},
+            repr(errs_py),
+        )
+
+        # 2. Same-diff ADR update enforcement on git repo
+        run_git(repo, "init")
+        (repo / "scripts" / "lint").mkdir(parents=True)
+        al_path = repo / "scripts" / "lint" / "suppression_allowlist.toml"
+        al_path.write_text(MINIMAL_ALLOWLIST_TOML, encoding="utf-8")
+        (repo / "plecto" / "src").mkdir(parents=True)
+        rs_path = repo / "plecto" / "src" / "lib.rs"
+        rs_path.write_text(
+            "// ADR-000979: wit-bindgen generated code requires allow\n"
+            "// expires: 2027-05-22\n"
+            "#[allow(clippy::too_many_arguments)]\n"
+            "mod bindings {}\n",
+            encoding="utf-8",
+        )
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-q", "-m", "base")
+        base_rev = run_git(repo, "rev-parse", "HEAD")
+
+        def run_checker_cli(*cli_args: str) -> tuple[int, str, str]:
+            out_buf = io.StringIO()
+            err_buf = io.StringIO()
+            with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+                rc = checker.main(list(cli_args))
+            return rc, out_buf.getvalue(), err_buf.getvalue()
+
+        # 2a. Extend allowlist expires within 366d WITH existing untouched ADR -> FAIL
+        al_ext = MINIMAL_ALLOWLIST_TOML.replace(
+            'status = "frozen-baseline"\nreason = "Pre-existing tag-generator bandit baseline"\nexpires = "2027-05-22"',
+            'status = "frozen-baseline"\nadr = "ADR-000979"\nreason = "Extended without ADR update"\nexpires = "2027-09-01"',
+            1,
+        )
+        al_path.write_text(al_ext, encoding="utf-8")
+        rc, _, err = run_checker_cli(
+            "--repo-root",
+            str(repo),
+            "--allowlist",
+            str(al_path),
+            "--today",
+            "2026-11-22",
+            "--base",
+            base_rev,
+        )
+        check(
+            "extending allowlist expires without same-diff ADR update fails",
+            rc == 1 and "config.allowlist.expires-extended-without-adr-update" in err,
+            f"rc={rc} err={err!r}",
+        )
+
+        # 2b. Modify cited ADR-000979 in same diff -> PASS
+        (repo / "docs" / "ADR" / "000979.md").write_text(
+            "# ADR-000979\nExtended bandit baseline to 2027-09-01.\n",
+            encoding="utf-8",
+        )
+        rc, out, err = run_checker_cli(
+            "--repo-root",
+            str(repo),
+            "--allowlist",
+            str(al_path),
+            "--today",
+            "2026-11-22",
+            "--base",
+            base_rev,
+        )
+        check(
+            "extending allowlist expires WITH same-diff cited ADR update passes",
+            rc == 0,
+            f"rc={rc} out={out + err}",
+        )
+
+        # Reset and test source broad suppression extension
+        run_git(repo, "checkout", "--", ".")
+        rs_path.write_text(
+            "// ADR-000979: wit-bindgen generated code requires allow\n"
+            "// expires: 2027-09-01\n"
+            "#[allow(clippy::too_many_arguments)]\n"
+            "mod bindings {}\n",
+            encoding="utf-8",
+        )
+        rc, _, err = run_checker_cli(
+            "--repo-root",
+            str(repo),
+            "--allowlist",
+            str(al_path),
+            "--today",
+            "2026-11-22",
+            "--base",
+            base_rev,
+        )
+        check(
+            "extending source broad suppression expires without same-diff ADR update fails",
+            rc == 1 and "source.broad.expires-extended-without-adr-update" in err,
+            f"rc={rc} err={err!r}",
+        )
+
+        # Add a NEW untracked ADR-001050 and cite it -> PASS
+        (repo / "docs" / "ADR" / "001050.md").write_text(
+            "# ADR-001050\nRenew plecto wit-bindgen allow.\n",
+            encoding="utf-8",
+        )
+        rs_path.write_text(
+            "// ADR-001050: wit-bindgen generated code requires allow\n"
+            "// expires: 2027-09-01\n"
+            "#[allow(clippy::too_many_arguments)]\n"
+            "mod bindings {}\n",
+            encoding="utf-8",
+        )
+        rc, out, err = run_checker_cli(
+            "--repo-root",
+            str(repo),
+            "--allowlist",
+            str(al_path),
+            "--today",
+            "2026-11-22",
+            "--base",
+            base_rev,
+        )
+        check(
+            "extending source broad suppression expires WITH new cited ADR in diff passes",
+            rc == 0,
+            f"rc={rc} out={out + err}",
+        )
+
+
 def test_real_repository() -> None:
     sys.stdout.write("real repository verification\n")
     check("suppression_allowlist.toml exists", ALLOWLIST.is_file(), str(ALLOWLIST))
@@ -1352,6 +1546,7 @@ def main() -> int:
     test_go_source_checks(checker)
     test_rust_and_ts_source_checks(checker)
     test_exclusions_and_cli(checker)
+    test_expires_horizon_and_same_diff_adr_update(checker)
     test_real_repository()
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return 1 if RESULTS.failed else 0

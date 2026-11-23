@@ -74,6 +74,9 @@ BUF_PINNED_TAG_RE = re.compile(r":v\d+(?:\.\d+)*$")
 SEMVER_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][^\s]+)?$")
 AT_LATEST_RE = re.compile(r"(?:^|[\s\"'(=`])[^\s\"'(=`]+@latest(?=$|[\s\"'`);,|&\\<>])")
 GO_GENERATE_LINE_RE = re.compile(r"^\s*//\s*go:generate\b")
+GO_INTERFACE_RE = re.compile(r"\btype\s+\w+(?:\[[^\]]+\])?\s+interface\b")
+MIN_NAME_STATUS_PARTS = 2
+MIN_RENAME_STATUS_PARTS = 3
 PROTO_GEN_SUFFIXES: tuple[str, ...] = (
     ".pb.go",
     ".connect.go",
@@ -754,22 +757,68 @@ def _find_go_module_rel(repo_root: pathlib.Path, rel: str) -> str | None:
         cur = cur.parent
 
 
-def _has_same_module_go_source_change(
+def _read_candidate_go_source(
+    repo_root: pathlib.Path,
+    rel: str,
+    after_rev: str | None,
+) -> str | None:
+    if after_rev is not None:
+        return _git_show_text(repo_root, after_rev, rel)
+    full_path = repo_root / rel
+    if not _is_safe_worktree_file(repo_root.resolve(), full_path):
+        return None
+    try:
+        return full_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+
+
+def _allowed_mock_package_dirs(
+    rel: str,
+    mod_rel: str | None,
+) -> set[pathlib.PurePosixPath]:
+    mock_dir = pathlib.PurePosixPath(rel).parent
+    allowed = {mock_dir}
+    if str(mock_dir) != ".":
+        parent_dir = mock_dir.parent
+        parent_posix = parent_dir.as_posix()
+        if (
+            mod_rel is None
+            or not mod_rel
+            or parent_posix == mod_rel
+            or parent_posix.startswith(f"{mod_rel}/")
+        ):
+            allowed.add(parent_dir)
+    return allowed
+
+
+def _has_matching_mock_go_source_change(
     repo_root: pathlib.Path,
     rel: str,
     changed_set: set[str],
+    *,
+    after_rev: str | None = None,
 ) -> bool:
+    name = pathlib.PurePosixPath(rel).name
+    mock_stem = name.removeprefix("mock_").removesuffix(".go")
     mod_rel = _find_go_module_rel(repo_root, rel)
     prefix = f"{mod_rel}/" if mod_rel else ""
+    allowed_dirs = _allowed_mock_package_dirs(rel, mod_rel)
+
     for p in changed_set:
-        if p == rel or not p.endswith(".go"):
+        if p == rel or not p.endswith(".go") or p.endswith("_test.go"):
             continue
         if mod_rel is not None and prefix and not p.startswith(prefix):
             continue
-        parts = pathlib.PurePosixPath(p).parts
-        if "mocks" in parts or parts[-1].startswith("mock_"):
+        p_obj = pathlib.PurePosixPath(p)
+        if "mocks" in p_obj.parts or p_obj.name.startswith("mock_"):
             continue
-        return True
+        if mock_stem and p_obj.stem == mock_stem:
+            return True
+        if p_obj.parent in allowed_dirs:
+            src_text = _read_candidate_go_source(repo_root, p, after_rev)
+            if src_text is not None and GO_INTERFACE_RE.search(src_text):
+                return True
     return False
 
 
@@ -778,6 +827,8 @@ def _has_matching_spec_change(
     rel: str,
     text: str,
     changed_set: set[str],
+    *,
+    after_rev: str | None = None,
 ) -> bool:
     proto_stem = _extract_proto_stem(rel)
     if proto_stem is not None:
@@ -806,8 +857,8 @@ def _has_matching_spec_change(
 
     name = pathlib.PurePosixPath(rel).name
     if name.startswith("mock_") and name.endswith(".go"):
-        return "scripts/codegen/go.tool.mod" in changed_set or _has_same_module_go_source_change(
-            repo_root, rel, changed_set
+        return "scripts/codegen/go.tool.mod" in changed_set or _has_matching_mock_go_source_change(
+            repo_root, rel, changed_set, after_rev=after_rev
         )
 
     return False
@@ -820,6 +871,7 @@ class _DiffContext:
     base_rev: str
     head_rev: str | None
     changed_set: set[str]
+    commit_label: str | None = None
 
 
 def _read_diff_after_text(
@@ -860,24 +912,161 @@ def _check_single_diff_file(ctx: _DiffContext, rel: str) -> Violation | None:
     after_hdr = extract_generated_header(after_text)
     if before_hdr is None and after_hdr is None:
         return None
+    suffix = f" (commit {ctx.commit_label})" if ctx.commit_label else ""
     if before_hdr is not None and after_hdr is None:
         return Violation(
             path=rel,
             line=1,
             rule="codegen.do-not-edit-modified",
-            message="DO NOT EDIT generated header was removed from tracked generated file",
+            message=f"DO NOT EDIT generated header was removed from tracked generated file{suffix}",
         )
-    if not _has_matching_spec_change(ctx.repo_root, rel, after_text, ctx.changed_set):
+    if not _has_matching_spec_change(
+        ctx.repo_root,
+        rel,
+        after_text,
+        ctx.changed_set,
+        after_rev=ctx.head_rev,
+    ):
         return Violation(
             path=rel,
             line=1,
             rule="codegen.do-not-edit-modified",
             message=(
                 "generated file carrying `DO NOT EDIT` header was modified without any "
-                "matching spec/source/generator change"
+                f"matching spec/source/generator change{suffix}"
             ),
         )
     return None
+
+
+def _parse_name_status(stdout: str) -> tuple[set[str], list[str]]:
+    changed_all: set[str] = set()
+    targets: list[str] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) < MIN_NAME_STATUS_PARTS:
+            continue
+        status = parts[0]
+        if status.startswith(("R", "C")) and len(parts) >= MIN_RENAME_STATUS_PARTS:
+            rel = parts[2].strip()
+        else:
+            rel = parts[1].strip()
+        if not rel or _is_excluded_rel(rel):
+            continue
+        changed_all.add(rel)
+        if not status.startswith("D"):
+            targets.append(rel)
+    return changed_all, targets
+
+
+def _list_untracked_files(repo_root: pathlib.Path, git_bin: str) -> set[str]:
+    res = _run_subprocess(
+        [git_bin, "-C", str(repo_root), "ls-files", "--others", "--exclude-standard"]
+    )
+    if res.returncode != 0:
+        return set()
+    return {
+        line.strip()
+        for line in res.stdout.splitlines()
+        if line.strip() and not _is_excluded_rel(line.strip())
+    }
+
+
+def _collect_commit_violations(
+    repo_root: pathlib.Path,
+    git_bin: str,
+    merge_base: str,
+    target_head: str,
+) -> list[Violation]:
+    rev_res = _run_subprocess(
+        [
+            git_bin,
+            "-C",
+            str(repo_root),
+            "rev-list",
+            "--reverse",
+            "--no-merges",
+            f"{merge_base}..{target_head}",
+        ]
+    )
+    if rev_res.returncode != 0:
+        return []
+
+    repo_resolved = repo_root.resolve()
+    violations: list[Violation] = []
+    for commit_sha in [line.strip() for line in rev_res.stdout.splitlines() if line.strip()]:
+        parent_res = _run_subprocess(
+            [
+                git_bin,
+                "-C",
+                str(repo_root),
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                f"{commit_sha}^1^{{commit}}",
+            ]
+        )
+        if parent_res.returncode != 0:
+            continue
+        parent_sha = parent_res.stdout.strip()
+        dt_res = _run_subprocess(
+            [
+                git_bin,
+                "-C",
+                str(repo_root),
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "--name-status",
+                commit_sha,
+            ]
+        )
+        if dt_res.returncode != 0:
+            continue
+        commit_changed, commit_targets = _parse_name_status(dt_res.stdout)
+        ctx = _DiffContext(
+            repo_root=repo_root,
+            repo_root_resolved=repo_resolved,
+            base_rev=parent_sha,
+            head_rev=commit_sha,
+            changed_set=commit_changed,
+            commit_label=commit_sha[:9],
+        )
+        for rel in sorted(set(commit_targets)):
+            v = _check_single_diff_file(ctx, rel)
+            if v is not None:
+                violations.append(v)
+    return violations
+
+
+def _collect_worktree_violations(
+    repo_root: pathlib.Path,
+    git_bin: str,
+    head_sha: str,
+    untracked: set[str],
+) -> list[Violation]:
+    wt_res = _run_subprocess(
+        [git_bin, "-C", str(repo_root), "diff", "--name-status", head_sha, "--"]
+    )
+    if wt_res.returncode != 0:
+        return []
+    wt_changed, wt_targets = _parse_name_status(wt_res.stdout)
+    ctx = _DiffContext(
+        repo_root=repo_root,
+        repo_root_resolved=repo_root.resolve(),
+        base_rev=head_sha,
+        head_rev=None,
+        changed_set=wt_changed | untracked,
+    )
+    violations: list[Violation] = []
+    for rel in sorted(set(wt_targets)):
+        v = _check_single_diff_file(ctx, rel)
+        if v is not None:
+            violations.append(v)
+    return violations
 
 
 def check_git_diff(
@@ -924,6 +1113,38 @@ def check_git_diff(
             )
         ]
 
+    violations: list[Violation] = []
+    seen_keys: set[tuple[str, str]] = set()
+
+    def _record(new_items: list[Violation]) -> None:
+        for item in new_items:
+            key = (item.path, item.rule)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                violations.append(item)
+
+    target_head = resolved_head
+    if target_head is None:
+        head_proc = _run_subprocess(
+            [git_bin, "-C", str(repo_root), "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]
+        )
+        target_head = head_proc.stdout.strip() if head_proc.returncode == 0 else None
+
+    untracked = _list_untracked_files(repo_root, git_bin) if resolved_head is None else set()
+
+    if target_head is not None:
+        mb_proc = _run_subprocess(
+            [git_bin, "-C", str(repo_root), "merge-base", resolved_base, target_head]
+        )
+        merge_base = (
+            mb_proc.stdout.strip()
+            if mb_proc.returncode == 0 and mb_proc.stdout.strip()
+            else resolved_base
+        )
+        _record(_collect_commit_violations(repo_root, git_bin, merge_base, target_head))
+        if resolved_head is None:
+            _record(_collect_worktree_violations(repo_root, git_bin, target_head, untracked))
+
     changed_files = [
         line.strip()
         for line in res.stdout.splitlines()
@@ -934,13 +1155,12 @@ def check_git_diff(
         repo_root_resolved=repo_root.resolve(),
         base_rev=resolved_base,
         head_rev=resolved_head,
-        changed_set=set(changed_files),
+        changed_set=set(changed_files) | untracked,
     )
-    violations: list[Violation] = []
-    for rel in sorted(changed_files):
-        violation = _check_single_diff_file(ctx, rel)
-        if violation is not None:
-            violations.append(violation)
+    agg_violations = [
+        v for rel in sorted(changed_files) if (v := _check_single_diff_file(ctx, rel)) is not None
+    ]
+    _record(agg_violations)
     return violations
 
 

@@ -787,6 +787,335 @@ def test_native_tool_outputs_and_block_new_e2e() -> None:
         _verify_python_block_new_e2e(tmp, repo, baselines)
 
 
+def test_scoped_baselines_path_dedup_and_fail_closed() -> None:
+    sys.stdout.write(
+        "Go repo-relative SARIF dedup, fail-closed lines, scoped baselines, and frontend format\n"
+    )
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+        repo = tmp / "repo"
+        (repo / "scripts" / "lint" / "ratchet").mkdir(parents=True)
+        for name in ("frontend.sh", "check_ratchet.py", "canary_audit.py"):
+            src_tool = ROOT / "scripts" / "lint" / name
+            if src_tool.is_file():
+                shutil.copy2(src_tool, repo / "scripts" / "lint" / name)
+
+        go_dir = repo / "docker" / "otel-relay"
+        go_dir.mkdir(parents=True)
+        go_main = go_dir / "main.go"
+        go_main.write_text(
+            "package main\n"
+            "func firstFn() {\n"
+            "    firstVar := 1\n"
+            "    _ = firstVar\n"
+            "}\n"
+            "func secondFn() {\n"
+            "    secondBrandNewBug := 2\n"
+            "    _ = secondBrandNewBug\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        py_dir = repo / "svc-py"
+        py_dir.mkdir(parents=True)
+        (py_dir / "app.py").write_text("x = 1\ny = 2\n", encoding="utf-8")
+
+        baselines = repo / "scripts" / "lint" / "ratchet" / "rule_baselines.toml"
+
+        # 1. golangci-lint emits repo-relative URI "docker/otel-relay/main.go" while --project-dir is docker/otel-relay
+        sarif_1 = tmp / "go1.sarif"
+        sarif_1.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "results": [
+                                {
+                                    "ruleId": "ineffassign",
+                                    "message": {"text": "ineffectual assignment to firstVar"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {
+                                                    "uri": "docker/otel-relay/main.go"
+                                                },
+                                                "region": {"startLine": 3},
+                                            }
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        res_go_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(go_dir),
+            "--baselines-file",
+            str(baselines),
+            "--golangci-sarif",
+            str(sarif_1),
+            "--update-fingerprints",
+        )
+        bl_go = tomllib.loads(baselines.read_text(encoding="utf-8"))
+        fps_go = bl_go.get("fingerprints", [])
+        empty_sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        check(
+            "repo-relative SARIF URI with --project-dir resolves without path doubling and hashes real line",
+            res_go_upd.returncode == 0
+            and len(fps_go) == 1
+            and fps_go[0]["file"] == "docker/otel-relay/main.go"
+            and fps_go[0]["line_sha256"] != empty_sha,
+            f"rc={res_go_upd.returncode} fps={fps_go!r} err={res_go_upd.stderr}",
+        )
+
+        # Swap-violation probe: fix firstVar, introduce brand new violation on line 7 -> MUST FAIL
+        sarif_2 = tmp / "go2.sarif"
+        sarif_2.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "results": [
+                                {
+                                    "ruleId": "ineffassign",
+                                    "message": {
+                                        "text": "ineffectual assignment to secondBrandNewBug"
+                                    },
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {
+                                                    "uri": "docker/otel-relay/main.go"
+                                                },
+                                                "region": {"startLine": 7},
+                                            }
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        res_swap = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(go_dir),
+            "--baselines-file",
+            str(baselines),
+            "--golangci-sarif",
+            str(sarif_2),
+        )
+        check(
+            "swap-violation probe (new ineffassign on different line) fails with exit 1",
+            res_swap.returncode == 1
+            and "ratchet.new-fingerprint" in res_swap.stderr
+            and "docker/otel-relay/docker/otel-relay" not in res_swap.stderr,
+            f"rc={res_swap.returncode} out={res_swap.stdout + res_swap.stderr}",
+        )
+
+        # 2. Fail-closed on missing file or out-of-range line number (no silent sha256("") collapse)
+        for label, bad_entry in (
+            ("missing source file", {"rule": "F841", "file": "svc-py/nonexistent.py", "line": 1}),
+            ("line < 1", {"rule": "F841", "file": "svc-py/app.py", "line": 0}),
+            ("line > len(lines)", {"rule": "F841", "file": "svc-py/app.py", "line": 99}),
+        ):
+            bad_json = tmp / "bad_line.json"
+            bad_json.write_text(json.dumps([bad_entry]), encoding="utf-8")
+            res_bad = run_cli(
+                "check-fingerprints",
+                "--repo-root",
+                str(repo),
+                "--baselines-file",
+                str(baselines),
+                "--findings-json",
+                str(bad_json),
+            )
+            check(
+                f"fail-closed (rc=2) when source line cannot be extracted ({label})",
+                res_bad.returncode == EXIT_USAGE_ERROR,
+                f"rc={res_bad.returncode} out={res_bad.stdout + res_bad.stderr}",
+            )
+
+        # 3. Scoped --update-fingerprints preserves other targets; scoped check avoids false 'resolved'
+        py_findings = tmp / "py.json"
+        py_findings.write_text(
+            json.dumps([{"rule": "F841", "file": "app.py", "line": 1}]),
+            encoding="utf-8",
+        )
+        res_py_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(py_dir),
+            "--baselines-file",
+            str(baselines),
+            "--findings-json",
+            str(py_findings),
+            "--update-fingerprints",
+        )
+        bl_both = tomllib.loads(baselines.read_text(encoding="utf-8"))
+        files_in_bl = {e["file"] for e in bl_both.get("fingerprints", [])}
+        check(
+            "per-target --update-fingerprints preserves other targets in rule_baselines.toml",
+            res_py_upd.returncode == 0
+            and files_in_bl == {"docker/otel-relay/main.go", "svc-py/app.py"},
+            f"rc={res_py_upd.returncode} files={files_in_bl!r}",
+        )
+
+        res_py_chk = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(py_dir),
+            "--baselines-file",
+            str(baselines),
+            "--findings-json",
+            str(py_findings),
+        )
+        check(
+            "scoped check-fingerprints does not report other targets as 'resolved'",
+            res_py_chk.returncode == 0 and "resolved" not in res_py_chk.stdout,
+            f"rc={res_py_chk.returncode} stdout={res_py_chk.stdout!r} stderr={res_py_chk.stderr!r}",
+        )
+
+        _verify_frontend_block_new_format(tmp, repo, baselines)
+
+
+def _verify_frontend_block_new_format(
+    tmp: pathlib.Path,
+    repo: pathlib.Path,
+    baselines: pathlib.Path,
+) -> None:
+    # 4. Biome format diagnostic parsing and frontend.sh block-new format enforcement
+    fe_dir = repo / "svc-fe"
+    (fe_dir / "src").mkdir(parents=True)
+    (fe_dir / "src" / "a.ts").write_text("export const a=1;\n", encoding="utf-8")
+    (fe_dir / "package.json").write_text('{"name":"svc-fe"}\n', encoding="utf-8")
+    (fe_dir / "Dockerfile").write_text("FROM oven/bun:1.3.12-alpine\n", encoding="utf-8")
+    (fe_dir / "bun.lock").write_text(
+        '  "@biomejs/biome": ["@biomejs/biome@2.5.2"],\n'
+        '  "svelte-check": ["svelte-check@4.7.6"],\n',
+        encoding="utf-8",
+    )
+    for pkg, ver in (("@biomejs/biome", "2.5.2"), ("svelte-check", "4.7.6")):
+        pdir = fe_dir / "node_modules" / pkg
+        pdir.mkdir(parents=True)
+        (pdir / "package.json").write_text(json.dumps({"version": ver}), encoding="utf-8")
+
+    biome_fmt_json = tmp / "biome_fmt.json"
+    biome_fmt_json.write_text(
+        json.dumps(
+            {
+                "diagnostics": [
+                    {
+                        "category": "format",
+                        "location": {"path": {"file": "src/a.ts"}, "span": None},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    res_bfmt = run_cli(
+        "check-fingerprints",
+        "--repo-root",
+        str(repo),
+        "--project-dir",
+        str(fe_dir),
+        "--baselines-file",
+        str(baselines),
+        "--biome-json",
+        str(biome_fmt_json),
+    )
+    check(
+        "load_biome_json handles format diagnostic cleanly and rejects unbaselined format issue",
+        res_bfmt.returncode == 1 and "format" in res_bfmt.stderr,
+        f"rc={res_bfmt.returncode} err={res_bfmt.stderr!r}",
+    )
+
+    # Stub bun + biome to verify frontend.sh in block-new catches format failures
+    bin_dir = tmp / "fe-bin"
+    bin_dir.mkdir()
+    bun_stub = bin_dir / "bun"
+    bun_stub.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        "    print('1.3.12')\n"
+        "    sys.exit(0)\n"
+        "sys.exit(0)\n",
+        encoding="utf-8",
+    )
+    bun_stub.chmod(0o755)
+    biome_bin = fe_dir / "node_modules" / ".bin" / "biome"
+    biome_bin.parent.mkdir(parents=True)
+    biome_bin.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "args = sys.argv[1:]\n"
+        "if any('canary' in a for a in args):\n"
+        "    print('lint/suspicious/noDebugger')\n"
+        "    sys.exit(1)\n"
+        "sub = args[0] if args else ''\n"
+        "if sub == 'format':\n"
+        "    if os.environ.get('FAIL_BIOME_FORMAT') == '1':\n"
+        "        sys.stderr.write('src/a.ts format diff\\n')\n"
+        "        sys.exit(1)\n"
+        "    sys.exit(0)\n"
+        "if sub in ('check', 'lint'):\n"
+        "    if sub == 'check' and os.environ.get('FAIL_BIOME_FORMAT') == '1':\n"
+        "        print(json.dumps({'diagnostics': [{'category': 'format', 'location': {'path': {'file': 'src/a.ts'}, 'span': None}}]}))\n"
+        "        sys.exit(1)\n"
+        "    print(json.dumps({'diagnostics': []}))\n"
+        "    sys.exit(0)\n"
+        "sys.exit(0)\n",
+        encoding="utf-8",
+    )
+    biome_bin.chmod(0o755)
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+    fe_env = os.environ.copy()
+    fe_env["PATH"] = f"{bin_dir}:{fe_env.get('PATH', '')}"
+    fe_env["LINT_POLICY"] = "block-new"
+    fe_env["FAIL_BIOME_FORMAT"] = "1"
+    res_fe_fmt_fail = run_cmd(
+        [bash_bin, str(repo / "scripts" / "lint" / "frontend.sh"), "svc-fe"],
+        cwd=repo,
+        env=fe_env,
+    )
+    check(
+        "frontend.sh in block-new mode fails when biome formatting fails",
+        res_fe_fmt_fail.returncode == 1,
+        f"rc={res_fe_fmt_fail.returncode} out={res_fe_fmt_fail.stdout + res_fe_fmt_fail.stderr}",
+    )
+    fe_env["FAIL_BIOME_FORMAT"] = "0"
+    res_fe_fmt_ok = run_cmd(
+        [bash_bin, str(repo / "scripts" / "lint" / "frontend.sh"), "svc-fe"],
+        cwd=repo,
+        env=fe_env,
+    )
+    check(
+        "frontend.sh in block-new mode passes when biome format and check are clean",
+        res_fe_fmt_ok.returncode == 0,
+        f"rc={res_fe_fmt_ok.returncode} out={res_fe_fmt_ok.stdout + res_fe_fmt_ok.stderr}",
+    )
+
+
 def _verify_python_block_new_e2e(
     tmp: pathlib.Path,
     repo: pathlib.Path,
@@ -917,6 +1246,7 @@ def main() -> int:
     test_python_nosec_and_spaced_rust_attrs(mod)
     test_security_path_traversal_symlink_and_toml_escape(mod)
     test_native_tool_outputs_and_block_new_e2e()
+    test_scoped_baselines_path_dedup_and_fail_closed()
     test_real_repository()
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return 1 if RESULTS.failed else 0

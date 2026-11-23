@@ -609,8 +609,20 @@ def _resolve_finding_rel_path(
     if normalized.startswith("/"):
         msg = f"finding path must not start with '/': {raw_file!r}"
         raise ValueError(msg)
-    base_dir = project_dir if project_dir is not None else repo_root
-    full = base_dir / p
+    if project_dir is not None:
+        proj_full = project_dir / p
+        if proj_full.is_symlink() or proj_full.exists():
+            return _validate_contained_path(proj_full, repo_root, raw_file)
+        repo_resolved = repo_root.resolve()
+        proj_resolved = project_dir.resolve()
+        if proj_resolved.is_relative_to(repo_resolved):
+            proj_rel = proj_resolved.relative_to(repo_resolved)
+            if proj_rel.parts and p.parts[: len(proj_rel.parts)] == proj_rel.parts:
+                repo_full = repo_root / p
+                if repo_full.is_symlink() or repo_full.exists():
+                    return _validate_contained_path(repo_full, repo_root, raw_file)
+        return _validate_contained_path(proj_full, repo_root, raw_file)
+    full = repo_root / p
     return _validate_contained_path(full, repo_root, raw_file)
 
 
@@ -632,16 +644,16 @@ def _extract_source_line(
         raise ValueError(msg)
     full = repo_root / rel_file
     _validate_contained_path(full, repo_root, rel_file)
+    if not full.is_file():
+        msg = f"finding source file does not exist: {rel_file!r}"
+        raise ValueError(msg)
     if rel_file not in cache:
-        cache[rel_file] = (
-            full.read_text(encoding="utf-8", errors="replace").splitlines()
-            if full.is_file()
-            else []
-        )
+        cache[rel_file] = full.read_text(encoding="utf-8", errors="replace").splitlines()
     lines = cache[rel_file]
-    if 1 <= line_no <= len(lines):
-        return lines[line_no - 1]
-    return ""
+    if line_no < 1 or line_no > len(lines):
+        msg = f"finding line {line_no} out of range for {rel_file!r} (1..{len(lines)})"
+        raise ValueError(msg)
+    return lines[line_no - 1]
 
 
 @dataclass
@@ -1012,7 +1024,68 @@ def _load_findings_for_mode(opts: _FingerprintRunOpts) -> list[FindingItem] | No
     return findings
 
 
+def _compute_scope_prefix(
+    repo_root: pathlib.Path,
+    project_dir: pathlib.Path | None,
+) -> str | None:
+    if project_dir is None:
+        return None
+    repo_resolved = repo_root.resolve()
+    proj_resolved = project_dir.resolve()
+    if not proj_resolved.is_relative_to(repo_resolved):
+        msg = f"--project-dir escapes repository root: {project_dir}"
+        raise ValueError(msg)
+    rel = proj_resolved.relative_to(repo_resolved).as_posix()
+    return None if rel in ("", ".") else rel
+
+
+def _in_scope(rel_file: str, scope_prefix: str | None) -> bool:
+    if scope_prefix is None:
+        return True
+    return rel_file == scope_prefix or rel_file.startswith(f"{scope_prefix}/")
+
+
+def _write_updated_fingerprints(
+    opts: _FingerprintRunOpts,
+    actual_counts: Counter[FingerprintKey],
+    scope_prefix: str | None,
+) -> int:
+    merged_counts: Counter[FingerprintKey]
+    if scope_prefix is not None and opts.baselines_path.is_file():
+        try:
+            existing_counts = load_rule_baselines(opts.baselines_path)
+        except (tomllib.TOMLDecodeError, OSError) as exc:
+            sys.stderr.write(f"ERROR: failed to load baselines TOML: {exc}\n")
+            return EXIT_USAGE_ERROR
+        merged_counts = Counter(
+            {
+                key: cnt
+                for key, cnt in existing_counts.items()
+                if not _in_scope(key[1], scope_prefix)
+            }
+        )
+        merged_counts.update(actual_counts)
+    else:
+        merged_counts = actual_counts
+    opts.baselines_path.parent.mkdir(parents=True, exist_ok=True)
+    opts.baselines_path.write_text(
+        render_rule_baselines_toml(merged_counts),
+        encoding="utf-8",
+    )
+    sys.stdout.write(
+        f"Updated {opts.baselines_path} ({len(merged_counts)} unique fingerprints, "
+        f"{sum(merged_counts.values())} total findings).\n"
+    )
+    return EXIT_CLEAN
+
+
 def _run_fingerprint_mode(opts: _FingerprintRunOpts) -> int:
+    try:
+        scope_prefix = _compute_scope_prefix(opts.repo_root, opts.project_dir)
+    except ValueError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        return EXIT_USAGE_ERROR
+
     findings = _load_findings_for_mode(opts)
     if findings is None:
         return EXIT_USAGE_ERROR
@@ -1021,13 +1094,7 @@ def _run_fingerprint_mode(opts: _FingerprintRunOpts) -> int:
         (f.rule, f.rel_file, f.line_sha256) for f in findings
     )
     if opts.update_fingerprints:
-        opts.baselines_path.parent.mkdir(parents=True, exist_ok=True)
-        opts.baselines_path.write_text(render_rule_baselines_toml(actual_counts), encoding="utf-8")
-        sys.stdout.write(
-            f"Updated {opts.baselines_path} ({len(actual_counts)} unique fingerprints, "
-            f"{sum(actual_counts.values())} total findings).\n"
-        )
-        return EXIT_CLEAN
+        return _write_updated_fingerprints(opts, actual_counts, scope_prefix)
 
     try:
         recorded_counts = load_rule_baselines(opts.baselines_path)
@@ -1055,7 +1122,9 @@ def _run_fingerprint_mode(opts: _FingerprintRunOpts) -> int:
         return EXIT_VIOLATIONS
 
     removed_total = sum(
-        max(0, rec_n - actual_counts.get(key, 0)) for key, rec_n in recorded_counts.items()
+        max(0, rec_n - actual_counts.get(key, 0))
+        for key, rec_n in recorded_counts.items()
+        if _in_scope(key[1], scope_prefix)
     )
     if removed_total > 0:
         sys.stdout.write(
