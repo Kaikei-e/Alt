@@ -650,7 +650,15 @@ def _extract_source_line(
     if rel_file not in cache:
         cache[rel_file] = full.read_text(encoding="utf-8", errors="replace").splitlines()
     lines = cache[rel_file]
-    if line_no < 1 or line_no > len(lines):
+    if line_no < 1:
+        msg = f"finding line {line_no} out of range for {rel_file!r} (1..{len(lines)})"
+        raise ValueError(msg)
+    if not lines:
+        if line_no == 1:
+            return ""
+        msg = f"finding line {line_no} out of range for empty file {rel_file!r}"
+        raise ValueError(msg)
+    if line_no > len(lines):
         msg = f"finding line {line_no} out of range for {rel_file!r} (1..{len(lines)})"
         raise ValueError(msg)
     return lines[line_no - 1]
@@ -883,7 +891,7 @@ def _biome_line_from_span(
 ) -> int:
     start = location.get("start")
     if isinstance(start, dict) and isinstance(start.get("line"), int):
-        return int(start["line"])
+        return max(1, int(start["line"]))
     span = location.get("span")
     if isinstance(span, list) and span and isinstance(span[0], int):
         offset = max(0, int(span[0]))

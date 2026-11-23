@@ -1024,7 +1024,11 @@ def _verify_frontend_block_new_format(
                 "diagnostics": [
                     {
                         "category": "format",
-                        "location": {"path": {"file": "src/a.ts"}, "span": None},
+                        "location": {
+                            "path": {"file": "src/a.ts"},
+                            "start": {"line": 0, "column": 0},
+                            "span": None,
+                        },
                     }
                 ]
             }
@@ -1043,9 +1047,51 @@ def _verify_frontend_block_new_format(
         str(biome_fmt_json),
     )
     check(
-        "load_biome_json handles format diagnostic cleanly and rejects unbaselined format issue",
+        "load_biome_json clamps start.line=0 format diagnostic to line 1 and rejects unbaselined issue",
         res_bfmt.returncode == 1 and "format" in res_bfmt.stderr,
         f"rc={res_bfmt.returncode} err={res_bfmt.stderr!r}",
+    )
+
+    # CS-R2-1: legitimate 0-byte empty file allows line=1 (returns "") while rejecting line=2 (rc=2)
+    empty_py = repo / "svc-py" / "__init__.py"
+    empty_py.write_text("", encoding="utf-8")
+    empty_line1 = tmp / "empty_l1.json"
+    empty_line1.write_text(
+        json.dumps([{"rule": "D104", "file": "svc-py/__init__.py", "line": 1}]),
+        encoding="utf-8",
+    )
+    res_empty1 = run_cli(
+        "check-fingerprints",
+        "--repo-root",
+        str(repo),
+        "--baselines-file",
+        str(baselines),
+        "--findings-json",
+        str(empty_line1),
+    )
+    check(
+        "CS-R2-1: legitimate 0-byte empty file accepts line=1 without usage error (rc=1)",
+        res_empty1.returncode == 1 and "ratchet.new-fingerprint" in res_empty1.stderr,
+        f"rc={res_empty1.returncode} err={res_empty1.stderr!r}",
+    )
+    empty_line2 = tmp / "empty_l2.json"
+    empty_line2.write_text(
+        json.dumps([{"rule": "D104", "file": "svc-py/__init__.py", "line": 2}]),
+        encoding="utf-8",
+    )
+    res_empty2 = run_cli(
+        "check-fingerprints",
+        "--repo-root",
+        str(repo),
+        "--baselines-file",
+        str(baselines),
+        "--findings-json",
+        str(empty_line2),
+    )
+    check(
+        "CS-R2-1: 0-byte empty file still rejects out-of-range line=2 fail-closed (rc=2)",
+        res_empty2.returncode == EXIT_USAGE_ERROR,
+        f"rc={res_empty2.returncode} err={res_empty2.stderr!r}",
     )
 
     # Stub bun + biome to verify frontend.sh in block-new catches format failures

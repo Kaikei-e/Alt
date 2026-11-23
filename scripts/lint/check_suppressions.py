@@ -2199,7 +2199,14 @@ def _resolve_auto_base_rev(repo_root: pathlib.Path) -> str | None:
         target_sha = target_proc.stdout.strip()
         mb_proc = _run_git(repo_root, ["merge-base", target_sha, head_sha])
         if mb_proc.returncode == 0 and mb_proc.stdout.strip():
-            return mb_proc.stdout.strip()
+            merge_base = mb_proc.stdout.strip()
+            if merge_base == head_sha:
+                prev_proc = _run_git(
+                    repo_root, ["rev-parse", "--verify", "--quiet", "HEAD~1^{commit}"]
+                )
+                if prev_proc.returncode == 0 and prev_proc.stdout.strip():
+                    return prev_proc.stdout.strip()
+            return merge_base
 
     return head_sha
 

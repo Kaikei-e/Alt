@@ -1393,11 +1393,16 @@ def test_wave2_test_existence_and_header_deletion(tmp: pathlib.Path) -> None:
         'package pkg\nimport "testing"\n'
         "func TestSuite(t *testing.T) {\n"
         '    t.Run("SubCase", func(t *testing.T) {})\n'
-        "}\n",
+        "}\n"
+        "func setupServer() {}\n"
+        "type MySuite struct{}\n"
+        "func (s *MySuite) TestSuiteMethod() {}\n",
         encoding="utf-8",
     )
     (repo / "tests").mkdir(parents=True)
     (repo / "tests" / "test_x.py").write_text(
+        "def _helper():\n    return 1\n"
+        "def test_top():\n    assert True\n"
         "class TestCls:\n    async def test_bar(self):\n        assert True\n",
         encoding="utf-8",
     )
@@ -1482,10 +1487,22 @@ def test_wave2_test_existence_and_header_deletion(tmp: pathlib.Path) -> None:
         f"rc={res_bad_sub.returncode} err={res_bad_sub.stderr!r}",
     )
 
+    # CS-R2-2: Non-test helpers inside *_test.go / test_*.py must NOT satisfy test_name
+    for slug, bad_helper in (("go_helper", "setupServer"), ("py_helper", "_helper")):
+        res_bad_helper = validate_intended(slug, bad_helper)
+        check(
+            f"CS-R2-2: rejects non-test helper {bad_helper!r} inside test file",
+            res_bad_helper.returncode == EXIT_INVALID
+            and "NONEXISTENT_CANDIDATE_TEST" in res_bad_helper.stderr,
+            f"rc={res_bad_helper.returncode} err={res_bad_helper.stderr!r}",
+        )
+
     # Real tests across Go, Python, Rust, TS => PASS
     for label, tname in (
         ("go_func", "TestSuite"),
         ("go_subtest", "TestSuite/SubCase"),
+        ("go_suite_method", "TestSuiteMethod"),
+        ("py_top", "test_top"),
         ("py_nodeid", "tests/test_x.py::TestCls::test_bar"),
         ("py_param", "test_bar[case-1]"),
         ("rust_tokio", "pkg::tests::test_async_rust"),

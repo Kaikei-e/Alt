@@ -1530,14 +1530,18 @@ def _go_subtest_present(text: str, subtest: str) -> bool:
     return pattern.search(text) is not None
 
 
+def _go_test_func_present(text: str, name: str) -> bool:
+    if GO_TEST_PREFIX_RE.match(name) is None:
+        return False
+    return re.search(rf"\bfunc\s+(?:\([^)]+\)\s+)?{re.escape(name)}\s*\(", text) is not None
+
+
 def _matches_go_test(text: str, query: _TestNameQuery) -> bool:
     if query.go_parent is not None:
-        if re.search(rf"\bfunc\s+(?:\([^)]+\)\s+)?{re.escape(query.go_parent)}\s*\(", text) is None:
+        if not _go_test_func_present(text, query.go_parent):
             return False
         return all(_go_subtest_present(text, sub) for sub in query.go_subtests)
-    if IDENT_RE.match(query.leaf) is not None and (
-        re.search(rf"\bfunc\s+(?:\([^)]+\)\s+)?{re.escape(query.leaf)}\s*\(", text) is not None
-    ):
+    if IDENT_RE.match(query.leaf) is not None and _go_test_func_present(text, query.leaf):
         return True
     if query.leaf:
         run_pat = re.compile(rf'\bt\.Run\s*\(\s*["`]{re.escape(query.leaf)}["`]')
@@ -1546,7 +1550,7 @@ def _matches_go_test(text: str, query: _TestNameQuery) -> bool:
 
 
 def _matches_python_test(text: str, query: _TestNameQuery) -> bool:
-    if IDENT_RE.match(query.leaf) is None:
+    if IDENT_RE.match(query.leaf) is None or not query.leaf.startswith("test"):
         return False
     fn_pat = re.compile(rf"^\s*(?:async\s+)?def\s+{re.escape(query.leaf)}\s*\(", re.MULTILINE)
     if fn_pat.search(text) is None:

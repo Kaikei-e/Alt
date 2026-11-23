@@ -1505,6 +1505,29 @@ def test_expires_horizon_and_same_diff_adr_update(checker: types.ModuleType) -> 
             rc == 0,
             f"rc={rc} out={out + err}",
         )
+        _check_auto_base_rev_fallback(checker, repo, base_rev)
+
+
+def _check_auto_base_rev_fallback(
+    checker: types.ModuleType,
+    repo: pathlib.Path,
+    base_rev: str,
+) -> None:
+    run_git(repo, "add", "docs/ADR/001050.md", "plecto/src/lib.rs")
+    run_git(repo, "commit", "-q", "-m", "second commit")
+    head_sha = run_git(repo, "rev-parse", "HEAD")
+    run_git(repo, "update-ref", "refs/remotes/origin/main", head_sha)
+    prev_env = os.environ.pop("LINT_BASE", None)
+    try:
+        auto_base = checker._resolve_auto_base_rev(repo)
+    finally:
+        if prev_env is not None:
+            os.environ["LINT_BASE"] = prev_env
+    check(
+        "CS-FP-1: _resolve_auto_base_rev falls back to HEAD~1 when HEAD == origin/main",
+        auto_base == base_rev,
+        f"expected={base_rev} got={auto_base}",
+    )
 
 
 def test_real_repository() -> None:

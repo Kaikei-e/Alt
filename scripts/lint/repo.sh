@@ -139,6 +139,15 @@ run_suppression_diff_summary() {
   python3 scripts/lint/suppression_diff_report.py --base "$base" --summary-file "$GITHUB_STEP_SUMMARY"
 }
 
+run_suppression_governance() {
+  local base
+  if ! base="$(resolve_suppression_diff_base)"; then
+    echo "ERROR: unable to resolve base commit for suppression governance" >&2
+    return 1
+  fi
+  python3 scripts/lint/check_suppressions.py --base "$base"
+}
+
 run_generated_code_governance() {
   local base
   if ! base="$(resolve_suppression_diff_base)"; then
@@ -157,7 +166,7 @@ run_step "workflow-safety-check" python3 .github/workflows/scripts/workflow-safe
 run_step "lint-run-tests" bash scripts/tests/test-lint-run.sh
 run_step "lint-canary-tests" python3 scripts/tests/test-lint-canary.py
 run_step "suppression-check-tests" python3 scripts/tests/test-check-suppressions.py
-run_step "suppression-governance" python3 scripts/lint/check_suppressions.py
+run_step "suppression-governance" run_suppression_governance
 run_step "suppression-ratchet-tests" python3 scripts/tests/test-check-ratchet.py
 run_step "suppression-ratchet" python3 scripts/lint/check_ratchet.py
 run_step "suppression-diff-tests" python3 scripts/tests/test-suppression-diff-report.py
