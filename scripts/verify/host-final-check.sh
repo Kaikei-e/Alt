@@ -106,6 +106,13 @@ if [ "${#targets[@]}" -eq 0 ]; then
   exit 2
 fi
 
+for target in "${targets[@]}"; do
+  if [ -z "$target" ] || [[ "$target" == -* ]] || [ "$target" = "all" ]; then
+    echo "error: invalid --target '${target}': must be a concrete lint target (not flag '-*' or 'all')" >&2
+    exit 2
+  fi
+done
+
 if [ ! -d "$repo_root" ]; then
   echo "error: repo root not found: $repo_root" >&2
   exit 2
@@ -133,13 +140,54 @@ if [ ! -f "$run_sh" ]; then
   exit 2
 fi
 
+if [ -n "$test_cmd" ]; then
+  if ! python3 -c '
+import pathlib, sys
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parent))
+import task_packet as mod
+cmd = sys.argv[2]
+if mod._has_background_ampersand(cmd):
+    sys.stderr.write("error: --test-cmd must run in foreground only (no & or nohup)\n")
+    sys.exit(2)
+bad = mod._match_forbidden_autofix(cmd)
+if bad is not None:
+    sys.stderr.write(f"error: --test-cmd contains forbidden GUARD-01 autofix ({bad})\n")
+    sys.exit(2)
+' "$task_packet_script" "$test_cmd"; then
+    exit 2
+  fi
+fi
+
+packet_policy=""
+if [ -n "$packet_path" ]; then
+  if [ ! -f "$packet_path" ]; then
+    echo "error: packet file not found: $packet_path" >&2
+    exit 2
+  fi
+  packet_policy="$(python3 -c '
+import pathlib, sys
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parent))
+import task_packet as mod
+doc = mod.load_document(pathlib.Path(sys.argv[2]))
+ep = doc.data.get("execution_policy")
+pol = ep.get("policy", "") if isinstance(ep, dict) else ""
+if pol in ("fix-existing", "block-new"):
+    sys.stdout.write(pol)
+' "$task_packet_script" "$packet_path" 2>/dev/null || true)"
+fi
+
 echo "==> [host-final-check] 1/5 worktree hygiene"
 python3 "$hygiene_script" --repo-root "$repo_root"
 
 echo "==> [host-final-check] 2/5 targeted lint"
 for target in "${targets[@]}"; do
-  echo "--> ./scripts/lint/run.sh ${target}"
-  (cd -- "$repo_root" && bash "$run_sh" "$target")
+  if [ -n "$packet_policy" ]; then
+    echo "--> ./scripts/lint/run.sh --policy ${packet_policy} ${target}"
+    (cd -- "$repo_root" && bash "$run_sh" --policy "$packet_policy" "$target")
+  else
+    echo "--> ./scripts/lint/run.sh ${target}"
+    (cd -- "$repo_root" && bash "$run_sh" "$target")
+  fi
 done
 
 if [ "$skip_repo_lint" -eq 0 ]; then

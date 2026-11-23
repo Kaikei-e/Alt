@@ -130,7 +130,7 @@
       "type": "object",
       "description": "LOOP-02: host measurement record proving the verification command ran within budget before dispatch.",
       "additionalProperties": false,
-      "required": ["duration_s", "exit_code", "at_commit"],
+      "required": ["duration_s", "exit_code", "at_commit", "command_sha256"],
       "properties": {
         "duration_s": {
           "type": "number",

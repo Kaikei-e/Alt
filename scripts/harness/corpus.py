@@ -1394,6 +1394,30 @@ def _task_packet_supports_verify_sequence(task_packet_py: pathlib.Path) -> bool:
     )
 
 
+def _safe_overlay_copy(tmp_repo: pathlib.Path, wt_dir: pathlib.Path, rel: str) -> str | None:
+    if not _is_normalized_repo_rel_path(rel):
+        return f"VERIFY-01 refused unsafe overlay path: {rel!r}"
+    repo_resolved = tmp_repo.resolve()
+    wt_resolved = wt_dir.resolve()
+    src = tmp_repo / rel
+    if src.is_symlink() or not src.is_file() or not src.resolve().is_relative_to(repo_resolved):
+        return f"VERIFY-01 refused non-regular or symlink source file: {rel!r}"
+
+    cur = wt_dir
+    for part in pathlib.PurePosixPath(rel).parts[:-1]:
+        cur = cur / part
+        if cur.is_symlink():
+            return f"VERIFY-01 refused symlink parent directory in worktree: {rel!r}"
+    raw_dest = wt_dir / rel
+    if raw_dest.is_symlink():
+        raw_dest.unlink()
+    raw_dest.parent.mkdir(parents=True, exist_ok=True)
+    if not raw_dest.parent.resolve().is_relative_to(wt_resolved):
+        return f"VERIFY-01 overlay destination escapes worktree: {rel!r}"
+    shutil.copy2(src, raw_dest)
+    return None
+
+
 def _run_verify01_baseline_on_base(
     git_bin: str,
     tmp_repo: pathlib.Path,
@@ -1413,9 +1437,9 @@ def _run_verify01_baseline_on_base(
             return CheckOutcome(exit_code=-1, output="", runner_error=err)
         try:
             for rel in c1_files:
-                dest = wt_dir / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(tmp_repo / rel, dest)
+                copy_err = _safe_overlay_copy(tmp_repo, wt_dir, rel)
+                if copy_err is not None:
+                    return CheckOutcome(exit_code=-1, output="", runner_error=copy_err)
             base_res, base_err = _exec_subprocess(
                 test_argv,
                 cwd=wt_dir,

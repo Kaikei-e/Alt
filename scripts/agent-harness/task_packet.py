@@ -22,6 +22,7 @@ import argparse
 import ast
 import hashlib
 import importlib.util
+import io
 import json
 import re
 import shutil
@@ -29,10 +30,11 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
 import unittest.mock
 from collections import Counter
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -63,7 +65,7 @@ DEFAULT_TEMPLATE_VERIFY_SHA = hashlib.sha256(
 ).hexdigest()
 SEQUENCE_TEST_FILE_RE = re.compile(
     r"(?:^|/)(?:"
-    r"(?:tests?|__tests__|e2e)/.+"
+    r"(?:tests?|__tests__|e2e|testdata)/.+"
     r"|[^/]+_test\.go"
     r"|test_[^/]+\.py|test-[^/]+\.py|[^/]+_test\.py"
     r"|[^/]*test[^/]*\.sh"
@@ -74,9 +76,9 @@ SEQUENCE_TEST_FILE_RE = re.compile(
     re.IGNORECASE,
 )
 ALLOWED_LINT_FIX_COMMENT_RE = re.compile(
-    r"(?:#\s*noqa\b|(?://|#|/\*)\s*#?nosec\b|//\s*nolint\b|"
+    r"(?:#\s*(?:ruff:\s*)?noqa\b|(?://|#|/\*)\s*#?nosec\b|//\s*nolint\b|"
     r"#!?\[\s*(?:allow|expect)\b|biome-ignore\b|deno-lint-ignore\b|"
-    r"\bADR-\d+|\bexpires\s*:|^#!)",
+    r"\bexpires\s*:|^#!)",
     re.IGNORECASE,
 )
 GO_FUNC_DECL_RE = re.compile(
@@ -89,11 +91,31 @@ TS_ARROW_DECL_RE = re.compile(
     r"\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=\n]+)?=\s*"
     r"(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=\n]+)?=>"
 )
-BRANCH_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
-MAX_BUDGET_SECONDS = 600
+TS_CLASS_DECL_RE = re.compile(
+    r"\b(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)[^{]*\{"
+)
+TS_METHOD_DECL_RE = re.compile(
+    r"(?:^|[{;,\n])\s*(?:(?:public|private|protected|static|readonly|override|async|get|set)\s+)*"
+    r"([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>\n]*>)?\s*\([^)]*\)\s*(?::[^{;=\n]+)?\{"
+)
+TS_CONTROL_KEYWORDS = frozenset(
+    {"if", "for", "while", "switch", "catch", "with", "return", "function", "class", "else", "try"}
+)
+SVELTE_SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.IGNORECASE | re.DOTALL)
+RUST_IMPL_DECL_RE = re.compile(r"\b(?:unsafe\s+)?impl(?:\s*<[^>]*>)?\s+([^{;]+?)\s*\{")
+RUST_PRE_FN_RE = re.compile(
+    r"(?:(?:pub(?:\s*\([^)]*\))?|default|const|async|unsafe|extern(?:\s+\"[^\"]*\")?)\s+)+$"
+)
+ALL_ZERO_SHA_RE = re.compile(r"^0+$")
 GIT_EXEC_MODE = "100755"
-
+GIT_SYMLINK_MODE = "120000"
+MAX_BUDGET_SECONDS = 600
+C_STYLE_COMMENT_EXTS = frozenset(
+    {".go", ".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".svelte"}
+)
+SHELL_COMMENT_EXTS = frozenset({".sh", ".bash", ".zsh"})
 HARNESS_DIR = Path(__file__).resolve().parent
+HARNESS_RUN_SCRIPT_PATH = HARNESS_DIR / "harness_run.py"
 REPO_ROOT_DEFAULT = HARNESS_DIR.parents[1]
 SCREENER_SCRIPT_PATH = REPO_ROOT_DEFAULT / "scripts" / "lint" / "behavior_screener.py"
 SCHEMA_PATH = HARNESS_DIR / "task_packet.schema.json"
@@ -1897,6 +1919,16 @@ def _validate_measured_execution(
             )
         )
 
+    at_commit = measured.get("at_commit")
+    if isinstance(at_commit, str) and ALL_ZERO_SHA_RE.match(at_commit):
+        issues.append(
+            ValidationIssue(
+                "PLACEHOLDER_MEASURED_COMMIT",
+                "$.execution_policy.measured.at_commit",
+                "measured.at_commit must be a real non-zero git commit SHA; run 'task_packet.py measure'",
+            )
+        )
+
     cmd_sha = measured.get("command_sha256")
     if isinstance(cmd_sha, str) and cmd_sha and isinstance(verify_cmd, str) and verify_cmd.strip():
         expected_sha = _command_sha256(verify_cmd)
@@ -2391,6 +2423,24 @@ def _load_behavior_screener() -> ModuleType:
     return mod
 
 
+def _load_harness_run() -> ModuleType:
+    cached = _SCREENER_MOD_CACHE.get("harness_run")
+    if cached is not None:
+        return cached
+    if not HARNESS_RUN_SCRIPT_PATH.is_file():
+        msg = f"harness_run script not found: {HARNESS_RUN_SCRIPT_PATH}"
+        raise DocumentParseError(msg)
+    spec = importlib.util.spec_from_file_location("alt_harness_run", HARNESS_RUN_SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        msg = f"unable to load harness_run module from {HARNESS_RUN_SCRIPT_PATH}"
+        raise DocumentParseError(msg)
+    mod = importlib.util.module_from_spec(spec)
+    with unittest.mock.patch.dict(sys.modules, {spec.name: mod}):
+        spec.loader.exec_module(mod)
+    _SCREENER_MOD_CACHE["harness_run"] = mod
+    return mod
+
+
 def _require_git_bin() -> str:
     git_bin = shutil.which("git")
     if git_bin is None:
@@ -2417,17 +2467,19 @@ def _current_head_sha(repo_root: Path) -> str:
 
 
 def _current_branch_sanitized(repo_root: Path) -> str:
-    if not (repo_root / ".git").exists():
-        return "detached"
-    git_bin = _require_git_bin()
-    res = _run_git_bytes(repo_root, git_bin, "rev-parse", "--abbrev-ref", "HEAD")
-    raw = (
-        res.stdout.decode("utf-8", errors="replace").strip() if res.returncode == 0 else "detached"
-    )
-    if not raw or raw == "HEAD":
-        return "detached"
-    sanitized = BRANCH_SANITIZE_RE.sub("_", raw).strip("_")
-    return sanitized or "detached"
+    hr = _load_harness_run()
+    raw_branch = hr.resolve_git_branch(repo_root)
+    return str(hr.sanitize_branch_name(raw_branch))
+
+
+def _yaml_scalar_str(val: object) -> str:
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if val is None:
+        return "null"
+    return json.dumps(str(val), ensure_ascii=False)
 
 
 def _format_measured_yaml_lines(indent: str, measured: dict[str, Any]) -> list[str]:
@@ -2443,7 +2495,60 @@ def _format_measured_yaml_lines(indent: str, measured: dict[str, Any]) -> list[s
     return lines
 
 
-def _update_yaml_frontmatter_measured(fm_lines: list[str], measured: dict[str, Any]) -> list[str]:
+def _format_execution_policy_yaml_lines(
+    ep_indent: int,
+    policy_data: dict[str, Any],
+    measured: dict[str, Any],
+) -> list[str]:
+    base = " " * ep_indent
+    child = " " * (ep_indent + 2)
+    lines = [f"{base}execution_policy:"]
+    for key, val in policy_data.items():
+        if key == "measured":
+            continue
+        lines.append(f"{child}{key}: {_yaml_scalar_str(val)}")
+    lines.extend(_format_measured_yaml_lines(child, measured))
+    return lines
+
+
+def _strip_measured_from_frontmatter(fm_lines: list[str]) -> list[str]:
+    ep_idx = next(
+        (i for i, line in enumerate(fm_lines) if line.lstrip(" ").startswith("execution_policy:")),
+        None,
+    )
+    if ep_idx is None:
+        return fm_lines
+    ep_indent = len(fm_lines[ep_idx]) - len(fm_lines[ep_idx].lstrip(" "))
+    block_end = ep_idx + 1
+    while block_end < len(fm_lines):
+        raw = fm_lines[block_end]
+        if raw.strip() and (len(raw) - len(raw.lstrip(" "))) <= ep_indent:
+            break
+        block_end += 1
+    cleaned: list[str] = []
+    idx = ep_idx + 1
+    while idx < block_end:
+        raw = fm_lines[idx]
+        stripped = raw.lstrip(" ")
+        cur_indent = len(raw) - len(stripped)
+        if stripped.startswith("measured:") and cur_indent > ep_indent:
+            idx += 1
+            while idx < block_end:
+                nxt = fm_lines[idx]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip(" "))) <= cur_indent:
+                    break
+                idx += 1
+            continue
+        cleaned.append(raw)
+        idx += 1
+    return [*fm_lines[: ep_idx + 1], *cleaned, *fm_lines[block_end:]]
+
+
+def _update_yaml_frontmatter_measured(
+    fm_lines: list[str],
+    measured: dict[str, Any],
+    policy_data: dict[str, Any],
+) -> list[str]:
     ep_idx = next(
         (i for i, line in enumerate(fm_lines) if line.lstrip(" ").startswith("execution_policy:")),
         None,
@@ -2452,14 +2557,20 @@ def _update_yaml_frontmatter_measured(fm_lines: list[str], measured: dict[str, A
         msg = "execution_policy block not found in YAML frontmatter"
         raise DocumentParseError(msg)
 
-    ep_indent = len(fm_lines[ep_idx]) - len(fm_lines[ep_idx].lstrip(" "))
+    ep_line = fm_lines[ep_idx]
+    ep_indent = len(ep_line) - len(ep_line.lstrip(" "))
+    ep_stripped = _strip_yaml_comment(ep_line.lstrip(" "))
+    colon_idx = _find_unquoted_colon(ep_stripped)
+    inline_val = ep_stripped[colon_idx + 1 :].strip() if colon_idx != -1 else ""
+    if inline_val:
+        expanded = _format_execution_policy_yaml_lines(ep_indent, policy_data, measured)
+        return [*fm_lines[:ep_idx], *expanded, *fm_lines[ep_idx + 1 :]]
+
     block_end = ep_idx + 1
     while block_end < len(fm_lines):
         raw = fm_lines[block_end]
-        if raw.strip():
-            cur_indent = len(raw) - len(raw.lstrip(" "))
-            if cur_indent <= ep_indent:
-                break
+        if raw.strip() and (len(raw) - len(raw.lstrip(" "))) <= ep_indent:
+            break
         block_end += 1
 
     child_indent = " " * (ep_indent + 2)
@@ -2497,7 +2608,10 @@ def _write_measured_to_packet(path: Path, doc: ParsedDocument, measured: dict[st
     lines = raw_text.splitlines()
     fm_lines, body_lines = _extract_frontmatter(lines)
     if fm_lines is not None and (set(parse_yaml_subset(fm_lines)) & STRUCTURED_PAYLOAD_KEYS):
-        updated_fm = _update_yaml_frontmatter_measured(fm_lines, measured)
+        policy_data = doc.data.get("execution_policy", {})
+        updated_fm = _update_yaml_frontmatter_measured(
+            fm_lines, measured, policy_data if isinstance(policy_data, dict) else {}
+        )
         rebuilt = ["---", *updated_fm, "---", *body_lines]
         path.write_text("\n".join(rebuilt) + "\n", encoding="utf-8")
         return
@@ -2506,7 +2620,7 @@ def _write_measured_to_packet(path: Path, doc: ParsedDocument, measured: dict[st
     replacement_json = json.dumps(doc.data, ensure_ascii=False, indent=2)
     updated = re.sub(
         r"```json\s*\n.*?\n```",
-        f"```json\n{replacement_json}\n```",
+        lambda _m: f"```json\n{replacement_json}\n```",
         raw_text,
         count=1,
         flags=re.DOTALL,
@@ -2610,10 +2724,27 @@ def _cmd_measure(args: argparse.Namespace) -> int:
 
 def _git_actual_modified_files(repo_root: Path, resolved_base: str) -> set[str]:
     git_bin = _require_git_bin()
-    diff_res = _run_git_bytes(repo_root, git_bin, "diff", "--name-only", "-z", resolved_base, "--")
+    diff_res = _run_git_bytes(
+        repo_root, git_bin, "diff", "--name-only", "--no-renames", "-z", resolved_base, "--"
+    )
     if diff_res.returncode != 0:
         err = diff_res.stderr.decode("utf-8", errors="replace").strip()
         msg = f"git diff failed against {resolved_base}: {err}"
+        raise DocumentParseError(msg)
+    cached_res = _run_git_bytes(
+        repo_root,
+        git_bin,
+        "diff",
+        "--cached",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        resolved_base,
+        "--",
+    )
+    if cached_res.returncode != 0:
+        err = cached_res.stderr.decode("utf-8", errors="replace").strip()
+        msg = f"git diff --cached failed against {resolved_base}: {err}"
         raise DocumentParseError(msg)
     untracked_res = _run_git_bytes(
         repo_root, git_bin, "ls-files", "--others", "--exclude-standard", "-z"
@@ -2624,7 +2755,7 @@ def _git_actual_modified_files(repo_root: Path, resolved_base: str) -> set[str]:
         raise DocumentParseError(msg)
 
     paths: set[str] = set()
-    for raw_stdout in (diff_res.stdout, untracked_res.stdout):
+    for raw_stdout in (diff_res.stdout, cached_res.stdout, untracked_res.stdout):
         for entry in raw_stdout.split(b"\x00"):
             if not entry:
                 continue
@@ -2697,13 +2828,98 @@ def _extract_python_func_bodies(source: str, rel: str) -> dict[str, str]:
     return funcs
 
 
-def _find_body_brace_after_params(clean: str, open_paren_idx: int, language: str) -> int | None:
+def _mask_span_preserve_newlines(segment: str) -> str:
+    return "".join("\n" if ch == "\n" else " " for ch in segment)
+
+
+def _scan_block_comment_end(src: str, start: int, *, nested: bool) -> int:
+    depth = 1
+    idx = start + 2
+    n = len(src)
+    while idx < n and depth > 0:
+        if nested and src[idx : idx + 2] == "/*":
+            depth += 1
+            idx += 2
+        elif src[idx : idx + 2] == "*/":
+            depth -= 1
+            idx += 2
+        else:
+            idx += 1
+    return idx
+
+
+def _mask_comments_and_strings(source: str, language: str) -> tuple[str, str]:
+    """Return same-length (masked_all, comments_only_masked) views of C-style source."""
     screener = _load_behavior_screener()
-    pos = screener._find_balanced_close(clean, open_paren_idx, language)
-    n = len(clean)
+    masked_all: list[str] = []
+    comments_masked: list[str] = []
+    n = len(source)
+    i = 0
+    rust_nested = language == "rust"
+    while i < n:
+        str_end = screener._scan_string_literal_end(source, i, language)
+        if str_end is not None:
+            seg = source[i:str_end]
+            masked_all.append(_mask_span_preserve_newlines(seg))
+            comments_masked.append(seg)
+            i = str_end
+            continue
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+        if ch == "/" and nxt == "/":
+            nl = source.find("\n", i + 2)
+            end = n if nl == -1 else nl
+            blank = " " * (end - i)
+            masked_all.append(blank)
+            comments_masked.append(blank)
+            i = end
+        elif ch == "/" and nxt == "*":
+            end = _scan_block_comment_end(source, i, nested=rust_nested)
+            blank = _mask_span_preserve_newlines(source[i:end])
+            masked_all.append(blank)
+            comments_masked.append(blank)
+            i = end
+        else:
+            masked_all.append(ch)
+            comments_masked.append(ch)
+            i += 1
+    return "".join(masked_all), "".join(comments_masked)
+
+
+def _find_masked_brace_close(masked: str, open_idx: int) -> int:
+    depth = 1
+    idx = open_idx + 1
+    n = len(masked)
+    while idx < n and depth > 0:
+        ch = masked[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        idx += 1
+    return idx
+
+
+def _find_masked_paren_close(masked: str, open_idx: int) -> int:
+    depth = 1
+    idx = open_idx + 1
+    n = len(masked)
+    while idx < n and depth > 0:
+        ch = masked[idx]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        idx += 1
+    return idx
+
+
+def _find_body_brace_after_params(masked: str, open_paren_idx: int, language: str) -> int | None:
+    pos = _find_masked_paren_close(masked, open_paren_idx)
+    n = len(masked)
     paren_depth = 0
     while pos < n:
-        ch = clean[pos]
+        ch = masked[pos]
         if ch == "(":
             paren_depth += 1
         elif ch == ")":
@@ -2711,102 +2927,172 @@ def _find_body_brace_after_params(clean: str, open_paren_idx: int, language: str
         elif paren_depth == 0:
             if ch == "{":
                 return pos
-            if ch in (";", "\n") and language == "go" and pos + 1 < n and clean[pos] == "\n":
-                # In Go, func signature without body ends at newline if interface/extern
-                nxt_line = clean[pos + 1 :].lstrip(" \t")
+            if ch == ";" and language != "go":
+                return None
+            if ch == "\n" and language == "go" and pos + 1 < n:
+                nxt_line = masked[pos + 1 :].lstrip(" \t")
                 if nxt_line.startswith(("func ", "type ", "var ", "const ", "package ", "import ")):
                     return None
         pos += 1
     return None
 
 
+def _normalize_go_receiver_type(raw_recv: str) -> str:
+    tokens = raw_recv.strip().split()
+    if not tokens:
+        return ""
+    type_tok = tokens[-1]
+    while type_tok.startswith("(") and type_tok.endswith(")"):
+        type_tok = type_tok[1:-1].strip()
+    type_tok = type_tok.lstrip("*").strip()
+    while type_tok.startswith("(") and type_tok.endswith(")"):
+        type_tok = type_tok[1:-1].strip()
+    return type_tok
+
+
 def _extract_go_func_bodies(source: str) -> dict[str, str]:
     if not source.strip():
         return {}
-    screener = _load_behavior_screener()
-    clean = screener._strip_c_comments_keep_strings(source, "go")
+    masked, keep_str = _mask_comments_and_strings(source, "go")
     funcs: dict[str, str] = {}
     counts: Counter[str] = Counter()
     pos = 0
-    n = len(clean)
+    n = len(masked)
     while pos < n:
-        match = GO_FUNC_DECL_RE.search(clean, pos)
+        match = GO_FUNC_DECL_RE.search(masked, pos)
         if match is None:
             break
-        prefix_depth = clean[: match.start()].count("{") - clean[: match.start()].count("}")
+        prefix_depth = masked[: match.start()].count("{") - masked[: match.start()].count("}")
         if prefix_depth != 0:
             pos = match.end()
             continue
-        open_paren = match.end() - 1
-        body_open = _find_body_brace_after_params(clean, open_paren, "go")
+        body_open = _find_body_brace_after_params(masked, match.end() - 1, "go")
         if body_open is None:
             pos = match.end()
             continue
-        body_close = screener._find_balanced_close(clean, body_open, "go")
-        recv = " ".join((match.group(1) or "").split())
+        body_close = _find_masked_brace_close(masked, body_open)
+        recv_type = _normalize_go_receiver_type(match.group(1) or "")
         name = match.group(2)
-        base = f"({recv}).{name}" if recv else name
+        base = f"({recv_type}).{name}" if recv_type else name
         counts[base] += 1
         key = f"{base}#{counts[base]}" if counts[base] > 1 else base
-        normalized = " ".join(clean[match.start() : body_close].split())
+        normalized = " ".join(keep_str[match.start() : body_close].split())
         funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
         pos = max(body_close, match.end())
     return funcs
+
+
+def _extract_rust_impl_ranges(masked: str) -> list[tuple[int, int, str]]:
+    ranges: list[tuple[int, int, str]] = []
+    for match in RUST_IMPL_DECL_RE.finditer(masked):
+        open_idx = match.end() - 1
+        close_idx = _find_masked_brace_close(masked, open_idx)
+        target = " ".join(match.group(1).split())
+        if " where " in target:
+            target = target.split(" where ", 1)[0].strip()
+        ranges.append((open_idx, close_idx, target))
+    return ranges
+
+
+def _rust_fn_decl_start(masked: str, fn_start: int) -> int:
+    line_start = masked.rfind("\n", 0, fn_start) + 1
+    prefix = masked[line_start:fn_start]
+    pre_match = RUST_PRE_FN_RE.search(prefix)
+    return line_start + pre_match.start() if pre_match is not None else fn_start
 
 
 def _extract_rust_func_bodies(source: str) -> dict[str, str]:
     if not source.strip():
         return {}
     screener = _load_behavior_screener()
-    clean = screener._strip_c_comments_keep_strings(source, "rust")
+    masked, keep_str = _mask_comments_and_strings(source, "rust")
+    impl_ranges = _extract_rust_impl_ranges(masked)
     funcs: dict[str, str] = {}
     counts: Counter[str] = Counter()
-    for match in screener.RUST_FN_DECL_RE.finditer(clean):
-        body_open = screener._find_rust_fn_body_open(clean, match.end())
+    for match in screener.RUST_FN_DECL_RE.finditer(masked):
+        body_open = screener._find_rust_fn_body_open(masked, match.end())
         if body_open is None:
             continue
-        body_close = screener._find_rust_brace_close(clean, body_open)
-        base = match.group(1)
+        body_close = _find_masked_brace_close(masked, body_open)
+        fn_name = match.group(1)
+        enclosing = [target for start, end, target in impl_ranges if start < match.start() < end]
+        base = f"{enclosing[-1]}::{fn_name}" if enclosing else fn_name
         counts[base] += 1
         key = f"{base}#{counts[base]}" if counts[base] > 1 else base
-        normalized = " ".join(clean[match.start() : body_close].split())
+        decl_start = _rust_fn_decl_start(masked, match.start())
+        normalized = " ".join(keep_str[decl_start:body_close].split())
         funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return funcs
 
 
-def _extract_ts_func_bodies(source: str) -> dict[str, str]:
-    if not source.strip():
+def _extract_svelte_scripts(source: str) -> str:
+    blocks = [match.group(1) for match in SVELTE_SCRIPT_RE.finditer(source)]
+    return "\n".join(blocks)
+
+
+def _record_ts_func(
+    funcs: dict[str, str],
+    counts: Counter[str],
+    base: str,
+    span_text: str,
+) -> None:
+    counts[base] += 1
+    key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+    normalized = " ".join(span_text.split())
+    funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _extract_ts_func_bodies(source: str, *, is_svelte: bool = False) -> dict[str, str]:
+    effective = _extract_svelte_scripts(source) if is_svelte else source
+    if not effective.strip():
         return {}
-    screener = _load_behavior_screener()
-    clean = screener._strip_c_comments_keep_strings(source, "typescript")
+    masked, keep_str = _mask_comments_and_strings(effective, "typescript")
     funcs: dict[str, str] = {}
     counts: Counter[str] = Counter()
-    for match in TS_FUNC_DECL_RE.finditer(clean):
-        body_open = _find_body_brace_after_params(clean, match.end() - 1, "typescript")
+    seen_spans: set[tuple[int, int]] = set()
+
+    class_ranges: list[tuple[int, int, str]] = []
+    for cls_m in TS_CLASS_DECL_RE.finditer(masked):
+        c_open = cls_m.end() - 1
+        c_close = _find_masked_brace_close(masked, c_open)
+        class_ranges.append((c_open, c_close, cls_m.group(1)))
+
+    for match in TS_FUNC_DECL_RE.finditer(masked):
+        body_open = _find_body_brace_after_params(masked, match.end() - 1, "typescript")
         if body_open is None:
             continue
-        body_close = screener._find_balanced_close(clean, body_open, "typescript")
-        base = match.group(1)
-        counts[base] += 1
-        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
-        normalized = " ".join(clean[match.start() : body_close].split())
-        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    for match in TS_ARROW_DECL_RE.finditer(clean):
-        base = match.group(1)
+        body_close = _find_masked_brace_close(masked, body_open)
+        seen_spans.add((body_open, body_close))
+        _record_ts_func(funcs, counts, match.group(1), keep_str[match.start() : body_close])
+
+    for match in TS_ARROW_DECL_RE.finditer(masked):
         tail_pos = match.end()
-        while tail_pos < len(clean) and clean[tail_pos].isspace():
+        while tail_pos < len(masked) and masked[tail_pos].isspace():
             tail_pos += 1
-        if tail_pos < len(clean) and clean[tail_pos] == "{":
-            body_close = screener._find_balanced_close(clean, tail_pos, "typescript")
+        if tail_pos < len(masked) and masked[tail_pos] == "{":
+            body_close = _find_masked_brace_close(masked, tail_pos)
+            seen_spans.add((tail_pos, body_close))
         else:
-            semi = clean.find(";", tail_pos)
-            nl = clean.find("\n", tail_pos)
+            semi = masked.find(";", tail_pos)
+            nl = masked.find("\n", tail_pos)
             ends = [idx for idx in (semi, nl) if idx != -1]
-            body_close = min(ends) if ends else len(clean)
-        counts[base] += 1
-        key = f"{base}#{counts[base]}" if counts[base] > 1 else base
-        normalized = " ".join(clean[match.start() : body_close].split())
-        funcs[key] = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+            body_close = min(ends) if ends else len(masked)
+        _record_ts_func(funcs, counts, match.group(1), keep_str[match.start() : body_close])
+
+    for match in TS_METHOD_DECL_RE.finditer(masked):
+        name = match.group(1)
+        if name in TS_CONTROL_KEYWORDS:
+            continue
+        body_open = match.end() - 1
+        body_close = _find_masked_brace_close(masked, body_open)
+        if (body_open, body_close) in seen_spans:
+            continue
+        enclosing_cls = [
+            cname for c_open, c_close, cname in class_ranges if c_open < match.start() < c_close
+        ]
+        base = f"{enclosing_cls[-1]}.{name}" if enclosing_cls else name
+        seen_spans.add((body_open, body_close))
+        _record_ts_func(funcs, counts, base, keep_str[match.start() : body_close])
     return funcs
 
 
@@ -2823,8 +3109,9 @@ def _count_modified_functions_in_file(rel: str, before_text: str, after_text: st
         b_map = _extract_rust_func_bodies(before_text)
         a_map = _extract_rust_func_bodies(after_text)
     elif lang == "typescript":
-        b_map = _extract_ts_func_bodies(before_text)
-        a_map = _extract_ts_func_bodies(after_text)
+        is_svelte = rel.lower().endswith(".svelte")
+        b_map = _extract_ts_func_bodies(before_text, is_svelte=is_svelte)
+        a_map = _extract_ts_func_bodies(after_text, is_svelte=is_svelte)
     else:
         return 0
 
@@ -2989,12 +3276,30 @@ class _VerifyRerunContext:
     resolved_base: str
 
 
+def _safe_evidence_path(runs_dir: Path, branch_dir: str, packet_id: str) -> Path | None:
+    if not PACKET_ID_RE.match(packet_id):
+        return None
+    runs_resolved = runs_dir.resolve()
+    raw_dir = runs_dir / branch_dir / "verify"
+    raw_path = raw_dir / f"{packet_id}.json"
+    cur = runs_dir
+    for part in (branch_dir, "verify", f"{packet_id}.json"):
+        cur = cur / part
+        if cur.is_symlink():
+            return None
+    if not raw_path.resolve().is_relative_to(runs_resolved):
+        return None
+    return raw_path
+
+
 def _verify_handoff_host_rerun(
     handoff: dict[str, Any],
     packet: dict[str, Any],
     ctx: _VerifyRerunContext,
     issues: list[ValidationIssue],
 ) -> None:
+    if any(item.code.startswith("PACKET_") for item in issues):
+        return
     policy = packet.get("execution_policy")
     if not isinstance(policy, dict):
         return
@@ -3004,6 +3309,29 @@ def _verify_handoff_host_rerun(
     if _match_forbidden_autofix(verify_cmd) or _has_background_ampersand(verify_cmd):
         return
 
+    raw_packet_id = packet.get("packet_id") or handoff.get("packet_id")
+    if not isinstance(raw_packet_id, str) or not PACKET_ID_RE.match(raw_packet_id):
+        issues.append(
+            ValidationIssue(
+                "INVALID_PACKET_ID",
+                "$.packet_id",
+                f"refusing to write rerun evidence for invalid packet_id {raw_packet_id!r}",
+            )
+        )
+        return
+
+    branch_dir = _current_branch_sanitized(ctx.repo_root)
+    evidence_path = _safe_evidence_path(ctx.runs_dir, branch_dir, raw_packet_id)
+    if evidence_path is None:
+        issues.append(
+            ValidationIssue(
+                "UNSAFE_EVIDENCE_PATH",
+                "$.packet_id",
+                f"evidence path for packet_id={raw_packet_id!r} escapes runs_dir or hits symlink",
+            )
+        )
+        return
+
     budget = _resolve_command_budget(policy)
     host_rc, duration_s, out_bytes, err_bytes = _run_bash_command(
         verify_cmd,
@@ -3011,12 +3339,14 @@ def _verify_handoff_host_rerun(
         timeout=budget + MEASURE_TIMEOUT_SLACK_S,
     )
     output_sha = hashlib.sha256(out_bytes + b"\n" + err_bytes).hexdigest()
-    packet_id = str(packet.get("packet_id") or handoff.get("packet_id") or "unknown")
-    branch_dir = _current_branch_sanitized(ctx.repo_root)
-    evidence_path = ctx.runs_dir / branch_dir / "verify" / f"{packet_id}.json"
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    if evidence_path.is_symlink() or not evidence_path.resolve().is_relative_to(
+        ctx.runs_dir.resolve()
+    ):
+        msg = f"evidence path escapes runs_dir: {evidence_path}"
+        raise DocumentParseError(msg)
     evidence_payload = {
-        "packet_id": packet_id,
+        "packet_id": raw_packet_id,
         "command": verify_cmd,
         "exit_code": host_rc,
         "duration_s": duration_s,
@@ -3050,19 +3380,91 @@ def _verify_handoff_host_rerun(
         )
 
 
-def _added_lines_for_file(repo_root: Path, resolved_base: str, rel: str) -> list[str]:
-    git_bin = _require_git_bin()
-    res = _run_git_bytes(repo_root, git_bin, "diff", "-U0", resolved_base, "--", rel)
-    if res.returncode == 0 and res.stdout:
-        text = res.stdout.decode("utf-8", errors="replace")
-        return [
-            line[1:]
-            for line in text.splitlines()
-            if line.startswith("+") and not line.startswith("+++")
-        ]
-    if not _git_file_text_at_rev(repo_root, resolved_base, rel):
-        return _read_worktree_text(repo_root, rel).splitlines()
-    return []
+def _extract_python_comments(source: str) -> Counter[str]:
+    if not source.strip():
+        return Counter()
+    counts: Counter[str] = Counter()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT:
+                text = tok.string.strip()
+                if text:
+                    counts[text] += 1
+    except (tokenize.TokenError, IndentationError):
+        return Counter()
+    return counts
+
+
+def _extract_c_style_comments(source: str, language: str) -> Counter[str]:
+    if not source.strip():
+        return Counter()
+    screener = _load_behavior_screener()
+    counts: Counter[str] = Counter()
+    n = len(source)
+    i = 0
+    rust_nested = language == "rust"
+    while i < n:
+        str_end = screener._scan_string_literal_end(source, i, language)
+        if str_end is not None:
+            i = str_end
+            continue
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+        if ch == "/" and nxt == "/":
+            nl = source.find("\n", i + 2)
+            end = n if nl == -1 else nl
+            text = source[i:end].strip()
+            if text:
+                counts[text] += 1
+            i = end
+        elif ch == "/" and nxt == "*":
+            end = _scan_block_comment_end(source, i, nested=rust_nested)
+            text = source[i:end].strip()
+            if text:
+                counts[text] += 1
+            i = end
+        else:
+            i += 1
+    return counts
+
+
+def _extract_shell_comments(source: str) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for line in source.splitlines():
+        in_quote: str | None = None
+        escaped = False
+        for idx, ch in enumerate(line):
+            if escaped:
+                escaped = False
+                continue
+            if in_quote == '"' and ch == "\\":
+                escaped = True
+                continue
+            if in_quote is not None:
+                if ch == in_quote:
+                    in_quote = None
+                continue
+            if ch in ('"', "'"):
+                in_quote = ch
+            elif ch == "#" and (idx == 0 or line[idx - 1].isspace()):
+                text = line[idx:].strip()
+                if text:
+                    counts[text] += 1
+                break
+    return counts
+
+
+def _extract_code_comments(rel: str, source: str) -> Counter[str]:
+    suffix = Path(rel).suffix.lower()
+    if suffix == ".py":
+        return _extract_python_comments(source)
+    if suffix in C_STYLE_COMMENT_EXTS:
+        effective = _extract_svelte_scripts(source) if suffix == ".svelte" else source
+        lang = "go" if suffix == ".go" else ("rust" if suffix == ".rs" else "typescript")
+        return _extract_c_style_comments(effective, lang)
+    if suffix in SHELL_COMMENT_EXTS:
+        return _extract_shell_comments(source)
+    return Counter()
 
 
 def _verify_handoff_lint_fix_extras(
@@ -3078,17 +3480,19 @@ def _verify_handoff_lint_fix_extras(
     for rel in sorted(diff_ctx.actual_files):
         if SEQUENCE_TEST_FILE_RE.search(rel) is not None:
             continue
-        for added in _added_lines_for_file(diff_ctx.repo_root, diff_ctx.resolved_base, rel):
-            stripped = added.strip()
-            if not stripped.startswith(("//", "#", "/*")):
-                continue
-            if ALLOWED_LINT_FIX_COMMENT_RE.search(stripped) is not None:
+        before_text = _git_file_text_at_rev(diff_ctx.repo_root, diff_ctx.resolved_base, rel)
+        after_text = _read_worktree_text(diff_ctx.repo_root, rel)
+        added_comments = _extract_code_comments(rel, after_text) - _extract_code_comments(
+            rel, before_text
+        )
+        for comment_text in sorted(added_comments):
+            if ALLOWED_LINT_FIX_COMMENT_RE.search(comment_text) is not None:
                 continue
             issues.append(
                 ValidationIssue(
                     "UNREQUESTED_COMMENT_ADDED",
                     f"diff:{rel}",
-                    f"lint-fix task added unrequested comment line: {stripped[:80]!r}",
+                    f"lint-fix task added unrequested comment: {comment_text[:80]!r}",
                 )
             )
             break
@@ -3195,6 +3599,22 @@ def _cmd_verify_handoff(args: argparse.Namespace) -> int:
             screener_candidates=screener_candidates,
             repo_root=repo_root,
         )
+        allow_generated = (
+            isinstance(packet_doc.data.get("scope"), dict)
+            and packet_doc.data["scope"].get("allow_generated_code_edits") is True
+        )
+        base_gen_issues: list[ValidationIssue] = []
+        _validate_generated_code_edits(
+            handoff_doc.data,
+            repo_root=repo_root,
+            allow_generated=allow_generated,
+            issues=base_gen_issues,
+            base_commit=resolved_base,
+        )
+        existing_gen_paths = {
+            item.path for item in issues if item.code == "GENERATED_CODE_MODIFIED"
+        }
+        issues.extend(item for item in base_gen_issues if item.path not in existing_gen_paths)
         actual_files = _verify_handoff_actual_files(
             handoff_doc.data, packet_doc.data, repo_root, resolved_base, issues
         )
@@ -3229,42 +3649,67 @@ def _cmd_verify_handoff(args: argparse.Namespace) -> int:
     )
 
 
-def _git_commit_files(repo_root: Path, git_bin: str, rev: str) -> list[str]:
+def _git_commit_files_with_status(repo_root: Path, git_bin: str, rev: str) -> list[tuple[str, str]]:
     res = _run_git_bytes(
-        repo_root, git_bin, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "-z", rev
+        repo_root,
+        git_bin,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-status",
+        "--no-renames",
+        "-r",
+        "--root",
+        "-z",
+        rev,
     )
     if res.returncode != 0:
         err = res.stderr.decode("utf-8", errors="replace").strip()
         msg = f"git diff-tree failed for {rev}: {err}"
         raise DocumentParseError(msg)
-    return [
-        _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
-        for entry in res.stdout.split(b"\x00")
-        if entry
-    ]
+    tokens = [tok.decode("utf-8", errors="surrogateescape") for tok in res.stdout.split(b"\x00")]
+    entries: list[tuple[str, str]] = []
+    idx = 0
+    while idx + 1 < len(tokens):
+        status = tokens[idx]
+        if not status:
+            idx += 1
+            continue
+        rel = _normalize_repo_rel_path(tokens[idx + 1])
+        if rel:
+            entries.append((status, rel))
+        idx += 2
+    return entries
+
+
+def _git_commit_files(repo_root: Path, git_bin: str, rev: str) -> list[str]:
+    return [rel for _, rel in _git_commit_files_with_status(repo_root, git_bin, rev)]
 
 
 def _git_dirty_files(repo_root: Path, git_bin: str) -> set[str]:
     dirty: set[str] = set()
     for diff_args in (
-        ("diff", "--name-only", "-z", "HEAD", "--"),
-        ("diff", "--cached", "--name-only", "-z", "--"),
+        ("diff", "--name-only", "--no-renames", "-z", "HEAD", "--"),
+        ("diff", "--cached", "--name-only", "--no-renames", "-z", "--"),
+        ("ls-files", "--others", "--exclude-standard", "-z"),
     ):
         res = _run_git_bytes(repo_root, git_bin, *diff_args)
         if res.returncode == 0:
             for entry in res.stdout.split(b"\x00"):
-                if entry:
-                    dirty.add(
-                        _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
-                    )
+                if not entry:
+                    continue
+                rel = _normalize_repo_rel_path(entry.decode("utf-8", errors="surrogateescape"))
+                if not rel or rel == ".harness" or rel.startswith(HARNESS_STATE_PREFIX):
+                    continue
+                dirty.add(rel)
     return dirty
 
 
-def _git_blob_is_executable(repo_root: Path, git_bin: str, rev: str, rel: str) -> bool:
+def _git_blob_mode(repo_root: Path, git_bin: str, rev: str, rel: str) -> str:
     res = _run_git_bytes(repo_root, git_bin, "ls-tree", rev, "--", rel)
     if res.returncode != 0:
-        return False
-    return res.stdout.decode("utf-8", errors="replace").startswith(f"{GIT_EXEC_MODE} ")
+        return ""
+    line = res.stdout.decode("utf-8", errors="replace").strip()
+    return line.split(" ", 1)[0] if line else ""
 
 
 def _overlay_commit_files(
@@ -3276,19 +3721,34 @@ def _overlay_commit_files(
 ) -> None:
     wt_resolved = wt_dir.resolve()
     for rel in files:
-        dest = (wt_dir / rel).resolve()
-        if not dest.is_relative_to(wt_resolved):
+        if not rel or rel.startswith("/") or "\\" in rel or ".." in PurePosixPath(rel).parts:
+            msg = f"refusing to overlay unsafe path: {rel!r}"
+            raise DocumentParseError(msg)
+        cur = wt_dir
+        for part in PurePosixPath(rel).parts[:-1]:
+            cur = cur / part
+            if cur.is_symlink():
+                msg = f"refusing to overlay through symlink parent directory: {rel!r}"
+                raise DocumentParseError(msg)
+        raw_dest = wt_dir / rel
+        if raw_dest.is_symlink():
+            raw_dest.unlink()
+        raw_dest.parent.mkdir(parents=True, exist_ok=True)
+        if not raw_dest.parent.resolve().is_relative_to(wt_resolved):
             msg = f"refusing to overlay path outside worktree: {rel}"
+            raise DocumentParseError(msg)
+        mode = _git_blob_mode(repo_root, git_bin, rev, rel)
+        if mode == GIT_SYMLINK_MODE:
+            msg = f"refusing to overlay symlink from commit {rev[:12]}: {rel}"
             raise DocumentParseError(msg)
         show_res = _run_git_bytes(repo_root, git_bin, "show", "--end-of-options", f"{rev}:{rel}")
         if show_res.returncode != 0:
-            if dest.exists():
-                dest.unlink()
+            if raw_dest.exists():
+                raw_dest.unlink()
             continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(show_res.stdout)
-        if _git_blob_is_executable(repo_root, git_bin, rev, rel):
-            dest.chmod(0o755)
+        raw_dest.write_bytes(show_res.stdout)
+        if mode == GIT_EXEC_MODE:
+            raw_dest.chmod(0o755)
 
 
 def _run_test_in_detached_worktree(
@@ -3344,14 +3804,87 @@ def _resolve_sequence_mode(args: argparse.Namespace) -> tuple[bool, str | None]:
     return True, None
 
 
+def _check_c1_integrity(
+    repo_root: Path,
+    git_bin: str,
+    base_sha: str,
+    c1_rev: str,
+    issues: list[ValidationIssue],
+) -> list[str]:
+    c1_entries = _git_commit_files_with_status(repo_root, git_bin, c1_rev)
+    c1_files = [rel for _, rel in c1_entries]
+    non_test_c1 = [rel for rel in c1_files if SEQUENCE_TEST_FILE_RE.search(rel) is None]
+    if not c1_files or non_test_c1:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY",
+                f"commit:{c1_rev[:12]}",
+                f"first commit {c1_rev[:12]} must modify only test files "
+                f"(files={c1_files!r}, non_test={non_test_c1!r})",
+            )
+        )
+        return c1_files
+
+    deleted_c1 = [rel for status, rel in c1_entries if status == "D"]
+    if deleted_c1:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_FIRST_COMMIT_DELETED_TEST",
+                f"commit:{c1_rev[:12]}",
+                f"first commit {c1_rev[:12]} deleted test file(s): {deleted_c1!r}",
+            )
+        )
+    symlink_c1 = [
+        rel
+        for rel in c1_files
+        if _git_blob_mode(repo_root, git_bin, c1_rev, rel) == GIT_SYMLINK_MODE
+    ]
+    if symlink_c1:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_FIRST_COMMIT_SYMLINK",
+                f"commit:{c1_rev[:12]}",
+                f"first commit {c1_rev[:12]} introduced symlink(s): {symlink_c1!r}",
+            )
+        )
+    screener = _load_behavior_screener()
+    for status, rel in c1_entries:
+        if status != "M" or _git_blob_mode(repo_root, git_bin, base_sha, rel) == GIT_SYMLINK_MODE:
+            continue
+        lang = screener.infer_language(rel)
+        if lang is None:
+            continue
+        before_text = _git_file_text_at_rev(repo_root, base_sha, rel)
+        after_text = _git_file_text_at_rev(repo_root, c1_rev, rel)
+        cands = screener.screen_test_expectations(before_text, after_text, rel, lang)
+        issues.extend(
+            ValidationIssue(
+                "SEQUENCE_FIRST_COMMIT_WEAKENED_TEST",
+                f"commit:{c1_rev[:12]}",
+                f"first commit {c1_rev[:12]} weakened existing test ({cand.kind}) in '{cand.file}'",
+            )
+            for cand in cands
+        )
+    return c1_files
+
+
 def _check_sequence_commits(
     repo_root: Path,
     git_bin: str,
     base_sha: str,
-    *,
-    behavior_preserving: bool,
 ) -> tuple[list[str], list[str], list[ValidationIssue]]:
     issues: list[ValidationIssue] = []
+    dirty_all = sorted(_git_dirty_files(repo_root, git_bin))
+    if dirty_all:
+        issues.append(
+            ValidationIssue(
+                "SEQUENCE_DIRTY_WORKTREE",
+                "worktree",
+                f"repo_root has uncommitted or untracked changes: {dirty_all!r}",
+            )
+        )
+        return [], [], issues
+
     rev_res = _run_git_bytes(
         repo_root, git_bin, "rev-list", "--reverse", "--no-merges", f"{base_sha}..HEAD"
     )
@@ -3375,39 +3908,19 @@ def _check_sequence_commits(
         )
         return commits, [], issues
 
-    c1_files = _git_commit_files(repo_root, git_bin, commits[0])
-    non_test_c1 = [rel for rel in c1_files if SEQUENCE_TEST_FILE_RE.search(rel) is None]
-    if not c1_files or non_test_c1:
-        issues.append(
-            ValidationIssue(
-                "SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY",
-                f"commit:{commits[0][:12]}",
-                f"first commit {commits[0][:12]} must modify only test files "
-                f"(files={c1_files!r}, non_test={non_test_c1!r})",
-            )
-        )
+    c1_files = _check_c1_integrity(repo_root, git_bin, base_sha, commits[0], issues)
+    if issues:
         return commits, c1_files, issues
 
-    if behavior_preserving:
-        c1_set = set(c1_files)
-        for commit in commits[1:]:
-            mutated = sorted(c1_set & set(_git_commit_files(repo_root, git_bin, commit)))
-            if mutated:
-                issues.append(
-                    ValidationIssue(
-                        "SEQUENCE_TEST_MUTATED_IN_IMPL",
-                        f"commit:{commit[:12]}",
-                        f"behavior-preserving implementation commit {commit[:12]} mutated "
-                        f"commit 1 test file(s): {mutated!r}",
-                    )
-                )
-        dirty_mutated = sorted(c1_set & _git_dirty_files(repo_root, git_bin))
-        if dirty_mutated:
+    c1_set = set(c1_files)
+    for commit in commits[1:]:
+        mutated = sorted(c1_set & set(_git_commit_files(repo_root, git_bin, commit)))
+        if mutated:
             issues.append(
                 ValidationIssue(
                     "SEQUENCE_TEST_MUTATED_IN_IMPL",
-                    "worktree",
-                    f"dirty worktree mutated commit 1 test file(s): {dirty_mutated!r}",
+                    f"commit:{commit[:12]}",
+                    f"implementation commit {commit[:12]} mutated commit 1 test file(s): {mutated!r}",
                 )
             )
     return commits, c1_files, issues
@@ -3441,6 +3954,23 @@ def _cmd_verify_sequence(args: argparse.Namespace) -> int:
         sys.stderr.write(f"error: {exc}\n")
         return EXIT_USAGE
 
+    cmd_issues: list[ValidationIssue] = []
+    _check_verification_command(
+        args.test_command,
+        json_path="$.test_command",
+        expected_targets=[],
+        forbid_repo_wide=False,
+        issues=cmd_issues,
+    )
+    if cmd_issues:
+        return _emit_result(
+            kind="verify-sequence",
+            target_path=repo_root,
+            packet_id=packet_id,
+            issues=cmd_issues,
+            output_format=args.output_format,
+        )
+
     if base_sha is None or head_sha is None:
         return _emit_result(
             kind="verify-sequence",
@@ -3457,9 +3987,7 @@ def _cmd_verify_sequence(args: argparse.Namespace) -> int:
         )
 
     try:
-        commits, c1_files, issues = _check_sequence_commits(
-            repo_root, git_bin, base_sha, behavior_preserving=behavior_preserving
-        )
+        commits, c1_files, issues = _check_sequence_commits(repo_root, git_bin, base_sha)
         if not issues:
             base_rc, base_snippet = _run_test_in_detached_worktree(
                 repo_root,
@@ -3551,10 +4079,18 @@ def _cmd_render_template(args: argparse.Namespace) -> int:
         new_verify_cmd = f"./scripts/lint/run.sh {target}"
         rendered = rendered.replace(f'target: "{DEFAULT_TARGET}"', f'target: "{target}"')
         rendered = rendered.replace(DEFAULT_TEMPLATE_VERIFY_CMD, new_verify_cmd)
-        rendered = rendered.replace(DEFAULT_TEMPLATE_VERIFY_SHA, _command_sha256(new_verify_cmd))
+
+    if args.kind == "packet":
+        lines = rendered.splitlines()
+        fm_lines, body_lines = _extract_frontmatter(lines)
+        if fm_lines is not None:
+            stripped_fm = _strip_measured_from_frontmatter(fm_lines)
+            rendered = "\n".join(["---", *stripped_fm, "---", *body_lines]) + "\n"
 
     if args.output_format == "json":
         doc = parse_document_text(rendered)
+        if args.kind == "packet" and isinstance(doc.data.get("execution_policy"), dict):
+            doc.data["execution_policy"].pop("measured", None)
         sys.stdout.write(json.dumps(doc.data, ensure_ascii=False, indent=2) + "\n")
         return EXIT_OK
 

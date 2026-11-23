@@ -74,7 +74,19 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return _run_proc([sys.executable, str(SCRIPT_PATH), *args])
 
 
+def _cmd_sha(cmd: str) -> str:
+    return hashlib.sha256(cmd.strip().encode("utf-8")).hexdigest()
+
+
+def _set_verify_cmd(pkt: dict[str, Any], cmd: str) -> None:
+    pkt["execution_policy"]["verification_command"] = cmd
+    measured = pkt["execution_policy"].get("measured")
+    if isinstance(measured, dict):
+        measured["command_sha256"] = _cmd_sha(cmd)
+
+
 def base_packet() -> dict[str, Any]:
+    verify_cmd = "./scripts/lint/run.sh scripts"
     return {
         "packet_version": "1.0",
         "packet_id": "SPEC-04-SAMPLE",
@@ -94,12 +106,13 @@ def base_packet() -> dict[str, Any]:
             "foreground_only": True,
             "forbid_repo_wide_test_build": True,
             "forbid_bulk_autofix": True,
-            "verification_command": "./scripts/lint/run.sh scripts",
+            "verification_command": verify_cmd,
             "max_command_budget_s": 180,
             "measured": {
                 "duration_s": 1.25,
                 "exit_code": 0,
                 "at_commit": "0123456",
+                "command_sha256": _cmd_sha(verify_cmd),
             },
         },
         "handoff_requirements": {
@@ -173,6 +186,7 @@ def valid_packet_markdown(extra_body: str = "") -> str:
         "    duration_s: 1.5\n"
         "    exit_code: 0\n"
         '    at_commit: "0123456"\n'
+        f'    command_sha256: "{_cmd_sha("./scripts/lint/run.sh scripts")}"\n'
         "handoff_requirements:\n"
         "  require_modified_files_and_lines: true\n"
         "  require_runtime_behavior_impact: true\n"
@@ -279,8 +293,8 @@ def test_valid_packets(tmp: pathlib.Path) -> None:
 
     multi = base_packet()
     multi["scope"]["target"] = ["scripts", "harness"]
-    multi["execution_policy"]["verification_command"] = (
-        "./scripts/lint/run.sh scripts && LINT_BASE=HEAD~1 ./scripts/lint/run.sh harness"
+    _set_verify_cmd(
+        multi, "./scripts/lint/run.sh scripts && LINT_BASE=HEAD~1 ./scripts/lint/run.sh harness"
     )
     multi_path = write_json(tmp, "valid_multi_target.json", multi)
     res_multi = run_cli("validate-packet", str(multi_path))
@@ -712,7 +726,7 @@ def test_handoff_rejections_and_cross_validation(tmp: pathlib.Path) -> None:
     )
 
     pkt_quoted_ok = copy.deepcopy(base_packet())
-    pkt_quoted_ok["execution_policy"]["verification_command"] = './scripts/lint/run.sh "scripts"'
+    _set_verify_cmd(pkt_quoted_ok, './scripts/lint/run.sh "scripts"')
     pkt_quoted_ok_path = write_json(tmp, "pkt_quoted_ok.json", pkt_quoted_ok)
     res_qok = run_cli("validate-packet", str(pkt_quoted_ok_path))
     check(
@@ -777,17 +791,33 @@ def test_templates_and_cli_utilities(tmp: pathlib.Path) -> None:
 
     res_rp = run_cli("render-template", "--kind", "packet", "--packet-id", "RENDER-42")
     check(
-        "render-template --kind packet exits 0",
-        res_rp.returncode == EXIT_OK and "RENDER-42" in res_rp.stdout,
+        "render-template --kind packet exits 0 and strips pre-baked measured block",
+        res_rp.returncode == EXIT_OK
+        and "RENDER-42" in res_rp.stdout
+        and "measured:" not in res_rp.stdout,
         res_rp.stderr,
     )
     rendered_pkt = tmp / "rendered_packet.md"
     rendered_pkt.write_text(res_rp.stdout, encoding="utf-8")
+    res_vp_unmeas = run_cli("validate-packet", str(rendered_pkt))
+    check(
+        "rendered packet requires measure before validate-packet passes (MF-04)",
+        res_vp_unmeas.returncode == EXIT_INVALID
+        and "UNMEASURED_VERIFICATION_COMMAND" in res_vp_unmeas.stderr,
+        res_vp_unmeas.stderr or res_vp_unmeas.stdout,
+    )
+
+    tmpl_repo = tmp / "tmpl_measure_repo"
+    _init_temp_git_repo(tmpl_repo)
+    _write_stub_run_sh(tmpl_repo, exit_code=0)
+    _run_git(tmpl_repo, "add", ".")
+    _run_git(tmpl_repo, "commit", "-q", "-m", "init")
+    res_m_rp = run_cli("measure", str(rendered_pkt), "--repo-root", str(tmpl_repo))
     res_vp = run_cli("validate-packet", str(rendered_pkt))
     check(
-        "rendered packet template validates cleanly",
-        res_vp.returncode == EXIT_OK,
-        res_vp.stderr or res_vp.stdout,
+        "rendered packet validates cleanly after measure",
+        res_m_rp.returncode == EXIT_OK and res_vp.returncode == EXIT_OK,
+        res_m_rp.stderr or res_vp.stderr,
     )
 
     res_rh = run_cli("render-template", "--kind", "handoff", "--packet-id", "RENDER-42")
@@ -800,7 +830,7 @@ def test_templates_and_cli_utilities(tmp: pathlib.Path) -> None:
     rendered_ho.write_text(res_rh.stdout, encoding="utf-8")
     res_vh = run_cli("validate-handoff", str(rendered_ho), "--packet", str(rendered_pkt))
     check(
-        "rendered handoff template cross-validates cleanly against rendered packet",
+        "rendered handoff template cross-validates cleanly against measured rendered packet",
         res_vh.returncode == EXIT_OK,
         res_vh.stderr or res_vh.stdout,
     )
@@ -816,11 +846,15 @@ def test_templates_and_cli_utilities(tmp: pathlib.Path) -> None:
     )
     rendered_json = tmp / "rendered_packet.json"
     rendered_json.write_text(res_rp_json.stdout, encoding="utf-8")
+    res_m_rj = run_cli("measure", str(rendered_json), "--repo-root", str(tmpl_repo))
     res_vpj = run_cli("validate-packet", str(rendered_json))
     check(
-        "render-template --format json produces valid TaskPacket JSON",
-        res_rp_json.returncode == EXIT_OK and res_vpj.returncode == EXIT_OK,
-        res_rp_json.stderr or res_vpj.stderr,
+        "render-template --format json omits measured and validates cleanly after measure",
+        res_rp_json.returncode == EXIT_OK
+        and '"measured"' not in res_rp_json.stdout
+        and res_m_rj.returncode == EXIT_OK
+        and res_vpj.returncode == EXIT_OK,
+        res_rp_json.stderr or res_m_rj.stderr or res_vpj.stderr,
     )
 
     res_missing = run_cli("validate-packet", str(tmp / "does-not-exist.json"))
@@ -1095,9 +1129,7 @@ def test_check02_policy_field(tmp: pathlib.Path) -> None:
 
     p_block = copy.deepcopy(base_packet())
     p_block["execution_policy"]["policy"] = "block-new"
-    p_block["execution_policy"]["verification_command"] = (
-        "LINT_POLICY=block-new ./scripts/lint/run.sh scripts"
-    )
+    _set_verify_cmd(p_block, "LINT_POLICY=block-new ./scripts/lint/run.sh scripts")
     p_block_path = write_json(tmp, "c02_block_ok.json", p_block)
     res_ok = run_cli("validate-packet", str(p_block_path))
     check(
@@ -1304,9 +1336,7 @@ def test_wave4_hardening(tmp: pathlib.Path) -> None:
 
     p_block_flag = copy.deepcopy(base_packet())
     p_block_flag["execution_policy"]["policy"] = "block-new"
-    p_block_flag["execution_policy"]["verification_command"] = (
-        "./scripts/lint/run.sh --policy block-new scripts"
-    )
+    _set_verify_cmd(p_block_flag, "./scripts/lint/run.sh --policy block-new scripts")
     p_block_flag_path = write_json(tmp, "w4_block_flag_ok.json", p_block_flag)
     res_bf = run_cli("validate-packet", str(p_block_flag_path))
     check(
@@ -1657,7 +1687,7 @@ def test_loop02_validation(tmp: pathlib.Path) -> None:
         res_match.stderr or res_match.stdout,
     )
 
-    # 5. render-template --target recomputes command_sha256 cleanly
+    # 5. render-template --target omits measured (fails validate-packet until measured)
     res_rt = run_cli(
         "render-template",
         "--kind",
@@ -1671,8 +1701,11 @@ def test_loop02_validation(tmp: pathlib.Path) -> None:
     rt_path.write_text(res_rt.stdout, encoding="utf-8")
     res_rt_val = run_cli("validate-packet", str(rt_path))
     check(
-        "render-template --target recomputes command_sha256 and validates cleanly",
-        res_rt.returncode == EXIT_OK and res_rt_val.returncode == EXIT_OK,
+        "render-template --target omits measured and fails validate-packet until measure runs",
+        res_rt.returncode == EXIT_OK
+        and "./scripts/lint/run.sh alt-backend/app" in res_rt.stdout
+        and res_rt_val.returncode == EXIT_INVALID
+        and "UNMEASURED_VERIFICATION_COMMAND" in res_rt_val.stderr,
         res_rt_val.stderr or res_rt.stderr,
     )
 
@@ -1710,7 +1743,11 @@ def test_loop02_measure_cli(tmp: pathlib.Path) -> None:
     )
 
     md_unmeasured = valid_packet_markdown().replace(
-        '  measured:\n    duration_s: 1.5\n    exit_code: 0\n    at_commit: "0123456"\n',
+        "  measured:\n"
+        "    duration_s: 1.5\n"
+        "    exit_code: 0\n"
+        '    at_commit: "0123456"\n'
+        f'    command_sha256: "{_cmd_sha("./scripts/lint/run.sh scripts")}"\n',
         "",
     )
     md_path = tmp / "loop02_to_measure.md"
@@ -2536,6 +2573,446 @@ def test_host_final_check_script(tmp: pathlib.Path) -> None:
     )
 
 
+def test_wave7_mf01_mf02_mf03(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[17a] Wave 7 hardening: MF-01 (git mv/staged/gen), MF-02 (AST), MF-03 (comments)\n"
+    )
+
+    # MF-01: git mv forbidden.txt -> allowed/moved.txt + staged-only + stripped+declared DO NOT EDIT
+    repo = tmp / "w7_mf01"
+    _init_temp_git_repo(repo)
+    _write_stub_run_sh(repo, exit_code=0)
+    (repo / "forbidden.txt").write_text("secret\n", encoding="utf-8")
+    (repo / "a.txt").write_text("orig\n", encoding="utf-8")
+    (repo / "gen.pb.go").write_text(
+        "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage p\nfunc X() {}\n",
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "base")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    (repo / "allowed").mkdir()
+    _run_git(repo, "mv", "forbidden.txt", "allowed/moved.txt")
+    pkt_mv = _make_loop01_packet(base_sha)
+    pkt_mv["scope"]["allowed_paths"] = ["allowed/**"]
+    pkt_mv["scope"]["forbidden_paths"] = ["forbidden.txt"]
+    pkt_mv_path = write_json(tmp, "w7_pkt_mv.json", pkt_mv)
+    ho_mv_path = write_json(
+        tmp,
+        "w7_ho_mv.json",
+        _make_loop01_handoff(
+            [{"path": "allowed/moved.txt", "added_lines": 1, "deleted_lines": 0}], 0
+        ),
+    )
+    res_mv = run_cli(
+        "verify-handoff",
+        str(ho_mv_path),
+        "--packet",
+        str(pkt_mv_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "MF-01 catches git mv from forbidden_paths with PATH_IN_FORBIDDEN_PATHS",
+        res_mv.returncode == EXIT_INVALID and "PATH_IN_FORBIDDEN_PATHS" in res_mv.stderr,
+        f"rc={res_mv.returncode} err={res_mv.stderr!r}",
+    )
+
+    _run_git(repo, "reset", "--hard", "-q", base_sha)
+    (repo / "a.txt").write_text("STAGED_ONLY\n", encoding="utf-8")
+    _run_git(repo, "add", "a.txt")
+    (repo / "a.txt").write_text("orig\n", encoding="utf-8")
+    pkt_stg = _make_loop01_packet(base_sha)
+    pkt_stg["scope"]["allowed_paths"] = ["**"]
+    pkt_stg_path = write_json(tmp, "w7_pkt_stg.json", pkt_stg)
+    ho_empty = write_json(tmp, "w7_ho_empty.json", _make_loop01_handoff([], 0))
+    res_stg = run_cli(
+        "verify-handoff",
+        str(ho_empty),
+        "--packet",
+        str(pkt_stg_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "MF-01 catches staged-only edit even when worktree matches base_commit",
+        res_stg.returncode == EXIT_INVALID and "UNDECLARED_MODIFIED_FILE" in res_stg.stderr,
+        f"rc={res_stg.returncode} err={res_stg.stderr!r}",
+    )
+
+    _run_git(repo, "reset", "--hard", "-q", base_sha)
+    (repo / "gen.pb.go").write_text("package p\nfunc X() {}\n", encoding="utf-8")
+    _run_git(repo, "add", "gen.pb.go")
+    _run_git(repo, "commit", "-q", "-m", "strip gen header")
+    ho_gen = write_json(
+        tmp,
+        "w7_ho_gen.json",
+        _make_loop01_handoff([{"path": "gen.pb.go", "added_lines": 1, "deleted_lines": 1}], 0),
+    )
+    res_gen = run_cli(
+        "verify-handoff",
+        str(ho_gen),
+        "--packet",
+        str(pkt_stg_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "MF-01 catches committed stripped DO NOT EDIT header even when declared",
+        res_gen.returncode == EXIT_INVALID and "GENERATED_CODE_MODIFIED" in res_gen.stderr,
+        f"rc={res_gen.returncode} err={res_gen.stderr!r}",
+    )
+
+
+def test_wave7_mf02_mf03_ast_and_comments(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[17b] Wave 7 hardening: MF-02 AST Go/Rust/TS/Svelte & MF-03 lexer comments\n"
+    )
+    repo = tmp / "w7_mf02"
+    _init_temp_git_repo(repo)
+    _write_stub_run_sh(repo, exit_code=0)
+    (repo / "svc.go").write_text(
+        'package p\ntype Srv struct{}\nfunc Alpha() string { return "{" }\n'
+        "func (s *Srv) Foo() int { return 1 }\nfunc F1() int { return 1 }\n",
+        encoding="utf-8",
+    )
+    (repo / "lib.rs").write_text(
+        'fn alpha() -> &\'static str { "{" }\nimpl A { fn new() -> Self { A } }\n'
+        "pub fn calc() -> i32 { 42 }\n",
+        encoding="utf-8",
+    )
+    (repo / "app.py").write_text("def f() -> str:\n    return 'ok'\n", encoding="utf-8")
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "base")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    # MF-02 + MF-03: Go brace-string + receiver rename (2 funcs), Rust #[must_use] (0 comment FP, 1 fn)
+    (repo / "svc.go").write_text(
+        'package p\ntype Srv struct{}\nfunc Alpha() string { return "{" }\n'
+        "func (srv *Srv) Foo() int { return 1 }\nfunc F1() int { return 2 }\n",
+        encoding="utf-8",
+    )
+    (repo / "lib.rs").write_text(
+        'fn alpha() -> &\'static str { "{" }\nimpl Pre { fn new() -> Self { Pre } }\n'
+        "impl A { fn new() -> Self { A } }\n#[must_use]\npub fn calc() -> i32 { 42 }\n",
+        encoding="utf-8",
+    )
+    (repo / "app.py").write_text(
+        'def f() -> str:\n    return """a\n# heading in multiline string\n"""\n',
+        encoding="utf-8",
+    )
+    pkt = _make_loop01_packet(base_sha)
+    pkt["scope"]["allowed_paths"] = ["**"]
+    pkt["scope"]["max_functions"] = 10
+    pkt_path = write_json(tmp, "w7_mf02_pkt.json", pkt)
+    ho_ok = write_json(
+        tmp,
+        "w7_mf02_ho_ok.json",
+        _make_loop01_handoff(
+            [
+                {"path": "svc.go", "added_lines": 2, "deleted_lines": 2},
+                {"path": "lib.rs", "added_lines": 2, "deleted_lines": 0},
+                {"path": "app.py", "added_lines": 2, "deleted_lines": 1},
+            ],
+            4,
+        ),
+    )
+    res_ok = run_cli(
+        "verify-handoff",
+        str(ho_ok),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "MF-02/MF-03 accurately counts Go/Rust/Py functions and allows Rust #[must_use] & multiline '#'",
+        res_ok.returncode == EXIT_OK,
+        f"rc={res_ok.returncode} err={res_ok.stderr!r}",
+    )
+
+    # MF-03: trailing inline excuse comment with bare ADR-000001 (no suppression) MUST be rejected
+    (repo / "app.py").write_text(
+        "def f() -> str:\n    return 'ok'  # sneaky excuse citing ADR-000001\n",
+        encoding="utf-8",
+    )
+    res_inline = run_cli(
+        "verify-handoff",
+        str(ho_ok),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "MF-03 catches trailing inline excuse comment even when citing bare ADR-000001",
+        res_inline.returncode == EXIT_INVALID and "UNREQUESTED_COMMENT_ADDED" in res_inline.stderr,
+        f"rc={res_inline.returncode} err={res_inline.stderr!r}",
+    )
+
+
+def test_wave7_mf04_fs01_fs02(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[17c] Wave 7 hardening: MF-04 (sha/zero/flow), FS-01 (gate/CWE-22), FS-02 (branch)\n"
+    )
+
+    # MF-04: missing command_sha256 & all-zero at_commit rejected
+    p_no_sha = copy.deepcopy(base_packet())
+    del p_no_sha["execution_policy"]["measured"]["command_sha256"]
+    _assert_packet_rejected(
+        tmp, "MF-04 rejects measured without command_sha256", p_no_sha, "command_sha256"
+    )
+
+    p_zero_sha = copy.deepcopy(base_packet())
+    p_zero_sha["execution_policy"]["measured"]["at_commit"] = "0000000"
+    _assert_packet_rejected(
+        tmp,
+        "MF-04 rejects all-zero measured.at_commit",
+        p_zero_sha,
+        "PLACEHOLDER_MEASURED_COMMIT",
+    )
+
+    # MF-04: measure handles YAML flow execution_policy and fenced JSON with \d
+    repo = tmp / "w7_mf04_repo"
+    _init_temp_git_repo(repo)
+    _run_git(repo, "checkout", "-q", "-b", "feat/demo")
+    _write_stub_run_sh(repo, exit_code=0)
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "init")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    flow_md = tmp / "w7_flow.md"
+    flow_md.write_text(
+        "---\n"
+        'packet_version: "1.0"\n'
+        'packet_id: "FLOW-001"\n'
+        'scope: { target: "scripts", allowed_paths: ["scripts/**"], max_files: 5, '
+        'max_functions: 3, allowed_rules: ["S101"], stop_condition: "done" }\n'
+        'execution_policy: { policy: "fix-existing", foreground_only: true, '
+        "forbid_repo_wide_test_build: true, forbid_bulk_autofix: true, "
+        'verification_command: "./scripts/lint/run.sh scripts" }\n'
+        "handoff_requirements: { require_modified_files_and_lines: true, "
+        "require_runtime_behavior_impact: true, require_change_rationale: true }\n"
+        "---\n\n## 1. 範囲と作業量制約\n\n## 2. 実行・検証手順\n\n## 3. Hand-off 記述必須項目\n",
+        encoding="utf-8",
+    )
+    res_flow_m = run_cli("measure", str(flow_md), "--repo-root", str(repo))
+    res_flow_v = run_cli("validate-packet", str(flow_md))
+    check(
+        "MF-04 measure expands flow-mapping execution_policy cleanly",
+        res_flow_m.returncode == EXIT_OK and res_flow_v.returncode == EXIT_OK,
+        res_flow_m.stderr or res_flow_v.stderr,
+    )
+
+    fenced_md = tmp / "w7_fenced_d.md"
+    p_bs = copy.deepcopy(base_packet())
+    del p_bs["execution_policy"]["measured"]
+    p_bs["scope"]["stop_condition"] = r"Stop when \d+ errors reach 0"
+    fenced_md.write_text(
+        f"# P\n\n```json\n{json.dumps(p_bs, indent=2)}\n```\n\n"
+        "## 1. 範囲と作業量制約\n\n## 2. 実行・検証手順\n\n## 3. Hand-off 記述必須項目\n",
+        encoding="utf-8",
+    )
+    res_bs_m = run_cli("measure", str(fenced_md), "--repo-root", str(repo))
+    res_bs_v = run_cli("validate-packet", str(fenced_md))
+    check(
+        "MF-04 measure preserves \\d backslashes in Markdown fenced JSON",
+        res_bs_m.returncode == EXIT_OK and res_bs_v.returncode == EXIT_OK,
+        res_bs_m.stderr or res_bs_v.stderr,
+    )
+
+    # FS-01: invalid packet with traversal packet_id does NOT execute or write outside runs_dir
+    runs_dir = tmp / "w7_runs"
+    evil_pkt = _make_loop01_packet(base_sha)
+    evil_pkt["packet_id"] = "../../escaped_outside"
+    evil_pkt_path = write_json(tmp, "w7_evil_pkt.json", evil_pkt)
+    evil_ho = _make_loop01_handoff([], 0)
+    evil_ho["packet_id"] = "../../escaped_outside"
+    evil_ho_path = write_json(tmp, "w7_evil_ho.json", evil_ho)
+    res_evil = run_cli(
+        "verify-handoff",
+        str(evil_ho_path),
+        "--packet",
+        str(evil_pkt_path),
+        "--repo-root",
+        str(repo),
+        "--runs-dir",
+        str(runs_dir),
+    )
+    check(
+        "FS-01 blocks packet_id path traversal and skips rerun on invalid packet",
+        res_evil.returncode == EXIT_INVALID
+        and not (tmp / "escaped_outside.json").exists()
+        and not list(runs_dir.rglob("*.json")),
+        f"rc={res_evil.returncode} err={res_evil.stderr!r}",
+    )
+
+    # FS-02: branch feat/demo maps to runs_dir/feat-demo/verify/<id>.json (matching harness_run.py)
+    good_pkt = write_json(tmp, "w7_fs02_pkt.json", _make_loop01_packet(base_sha))
+    good_ho = write_json(tmp, "w7_fs02_ho.json", _make_loop01_handoff([], 0))
+    res_fs02 = run_cli(
+        "verify-handoff",
+        str(good_ho),
+        "--packet",
+        str(good_pkt),
+        "--repo-root",
+        str(repo),
+        "--runs-dir",
+        str(runs_dir),
+    )
+    expected_ev = runs_dir / "feat-demo" / "verify" / "LOOP01-TEST.json"
+    check(
+        "FS-02 verify-handoff writes evidence under harness_run branch dir 'feat-demo'",
+        res_fs02.returncode == EXIT_OK and expected_ev.is_file(),
+        f"rc={res_fs02.returncode} expected={expected_ev} err={res_fs02.stderr!r}",
+    )
+
+
+def test_wave7_mf05_fs03_fs04_hfc(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[17d] Wave 7 hardening: MF-05/FS-03/FS-04 (verify-sequence) & C-02/CS-01 (host-final-check)\n"
+    )
+
+    # MF-05 + FS-03: dirty worktree, c1 deletion, --bugfix c2 mutation, background '&' test_command
+    repo = tmp / "w7_seq"
+    _init_temp_git_repo(repo)
+    (repo / "calc.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "src").mkdir()
+    (repo / "src" / "prod.txt").write_text("ORIGINAL_PROD\n", encoding="utf-8")
+    (repo / "tests" / "test_alias.py").symlink_to("../src/prod.txt")
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "base")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    # FS-04: replacing tracked symlink tests/test_alias.py in c1 must NOT overwrite src/prod.txt
+    (repo / "tests" / "test_alias.py").unlink()
+    (repo / "tests" / "test_alias.py").write_text("assert True\n", encoding="utf-8")
+    _run_git(repo, "add", "tests/test_alias.py")
+    _run_git(repo, "commit", "-q", "-m", "c1 replace symlink with real test")
+    (repo / "calc.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    _run_git(repo, "add", "calc.py")
+    _run_git(repo, "commit", "-q", "-m", "c2 impl")
+
+    res_fs04 = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_sha,
+        "--test-command",
+        "grep -q ORIGINAL_PROD src/prod.txt",
+        "--repo-root",
+        str(repo),
+    )
+    check(
+        "FS-04 unlinks symlink in overlay worktree instead of overwriting src/prod.txt",
+        res_fs04.returncode == EXIT_OK,
+        f"rc={res_fs04.returncode} err={res_fs04.stderr!r}",
+    )
+
+    # FS-03: background '&' in --test-command rejected
+    res_fs03 = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_sha,
+        "--test-command",
+        "false &",
+        "--repo-root",
+        str(repo),
+    )
+    check(
+        "FS-03 rejects background '&' in verify-sequence --test-command",
+        res_fs03.returncode == EXIT_INVALID and "FORBIDDEN_BACKGROUND_EXECUTION" in res_fs03.stderr,
+        f"rc={res_fs03.returncode} err={res_fs03.stderr!r}",
+    )
+
+    # MF-05: dirty repo_root fails with SEQUENCE_DIRTY_WORKTREE
+    (repo / "calc.py").write_text("def add(a, b):\n    return 999\n", encoding="utf-8")
+    res_dirty = run_cli(
+        "verify-sequence",
+        "--base-commit",
+        base_sha,
+        "--test-command",
+        "grep -q ORIGINAL_PROD src/prod.txt",
+        "--repo-root",
+        str(repo),
+    )
+    _run_git(repo, "checkout", "--", "calc.py")
+    check(
+        "MF-05 fails closed with SEQUENCE_DIRTY_WORKTREE on dirty repo_root",
+        res_dirty.returncode == EXIT_INVALID and "SEQUENCE_DIRTY_WORKTREE" in res_dirty.stderr,
+        f"rc={res_dirty.returncode} err={res_dirty.stderr!r}",
+    )
+
+    # CS-01 + C-02: host-final-check.sh rejects --target --list / all / bg test-cmd & forwards --policy block-new
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+    res_flag_t = _run_proc([bash_bin, str(HOST_FINAL_CHECK_PATH), "--target", "--list"])
+    res_all_t = _run_proc([bash_bin, str(HOST_FINAL_CHECK_PATH), "--target", "all"])
+    res_bg_cmd = _run_proc(
+        [
+            bash_bin,
+            str(HOST_FINAL_CHECK_PATH),
+            "--repo-root",
+            str(repo),
+            "--target",
+            "scripts",
+            "--skip-repo-lint",
+            "--test-cmd",
+            "false &",
+        ]
+    )
+    check(
+        "CS-01 host-final-check.sh rejects --target --list, --target all, and background --test-cmd",
+        res_flag_t.returncode == EXIT_USAGE
+        and res_all_t.returncode == EXIT_USAGE
+        and res_bg_cmd.returncode == EXIT_USAGE,
+        f"flag={res_flag_t.returncode} all={res_all_t.returncode} bg={res_bg_cmd.returncode}",
+    )
+
+    # C-02: verify --policy block-new forwarding from --packet
+    hfc_repo = tmp / "w7_hfc_policy"
+    _init_temp_git_repo(hfc_repo)
+    log_file = tmp / "hfc_run_sh_args.txt"
+    run_sh = hfc_repo / "scripts" / "lint" / "run.sh"
+    run_sh.parent.mkdir(parents=True, exist_ok=True)
+    run_sh.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "{log_file}"\nexit 0\n',
+        encoding="utf-8",
+    )
+    run_sh.chmod(0o755)
+    _run_git(hfc_repo, "add", ".")
+    _run_git(hfc_repo, "commit", "-q", "-m", "init")
+    p_bn = copy.deepcopy(base_packet())
+    p_bn["execution_policy"]["policy"] = "block-new"
+    _set_verify_cmd(p_bn, "./scripts/lint/run.sh --policy block-new scripts")
+    p_bn_path = write_json(tmp, "w7_hfc_bn.json", p_bn)
+    res_bn = _run_proc(
+        [
+            bash_bin,
+            str(HOST_FINAL_CHECK_PATH),
+            "--repo-root",
+            str(hfc_repo),
+            "--target",
+            "scripts",
+            "--packet",
+            str(p_bn_path),
+            "--skip-repo-lint",
+        ]
+    )
+    recorded_args = log_file.read_text(encoding="utf-8").strip() if log_file.is_file() else ""
+    check(
+        "C-02 host-final-check.sh forwards --policy block-new from --packet to run.sh",
+        res_bn.returncode == EXIT_OK and recorded_args == "--policy block-new scripts",
+        f"rc={res_bn.returncode} args={recorded_args!r} err={res_bn.stderr!r}",
+    )
+
+
 def main() -> int:
     sys.stdout.write("Task Packet specification & validator tests\n")
     test_schema_structure()
@@ -2562,6 +3039,10 @@ def main() -> int:
         test_verify01_sequence_modes(tmp)
         test_verify01_corpus_reproductions(tmp)
         test_host_final_check_script(tmp)
+        test_wave7_mf01_mf02_mf03(tmp)
+        test_wave7_mf02_mf03_ast_and_comments(tmp)
+        test_wave7_mf04_fs01_fs02(tmp)
+        test_wave7_mf05_fs03_fs04_hfc(tmp)
 
     sys.stdout.write(
         f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n",
