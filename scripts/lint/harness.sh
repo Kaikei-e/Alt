@@ -93,6 +93,7 @@ status_worktree_hygiene="pass"
 status_worktree_hygiene_tests="pass"
 status_canary_ledger="pass"
 status_entrypoint_canary="pass"
+status_exec_guards_and_runs="skip"
 status_corpus="pass"
 corpus_capture_rate=""
 
@@ -234,6 +235,15 @@ if ! python3 scripts/lint/entrypoint_canary.py --languages proto --skip-baseline
   rc=1
 fi
 
+if [ -f scripts/tests/test-exec-guards-and-runs.py ]; then
+  echo "==> [harness] test-exec-guards-and-runs.py"
+  status_exec_guards_and_runs="pass"
+  if ! python3 scripts/tests/test-exec-guards-and-runs.py; then
+    status_exec_guards_and_runs="fail"
+    rc=1
+  fi
+fi
+
 echo "==> [harness] test-corpus.py"
 corpus_out_file="$(mktemp "${TMPDIR:-/tmp}/alt-harness-corpus-XXXXXX")"
 trap 'rm -f "$corpus_out_file"' EXIT
@@ -272,6 +282,7 @@ printf '  %-32s %s\n' "worktree_hygiene" "$status_worktree_hygiene"
 printf '  %-32s %s\n' "worktree_hygiene_tests" "$status_worktree_hygiene_tests"
 printf '  %-32s %s\n' "canary_ledger" "$status_canary_ledger"
 printf '  %-32s %s\n' "entrypoint_canary" "$status_entrypoint_canary"
+printf '  %-32s %s\n' "exec_guards_and_runs_tests" "$status_exec_guards_and_runs"
 printf '  %-32s %s\n' "corpus" "$status_corpus"
 if [ -n "$corpus_capture_rate" ]; then
   printf '  %s\n' "$corpus_capture_rate"

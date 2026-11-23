@@ -159,7 +159,9 @@ metrics/scripts/reports/
 # ============================================
 .claude/*
 !.claude/skills/
+!.claude/hooks/
 .agent/
+.harness/
 .serena/
 docs/.obsidian/
 docs/daily/

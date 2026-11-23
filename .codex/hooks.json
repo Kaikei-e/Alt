@@ -58,6 +58,17 @@
         ]
       },
       {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_packet_scope.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking generated-code and packet-scope boundaries"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -65,6 +76,17 @@
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py\" --on-match deny",
             "timeout": 10,
             "statusMessage": "Checking container and compose commands"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_exec_commands.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking unsafe autofix and worker execution commands"
           }
         ]
       }

@@ -5,7 +5,7 @@
 version = 1
 
 [governance]
-max_judgment_rules = 9
+max_judgment_rules = 6
 
 [targets.acolyte-orchestrator]
 python_noqa = 216
