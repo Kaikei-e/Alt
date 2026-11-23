@@ -346,11 +346,14 @@ def _resolve_frontend_node_modules(repo_root: pathlib.Path, target: str) -> path
     return None
 
 
-def _align_staged_bun_pin_if_needed(dockerfile: pathlib.Path) -> str | None:
-    """Align only the ephemeral staged Dockerfile pin if host bun differs from Dockerfile."""
-    bun_bin = shutil.which("bun")
-    if bun_bin is None or not dockerfile.is_file():
+def _read_dockerfile_bun_pin(dockerfile: pathlib.Path) -> str | None:
+    if not dockerfile.is_file():
         return None
+    match = DOCKERFILE_BUN_PIN_RE.search(dockerfile.read_text(encoding="utf-8"))
+    return match.group(2) if match is not None else None
+
+
+def _bun_version(bun_bin: str) -> str | None:
     res = subprocess.run(  # noqa: S603 - fixed argv querying local bun version
         [bun_bin, "--version"],
         capture_output=True,
@@ -360,7 +363,49 @@ def _align_staged_bun_pin_if_needed(dockerfile: pathlib.Path) -> str | None:
     )
     if res.returncode != 0:
         return None
-    host_ver = res.stdout.strip()
+    version = res.stdout.strip()
+    return version or None
+
+
+def _resolve_local_pinned_bun(dockerfile: pathlib.Path) -> str | None:
+    """Resolve an already-installed pinned bun binary (ALT_LINT_BUN_BIN, PATH, or cache)."""
+    pinned_ver = _read_dockerfile_bun_pin(dockerfile)
+    if pinned_ver is None:
+        return None
+
+    override = os.environ.get("ALT_LINT_BUN_BIN", "")
+    if override:
+        override_path = pathlib.Path(override)
+        if (
+            override_path.is_file()
+            and os.access(override_path, os.X_OK)
+            and _bun_version(override) == pinned_ver
+        ):
+            return override
+        return None
+
+    path_bun = shutil.which("bun")
+    if path_bun is not None and _bun_version(path_bun) == pinned_ver:
+        return path_bun
+
+    cache_root = pathlib.Path(os.environ.get("XDG_CACHE_HOME", pathlib.Path.home() / ".cache"))
+    cached_bun = cache_root / "alt-lint" / "bun" / pinned_ver / "bun"
+    if (
+        cached_bun.is_file()
+        and os.access(cached_bun, os.X_OK)
+        and _bun_version(str(cached_bun)) == pinned_ver
+    ):
+        return str(cached_bun)
+
+    return None
+
+
+def _align_staged_bun_pin_if_needed(dockerfile: pathlib.Path) -> str | None:
+    """Offline fallback: align only the ephemeral staged Dockerfile pin to local host bun."""
+    bun_bin = shutil.which("bun")
+    if bun_bin is None or not dockerfile.is_file():
+        return None
+    host_ver = _bun_version(bun_bin)
     if not host_ver:
         return None
     content = dockerfile.read_text(encoding="utf-8")
@@ -373,7 +418,7 @@ def _align_staged_bun_pin_if_needed(dockerfile: pathlib.Path) -> str | None:
         content,
     )
     dockerfile.write_text(updated, encoding="utf-8")
-    return f"staged Dockerfile bun pin aligned {pinned_ver}->{host_ver} for local host bun"
+    return f"staged Dockerfile bun pin aligned {pinned_ver}->{host_ver} for offline host bun"
 
 
 def _run_frontend_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> CaseResult:
@@ -389,14 +434,15 @@ def _run_frontend_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> Cas
             f"missing {target}/node_modules (run `bun install --frozen-lockfile` in {target})",
         )
 
-    bun_bin = shutil.which("bun")
-    if bun_bin is None:
+    pinned_bun = _resolve_local_pinned_bun(repo_root / target / "Dockerfile")
+    baseline_bun = pinned_bun or shutil.which("bun")
+    if baseline_bun is None:
         return CaseResult(
             "frontend",
             target,
             False,
             time.monotonic() - start,
-            "bun executable not found in PATH",
+            "bun executable not found (checked pinned cache and PATH)",
         )
 
     with tempfile.TemporaryDirectory(prefix="alt-ep-frontend-") as td:
@@ -404,11 +450,10 @@ def _run_frontend_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> Cas
         _stage_common(repo_root, staged_root)
         target_dir = _stage_target_dir(repo_root, staged_root, target)
         (target_dir / "node_modules").symlink_to(node_modules)
-        pin_note = _align_staged_bun_pin_if_needed(target_dir / "Dockerfile")
 
         if verify_baseline:
             base_res = subprocess.run(  # noqa: S603 - fixed argv running staged Biome baseline check
-                [bun_bin, "run", "lint:check"],
+                [baseline_bun, "run", "lint:check"],
                 cwd=str(target_dir),
                 capture_output=True,
                 text=True,
@@ -435,6 +480,16 @@ def _run_frontend_case(repo_root: pathlib.Path, *, verify_baseline: bool) -> Cas
 
         mut_res = _run_staged_lint(staged_root, target)
         combined = f"{mut_res.stdout}\n{mut_res.stderr}"
+        pin_note: str | None = None
+        if (
+            pinned_bun is None
+            and not os.environ.get("ALT_LINT_BUN_BIN")
+            and "failed to download bun" in combined.lower()
+        ):
+            pin_note = _align_staged_bun_pin_if_needed(target_dir / "Dockerfile")
+            if pin_note is not None:
+                mut_res = _run_staged_lint(staged_root, target)
+                combined = f"{mut_res.stdout}\n{mut_res.stderr}"
         missing = _assert_markers(
             combined,
             (
@@ -594,7 +649,10 @@ def _is_language_available(repo_root: pathlib.Path, lang: str) -> bool:
         "python": lambda: shutil.which("uv") is not None,
         "rust": lambda: shutil.which("cargo") is not None,
         "frontend": lambda: (
-            shutil.which("bun") is not None
+            (
+                _resolve_local_pinned_bun(repo_root / "alt-frontend-sv" / "Dockerfile") is not None
+                or shutil.which("bun") is not None
+            )
             and _resolve_frontend_node_modules(repo_root, "alt-frontend-sv") is not None
         ),
         "deno": lambda: shutil.which("deno") is not None,
