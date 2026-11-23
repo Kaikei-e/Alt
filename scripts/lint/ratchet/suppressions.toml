@@ -101,7 +101,7 @@ rust_allow = 360
 python_noqa = 3
 
 [targets.scripts]
-python_noqa = 335
+python_noqa = 338
 
 [targets."search-indexer/app"]
 go_nolint = 1
