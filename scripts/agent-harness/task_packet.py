@@ -1229,13 +1229,17 @@ def _file_has_generated_header(path: Path) -> bool:
     return _has_generated_header_text(text)
 
 
-def _git_rev_has_generated_header(repo_root: Path, git_bin: str, rev: str, norm: str) -> bool:
-    res = subprocess.run(  # noqa: S603 -- inspects committed file header inside explicit repo_root
-        [git_bin, "-C", str(repo_root), "show", "--end-of-options", f"{rev}:{norm}"],
+def _run_git_bytes(repo_root: Path, git_bin: str, *args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(  # noqa: S603 -- runs resolved git binary inside explicit repo_root
+        [git_bin, "-C", str(repo_root), *args],
         capture_output=True,
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
         check=False,
     )
+
+
+def _git_rev_has_generated_header(repo_root: Path, git_bin: str, rev: str, norm: str) -> bool:
+    res = _run_git_bytes(repo_root, git_bin, "show", "--end-of-options", f"{rev}:{norm}")
     if res.returncode != 0 or b"\x00" in res.stdout[:4096]:
         return False
     text = res.stdout[:8192].decode("utf-8", errors="replace")
@@ -1274,12 +1278,7 @@ def list_generated_forbidden_paths(repo_root: Path) -> list[str]:
     git_bin = shutil.which("git")
     candidates: list[str] = []
     if git_bin is not None and (repo_root / ".git").exists():
-        res = subprocess.run(  # noqa: S603 -- lists tracked files inside explicit repo_root
-            [git_bin, "-C", str(repo_root), "ls-files", "-z"],
-            capture_output=True,
-            timeout=SUBPROCESS_TIMEOUT_SECONDS,
-            check=False,
-        )
+        res = _run_git_bytes(repo_root, git_bin, "ls-files", "-z")
         if res.returncode == 0:
             candidates = [
                 entry.decode("utf-8", errors="surrogateescape")
@@ -1474,20 +1473,14 @@ def _classify_test_file_lang(rel_posix: str) -> str | None:
 def _collect_repo_rel_paths(repo_root: Path) -> list[str]:
     git_bin = shutil.which("git")
     if git_bin is not None and (repo_root / ".git").exists():
-        res = subprocess.run(  # noqa: S603 -- lists tracked/untracked files inside explicit repo_root
-            [
-                git_bin,
-                "-C",
-                str(repo_root),
-                "ls-files",
-                "-z",
-                "--cached",
-                "--others",
-                "--exclude-standard",
-            ],
-            capture_output=True,
-            timeout=SUBPROCESS_TIMEOUT_SECONDS,
-            check=False,
+        res = _run_git_bytes(
+            repo_root,
+            git_bin,
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
         )
         if res.returncode == 0:
             return [
