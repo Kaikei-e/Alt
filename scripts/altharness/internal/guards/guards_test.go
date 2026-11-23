@@ -88,6 +88,17 @@ func TestExecMatchesPython(t *testing.T) {
 	}
 }
 
+func TestOpsUnknownOnMatchExitsUsage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := RunOps(context.Background(), []string{"--on-match", "block"}, strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"docker ps"}}`), &stdout, &stderr)
+	if code != 2 || !strings.Contains(strings.ToLower(stderr.String()), "usage") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+}
+
 func TestOpsComposeRules(t *testing.T) {
 	cases := []struct {
 		cmd  string

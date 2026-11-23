@@ -304,6 +304,9 @@ func RunOps(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	if stdout == nil {
 		stdout = io.Discard
 	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	onMatch := "ask"
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--on-match" && i+1 < len(args) {
@@ -316,7 +319,8 @@ func RunOps(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		}
 	}
 	if onMatch != "ask" && onMatch != "deny" {
-		onMatch = "ask"
+		fmt.Fprintf(stderr, "usage: guard_ops_commands.py [-h] [--on-match {ask,deny}]\nguard_ops_commands.py: error: argument --on-match: invalid choice: '%s' (choose from 'ask', 'deny')\n", onMatch)
+		return 2
 	}
 	raw, err := io.ReadAll(stdin)
 	if err != nil {

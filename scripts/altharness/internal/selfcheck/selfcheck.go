@@ -640,9 +640,32 @@ func checkFPSequence(lines []string, sections []fpSection, findings *[]Finding) 
 	if len(lines) > 0 {
 		first = lines[0]
 	}
-	if !strings.Contains(first, expected) {
+	if !titleHasRange(first, expected) {
 		*findings = append(*findings, Finding{"H10", failurePatterns, fmt.Sprintf("first-line title must contain '%s'", expected)})
 	}
+}
+
+// titleHasRange matches Python's title regex: the expected range must not be
+// glued to an identifier character on the left or another digit on the right,
+// so "FP-020" does not satisfy a required "FP-02".
+func titleHasRange(first, expected string) bool {
+	for i := 0; i+len(expected) <= len(first); i++ {
+		if first[i:i+len(expected)] != expected {
+			continue
+		}
+		if i > 0 {
+			prev := first[i-1]
+			if (prev >= 'A' && prev <= 'Z') || (prev >= 'a' && prev <= 'z') || (prev >= '0' && prev <= '9') || prev == '-' {
+				continue
+			}
+		}
+		end := i + len(expected)
+		if end < len(first) && first[end] >= '0' && first[end] <= '9' {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func checkFPLeadins(nonFence [][2]any, sections []fpSection, findings *[]Finding) {

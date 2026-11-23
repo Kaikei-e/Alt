@@ -22,6 +22,22 @@ func TestRealRepoPasses(t *testing.T) {
 	}
 }
 
+func TestTitleRangeRejectsNumericPrefix(t *testing.T) {
+	lines := []string{"# 失敗の型（FP-01 〜 FP-020）", ""}
+	sections := []fpSection{{num: 1, nn: "01"}, {num: 2, nn: "02"}}
+	var findings []Finding
+	checkFPSequence(lines, sections, &findings)
+	if len(findings) != 1 || !strings.Contains(findings[0].Message, "first-line title must contain 'FP-01 〜 FP-02'") {
+		t.Fatalf("findings=%+v", findings)
+	}
+	exact := []string{"# 失敗の型（FP-01 〜 FP-02）"}
+	findings = nil
+	checkFPSequence(exact, sections, &findings)
+	if len(findings) != 0 {
+		t.Fatalf("exact title findings=%+v", findings)
+	}
+}
+
 func TestJudgmentRatchetCeiling(t *testing.T) {
 	root := findRepo(t)
 	text, err := os.ReadFile(filepath.Join(root, ruleLedgerRel))

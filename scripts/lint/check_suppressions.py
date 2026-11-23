@@ -11,7 +11,7 @@ from pathlib import Path
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
     launcher = root / "scripts" / "altharness" / "alt-harness"
-    os.execv(launcher, [str(launcher), "suppressions", *sys.argv[1:]])  # noqa: S606
+    os.execv(launcher, [str(launcher), "suppressions", *sys.argv[1:]])  # noqa: S606 -- delegates CLI execution to the Go harness
 
 
 if __name__ == "__main__":

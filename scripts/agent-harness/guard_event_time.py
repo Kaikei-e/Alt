@@ -137,5 +137,5 @@ def main() -> int:
 if __name__ == "__main__":
     _launcher = Path(__file__).resolve().parents[2] / "scripts" / "altharness" / "alt-harness"
     if _launcher.is_file():
-        os.execv(_launcher, [str(_launcher), "guard-event-time", *sys.argv[1:]])  # noqa: S606
+        os.execv(_launcher, [str(_launcher), "guard-event-time", *sys.argv[1:]])  # noqa: S606 -- delegates CLI execution to the Go harness
     sys.exit(main())
