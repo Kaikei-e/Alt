@@ -160,6 +160,7 @@ def _check_hook_file(
     total_commands = 0
     pre_tool_commands: list[str] = []
     bash_ops_found = False
+    bash_exec_found = False
 
     for event_name, entries in hooks_map.items():
         for matcher, hook in _iter_hook_objects_with_matchers(entries):
@@ -190,6 +191,8 @@ def _check_hook_file(
                         )
                     if _matcher_matches_tool(matcher, "Bash"):
                         bash_ops_found = True
+                if "guard_exec_commands.py" in cmd_str and _matcher_matches_tool(matcher, "Bash"):
+                    bash_exec_found = True
 
             findings.extend(
                 Finding(
@@ -217,7 +220,11 @@ def _check_hook_file(
             rel_label,
             f"PreToolUse hooks do not reference {required_guard}",
         )
-        for required_guard in ("guard_protected_paths.py", "guard_event_time.py")
+        for required_guard in (
+            "guard_protected_paths.py",
+            "guard_event_time.py",
+            "guard_packet_scope.py",
+        )
         if not any(required_guard in cmd for cmd in pre_tool_commands)
     )
 
@@ -227,6 +234,14 @@ def _check_hook_file(
                 "H4",
                 rel_label,
                 'PreToolUse hooks do not reference guard_ops_commands.py with a matcher matching "Bash"',
+            )
+        )
+    if not bash_exec_found:
+        findings.append(
+            Finding(
+                "H4",
+                rel_label,
+                'PreToolUse hooks do not reference guard_exec_commands.py with a matcher matching "Bash"',
             )
         )
 
