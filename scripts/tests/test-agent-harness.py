@@ -616,7 +616,7 @@ with tempfile.TemporaryDirectory() as tmp:
         res_hook_ok.stdout,
     )
 
-    # Adding a clean .claude/settings.json also passes with 0 findings.
+    # Adding a clean .claude/settings.json (with guard_ops_commands.py on Bash, default ask) also passes with 0 findings.
     write_claude_settings(
         repo,
         {
@@ -636,7 +636,17 @@ with tempfile.TemporaryDirectory() as tmp:
                                 "onFailure": "block",
                             },
                         ],
-                    }
+                    },
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_ops_commands.py"',
+                                "onFailure": "block",
+                            },
+                        ],
+                    },
                 ]
             }
         },
@@ -705,13 +715,99 @@ with tempfile.TemporaryDirectory() as tmp:
                                 "onFailure": "block",
                             },
                         ],
-                    }
+                    },
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_ops_commands.py"',
+                                "onFailure": "block",
+                            },
+                        ],
+                    },
                 ]
             }
         },
     )
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     check("H3 detected", res.returncode == 1 and "H3 " in res.stdout, res.stdout)
+
+# H4: guard_ops_commands.py missing from .claude/settings.json PreToolUse
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_claude_settings(
+        repo,
+        {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Edit|Write|NotebookEdit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_protected_paths.py"',
+                                "onFailure": "block",
+                            },
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_event_time.py"',
+                                "onFailure": "block",
+                            },
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detected when guard_ops_commands.py missing from Claude PreToolUse",
+        res.returncode == 1
+        and "H4 " in res.stdout
+        and "guard_ops_commands.py" in res.stdout
+        and "Bash" in res.stdout,
+        res.stdout,
+    )
+
+# H4: guard_ops_commands.py in .claude/settings.json with matcher not matching Bash
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    write_claude_settings(
+        repo,
+        {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Edit|Write",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_protected_paths.py"',
+                                "onFailure": "block",
+                            },
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_event_time.py"',
+                                "onFailure": "block",
+                            },
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR/scripts/agent-harness/guard_ops_commands.py"',
+                                "onFailure": "block",
+                            },
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detected when Claude guard_ops_commands.py matcher does not match Bash",
+        res.returncode == 1 and "H4 " in res.stdout and "Bash" in res.stdout,
+        res.stdout,
+    )
 
 # H4: guard_event_time.py missing from .codex/hooks.json PreToolUse
 with tempfile.TemporaryDirectory() as tmp:

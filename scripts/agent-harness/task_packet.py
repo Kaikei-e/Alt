@@ -105,8 +105,40 @@ CMD_LINT_POLICY_RE = re.compile(
 )
 GENERATED_HEADER_SCAN_LINES = 40
 GENERATED_HEADER_RE = re.compile(
-    r"^\s*(?://|#|/\*|\*|--|<!--|;)\s*Code generated\b[^\n]*DO NOT EDIT\.?"
+    r"^\s*(?://+|#+|/\*|\*|--|<!--|;)\s*Code generated\b[^\n]*DO NOT EDIT\.?",
+    re.IGNORECASE,
 )
+EXCLUDED_TEST_SCAN_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "node_modules",
+        "target",
+        "vendor",
+        "stopped-using-k8s",
+    }
+)
+GO_TEST_FILE_RE = re.compile(r"(?:^|/)[^/]+_test\.go$")
+PY_TEST_FILE_RE = re.compile(
+    r"(?:^|/)(?:tests?/[^/].*\.py|test_[^/]+\.py|test-[^/]+\.py|[^/]+_test\.py)$"
+)
+RUST_TEST_PATH_RE = re.compile(r"(?:^|/)(?:tests/.*\.rs|tests\.rs|[^/]+_tests?\.rs)$")
+RUST_TEST_ATTR_RE = re.compile(r"#\[\s*(?:(?:[\w:]+::)?test\b|rstest\b|proptest\b)")
+TS_TEST_FILE_RE = re.compile(
+    r"(?:^|/)(?:(?:__tests__|tests|e2e)/.*\.(?:[cm]?[jt]sx?|svelte)|"
+    r"[^/]+\.(?:spec|test)\.(?:[cm]?[jt]sx?|svelte)|"
+    r"[^/]+_test\.[cm]?[jt]sx?)$",
+    re.IGNORECASE,
+)
+SOURCE_PATH_EXT_RE = re.compile(r"\.(?:go|py|rs|[cm]?[jt]sx?|svelte)$", re.IGNORECASE)
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+GO_TEST_PREFIX_RE = re.compile(r"^(?:Test|Benchmark|Fuzz|Example)[A-Za-z0-9_]*$")
+PARAM_SUFFIX_RE = re.compile(r"\[[^\]]*\]$")
+RUST_ATTR_LOOKBACK_LINES = 12
+MIN_QUALIFIED_PARTS = 2
 
 PACKET_REQUIRED_HEADINGS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^##\s+1\.\s*範囲と作業量制約"), "## 1. 範囲と作業量制約"),
@@ -1197,7 +1229,25 @@ def _file_has_generated_header(path: Path) -> bool:
     return _has_generated_header_text(text)
 
 
-def _repo_rel_is_generated_code(repo_root: Path, rel_path: str) -> bool:
+def _git_rev_has_generated_header(repo_root: Path, git_bin: str, rev: str, norm: str) -> bool:
+    res = subprocess.run(  # noqa: S603 -- inspects committed file header inside explicit repo_root
+        [git_bin, "-C", str(repo_root), "show", "--end-of-options", f"{rev}:{norm}"],
+        capture_output=True,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if res.returncode != 0 or b"\x00" in res.stdout[:4096]:
+        return False
+    text = res.stdout[:8192].decode("utf-8", errors="replace")
+    return _has_generated_header_text(text)
+
+
+def _repo_rel_is_generated_code(
+    repo_root: Path,
+    rel_path: str,
+    *,
+    base_commit: str | None = None,
+) -> bool:
     norm = _normalize_repo_rel_path(rel_path)
     if not norm:
         return False
@@ -1207,21 +1257,17 @@ def _repo_rel_is_generated_code(repo_root: Path, rel_path: str) -> bool:
         disk_path.is_file()
         and not disk_path.is_symlink()
         and disk_path.resolve().is_relative_to(repo_root_resolved)
+        and _file_has_generated_header(disk_path)
     ):
-        return _file_has_generated_header(disk_path)
+        return True
     git_bin = shutil.which("git")
     if git_bin is None or not (repo_root / ".git").exists():
         return False
-    res = subprocess.run(  # noqa: S603 -- inspects HEAD file header inside explicit repo_root
-        [git_bin, "-C", str(repo_root), "show", "--end-of-options", f"HEAD:{norm}"],
-        capture_output=True,
-        timeout=SUBPROCESS_TIMEOUT_SECONDS,
-        check=False,
-    )
-    if res.returncode != 0 or b"\x00" in res.stdout[:4096]:
-        return False
-    text = res.stdout[:8192].decode("utf-8", errors="replace")
-    return _has_generated_header_text(text)
+    if _git_rev_has_generated_header(repo_root, git_bin, "HEAD", norm):
+        return True
+    if base_commit and base_commit != "HEAD" and not base_commit.startswith("-"):
+        return _git_rev_has_generated_header(repo_root, git_bin, base_commit, norm)
+    return False
 
 
 def list_generated_forbidden_paths(repo_root: Path) -> list[str]:
@@ -1325,10 +1371,274 @@ def _candidate_matches_response(
     )
 
 
+@dataclass(frozen=True)
+class _TestNameQuery:
+    raw: str
+    path_hint: str | None
+    leaf: str
+    parent_symbol: str | None
+    go_parent: str | None
+    go_subtests: tuple[str, ...]
+
+
+def _parse_test_name_query(test_name: str) -> _TestNameQuery:
+    cleaned = test_name.strip().strip("`\"'").strip()
+    path_hint: str | None = None
+    symbol_part = cleaned
+
+    if "::" in cleaned:
+        parts = [p.strip() for p in cleaned.split("::") if p.strip()]
+        if parts and SOURCE_PATH_EXT_RE.search(parts[0]) is not None:
+            path_hint = _normalize_repo_rel_path(parts[0])
+            parts = parts[1:]
+        if parts:
+            leaf = PARAM_SUFFIX_RE.sub("", parts[-1]).strip()
+            parent = (
+                PARAM_SUFFIX_RE.sub("", parts[-2]).strip()
+                if len(parts) >= MIN_QUALIFIED_PARTS
+                else None
+            )
+            return _TestNameQuery(
+                raw=cleaned,
+                path_hint=path_hint,
+                leaf=leaf,
+                parent_symbol=parent,
+                go_parent=None,
+                go_subtests=(),
+            )
+
+    if "/" in symbol_part:
+        slash_parts = [p.strip() for p in symbol_part.split("/") if p.strip()]
+        if slash_parts and GO_TEST_PREFIX_RE.match(slash_parts[0]) is not None:
+            go_parent = slash_parts[0]
+            go_subtests = tuple(slash_parts[1:])
+            return _TestNameQuery(
+                raw=cleaned,
+                path_hint=None,
+                leaf=go_subtests[-1] if go_subtests else go_parent,
+                parent_symbol=go_parent,
+                go_parent=go_parent,
+                go_subtests=go_subtests,
+            )
+
+    if " > " in symbol_part:
+        gt_parts = [p.strip() for p in symbol_part.split(" > ") if p.strip()]
+        leaf = PARAM_SUFFIX_RE.sub("", gt_parts[-1]).strip()
+        return _TestNameQuery(
+            raw=cleaned,
+            path_hint=None,
+            leaf=leaf,
+            parent_symbol=gt_parts[-2] if len(gt_parts) >= MIN_QUALIFIED_PARTS else None,
+            go_parent=None,
+            go_subtests=(),
+        )
+
+    if "." in symbol_part and " " not in symbol_part:
+        dot_parts = [p.strip() for p in symbol_part.split(".") if p.strip()]
+        if len(dot_parts) >= MIN_QUALIFIED_PARTS:
+            leaf = PARAM_SUFFIX_RE.sub("", dot_parts[-1]).strip()
+            return _TestNameQuery(
+                raw=cleaned,
+                path_hint=None,
+                leaf=leaf,
+                parent_symbol=dot_parts[-2],
+                go_parent=None,
+                go_subtests=(),
+            )
+
+    leaf = PARAM_SUFFIX_RE.sub("", symbol_part).strip()
+    return _TestNameQuery(
+        raw=cleaned,
+        path_hint=None,
+        leaf=leaf,
+        parent_symbol=None,
+        go_parent=None,
+        go_subtests=(),
+    )
+
+
+def _classify_test_file_lang(rel_posix: str) -> str | None:
+    if rel_posix.startswith(EXCLUDED_GENERATED_PREFIXES):
+        return None
+    if GO_TEST_FILE_RE.search(rel_posix) is not None:
+        return "go"
+    if PY_TEST_FILE_RE.search(rel_posix) is not None:
+        return "python"
+    if rel_posix.endswith(".rs"):
+        return "rust"
+    if TS_TEST_FILE_RE.search(rel_posix) is not None:
+        return "typescript"
+    return None
+
+
+def _collect_repo_rel_paths(repo_root: Path) -> list[str]:
+    git_bin = shutil.which("git")
+    if git_bin is not None and (repo_root / ".git").exists():
+        res = subprocess.run(  # noqa: S603 -- lists tracked/untracked files inside explicit repo_root
+            [
+                git_bin,
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ],
+            capture_output=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if res.returncode == 0:
+            return [
+                entry.decode("utf-8", errors="surrogateescape")
+                for entry in res.stdout.split(b"\x00")
+                if entry
+            ]
+    rel_paths: list[str] = []
+    stack: list[Path] = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except OSError:
+            continue
+        for child in entries:
+            if child.is_symlink():
+                continue
+            if child.is_dir():
+                if child.name not in EXCLUDED_TEST_SCAN_DIRS:
+                    stack.append(child)
+            elif child.is_file():
+                rel_paths.append(child.relative_to(repo_root).as_posix())
+    return rel_paths
+
+
+def _list_repo_test_files(repo_root: Path) -> list[tuple[str, Path, str]]:
+    repo_root_resolved = repo_root.resolve()
+    result: list[tuple[str, Path, str]] = []
+    for rel in sorted(set(_collect_repo_rel_paths(repo_root))):
+        lang = _classify_test_file_lang(rel)
+        if lang is None:
+            continue
+        full = repo_root / rel
+        if (
+            full.is_file()
+            and not full.is_symlink()
+            and full.resolve().is_relative_to(repo_root_resolved)
+        ):
+            result.append((rel, full, lang))
+    return result
+
+
+def _go_subtest_present(text: str, subtest: str) -> bool:
+    escaped = re.escape(subtest).replace("_", r"[\s_/-]")
+    pattern = re.compile(rf'(?:["`]{escaped}["`])')
+    return pattern.search(text) is not None
+
+
+def _matches_go_test(text: str, query: _TestNameQuery) -> bool:
+    if query.go_parent is not None:
+        if re.search(rf"\bfunc\s+(?:\([^)]+\)\s+)?{re.escape(query.go_parent)}\s*\(", text) is None:
+            return False
+        return all(_go_subtest_present(text, sub) for sub in query.go_subtests)
+    if IDENT_RE.match(query.leaf) is not None and (
+        re.search(rf"\bfunc\s+(?:\([^)]+\)\s+)?{re.escape(query.leaf)}\s*\(", text) is not None
+    ):
+        return True
+    if query.leaf:
+        run_pat = re.compile(rf'\bt\.Run\s*\(\s*["`]{re.escape(query.leaf)}["`]')
+        return run_pat.search(text) is not None
+    return False
+
+
+def _matches_python_test(text: str, query: _TestNameQuery) -> bool:
+    if IDENT_RE.match(query.leaf) is None:
+        return False
+    fn_pat = re.compile(rf"^\s*(?:async\s+)?def\s+{re.escape(query.leaf)}\s*\(", re.MULTILINE)
+    if fn_pat.search(text) is None:
+        return False
+    if query.parent_symbol and IDENT_RE.match(query.parent_symbol) is not None:
+        cls_pat = re.compile(rf"^\s*class\s+{re.escape(query.parent_symbol)}\b", re.MULTILINE)
+        return cls_pat.search(text) is not None
+    return True
+
+
+def _matches_rust_test(rel_posix: str, text: str, query: _TestNameQuery) -> bool:
+    if IDENT_RE.match(query.leaf) is None or query.leaf not in text:
+        return False
+    fn_pat = re.compile(rf"\b(?:async\s+)?fn\s+{re.escape(query.leaf)}\s*[<(]")
+    lines = text.splitlines()
+    is_dedicated_test_file = RUST_TEST_PATH_RE.search(rel_posix) is not None
+    for match in fn_pat.finditer(text):
+        line_idx = text.count("\n", 0, match.start())
+        start_idx = max(0, line_idx - RUST_ATTR_LOOKBACK_LINES)
+        preceding = "\n".join(lines[start_idx:line_idx])
+        if RUST_TEST_ATTR_RE.search(preceding) is not None:
+            return True
+        if is_dedicated_test_file and query.leaf.startswith("test_"):
+            return True
+    return False
+
+
+def _matches_ts_test(text: str, query: _TestNameQuery) -> bool:
+    titles = {t for t in (query.leaf, query.raw) if t}
+    for title in titles:
+        pat = re.compile(
+            rf"""(?:Deno\.)?(?:test|it|describe)(?:\.(?:only|each))?\s*\(\s*["'`]{re.escape(title)}["'`]"""
+        )
+        if pat.search(text) is not None:
+            return True
+    if IDENT_RE.match(query.leaf) is not None:
+        deno_fn = re.compile(
+            rf"\bDeno\.test\s*\(\s*(?:async\s+)?function\s+{re.escape(query.leaf)}\b"
+        )
+        return deno_fn.search(text) is not None
+    return False
+
+
+def _candidate_test_exists(
+    repo_root: Path,
+    test_name: str,
+    test_files: list[tuple[str, Path, str]],
+    text_cache: dict[Path, str],
+) -> bool:
+    query = _parse_test_name_query(test_name)
+    if not query.leaf:
+        return False
+
+    candidates = test_files
+    if query.path_hint is not None:
+        hint = query.path_hint
+        candidates = [
+            item for item in test_files if item[0] == hint or item[0].endswith(f"/{hint}")
+        ]
+
+    for rel_posix, full_path, lang in candidates:
+        text = text_cache.get(full_path)
+        if text is None:
+            try:
+                text = full_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            text_cache[full_path] = text
+        if lang == "go" and _matches_go_test(text, query):
+            return True
+        if lang == "python" and _matches_python_test(text, query):
+            return True
+        if lang == "rust" and _matches_rust_test(rel_posix, text, query):
+            return True
+        if lang == "typescript" and _matches_ts_test(text, query):
+            return True
+    return False
+
+
 def _validate_behavior_candidates(
     data: dict[str, Any],
     screener_candidates: list[dict[str, Any]] | None,
     issues: list[ValidationIssue],
+    *,
+    repo_root: Path | None = None,
 ) -> None:
     impact = data.get("runtime_behavior_impact")
     has_change = impact.get("has_change") if isinstance(impact, dict) else None
@@ -1336,6 +1646,9 @@ def _validate_behavior_candidates(
     responses: list[tuple[int, dict[str, Any]]] = [
         (idx, item) for idx, item in enumerate(raw_responses) if isinstance(item, dict)
     ]
+
+    test_files_cache: list[tuple[str, Path, str]] | None = None
+    text_cache: dict[Path, str] = {}
 
     for idx, resp in responses:
         if resp.get("disposition") == "intended":
@@ -1358,6 +1671,18 @@ def _validate_behavior_candidates(
                         "non-placeholder test_name",
                     )
                 )
+            elif repo_root is not None:
+                if test_files_cache is None:
+                    test_files_cache = _list_repo_test_files(repo_root)
+                if not _candidate_test_exists(repo_root, test_name, test_files_cache, text_cache):
+                    issues.append(
+                        ValidationIssue(
+                            "NONEXISTENT_CANDIDATE_TEST",
+                            f"$.runtime_behavior_impact.candidate_responses[{idx}].test_name",
+                            f"candidate response test_name {test_name!r} was not found in any "
+                            f"test file under {repo_root}",
+                        )
+                    )
 
     if not screener_candidates:
         return
@@ -1396,6 +1721,7 @@ def _validate_generated_code_edits(
     repo_root: Path | None,
     allow_generated: bool,
     issues: list[ValidationIssue],
+    base_commit: str | None = None,
 ) -> None:
     if repo_root is None or allow_generated:
         return
@@ -1406,7 +1732,9 @@ def _validate_generated_code_edits(
         if not isinstance(entry, dict):
             continue
         rel = entry.get("path")
-        if isinstance(rel, str) and _repo_rel_is_generated_code(repo_root, rel):
+        if isinstance(rel, str) and _repo_rel_is_generated_code(
+            repo_root, rel, base_commit=base_commit
+        ):
             issues.append(
                 ValidationIssue(
                     "GENERATED_CODE_MODIFIED",
@@ -1580,7 +1908,7 @@ def validate_handoff_doc(
 
     _validate_handoff_impact(doc.data, issues)
     _validate_handoff_verification_and_files(doc.data, issues)
-    _validate_behavior_candidates(doc.data, screener_candidates, issues)
+    _validate_behavior_candidates(doc.data, screener_candidates, issues, repo_root=repo_root)
 
     allow_generated = (
         packet_doc is not None
@@ -1849,6 +2177,24 @@ def _cmd_validate_handoff(args: argparse.Namespace) -> int:
         screener_candidates=screener_candidates,
         repo_root=repo_root,
     )
+    if args.base_commit and args.base_commit != "HEAD":
+        allow_generated = (
+            packet_doc is not None
+            and isinstance(packet_doc.data.get("scope"), dict)
+            and packet_doc.data["scope"].get("allow_generated_code_edits") is True
+        )
+        base_gen_issues: list[ValidationIssue] = []
+        _validate_generated_code_edits(
+            handoff_doc.data,
+            repo_root=repo_root,
+            allow_generated=allow_generated,
+            issues=base_gen_issues,
+            base_commit=args.base_commit,
+        )
+        existing_gen_paths = {
+            item.path for item in issues if item.code == "GENERATED_CODE_MODIFIED"
+        }
+        issues.extend(item for item in base_gen_issues if item.path not in existing_gen_paths)
     return _emit_result(
         kind="handoff",
         target_path=handoff_path,

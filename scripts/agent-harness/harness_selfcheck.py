@@ -159,7 +159,7 @@ def _check_hook_file(
 
     total_commands = 0
     pre_tool_commands: list[str] = []
-    codex_bash_ops_found = False
+    bash_ops_found = False
 
     for event_name, entries in hooks_map.items():
         for matcher, hook in _iter_hook_objects_with_matchers(entries):
@@ -179,8 +179,8 @@ def _check_hook_file(
                             'PreToolUse command hook lacks "onFailure": "block"',
                         )
                     )
-                if not is_claude and "guard_ops_commands.py" in cmd_str:
-                    if "--on-match deny" not in cmd_str:
+                if "guard_ops_commands.py" in cmd_str:
+                    if not is_claude and "--on-match deny" not in cmd_str:
                         findings.append(
                             Finding(
                                 "H4",
@@ -189,7 +189,7 @@ def _check_hook_file(
                             )
                         )
                     if _matcher_matches_tool(matcher, "Bash"):
-                        codex_bash_ops_found = True
+                        bash_ops_found = True
 
             findings.extend(
                 Finding(
@@ -221,7 +221,7 @@ def _check_hook_file(
         if not any(required_guard in cmd for cmd in pre_tool_commands)
     )
 
-    if not is_claude and not codex_bash_ops_found:
+    if not bash_ops_found:
         findings.append(
             Finding(
                 "H4",
