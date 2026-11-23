@@ -1560,6 +1560,19 @@ def test_real_repository() -> None:
 
 
 def main() -> int:
+    bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
+    if bridge.is_file():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
+        if spec is not None and spec.loader is not None:
+            bridge_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bridge_mod)
+            delegated = bridge_mod.delegated(
+                SCRIPT, ["./internal/suppress"], ["suppressions", "--base", "HEAD~1"]
+            )
+            if delegated is not None:
+                return delegated
     checker = load_checker()
     test_allowlist_validation(checker)
     test_pyproject_checks(checker)

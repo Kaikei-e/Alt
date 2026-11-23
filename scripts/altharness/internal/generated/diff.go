@@ -1,0 +1,679 @@
+package generated
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+var (
+	mockgenSourceRE = regexp.MustCompile(`(?i)^\s*//\s*Source:\s*(\S+)`)
+	goInterfaceRE   = regexp.MustCompile(`\btype\s+\w+(?:\[[^\]]+\])?\s+interface\b`)
+)
+
+var protoGenSuffixes = []string{
+	".pb.go",
+	".connect.go",
+	"_pb2.py",
+	"_pb2.pyi",
+	"_connect.py",
+	"_pb.ts",
+	"_connect.ts",
+}
+
+// Each non-merge commit is checked against its first parent. An aggregate
+// base..HEAD diff hides a later hand-edit when an earlier commit already
+// touched the matching spec.
+type diffContext struct {
+	repoRoot    string
+	baseRev     string
+	headRev     string
+	useWorktree bool
+	changed     map[string]struct{}
+	commitLabel string
+}
+
+func checkPair(beforePath, afterPath string, logical *string) ([]Violation, error) {
+	beforeBytes, err := os.ReadFile(beforePath)
+	if err != nil {
+		return nil, fmt.Errorf("read before: %w", err)
+	}
+	afterBytes, err := os.ReadFile(afterPath)
+	if err != nil {
+		return nil, fmt.Errorf("read after: %w", err)
+	}
+	if bytes.Equal(beforeBytes, afterBytes) {
+		return nil, nil
+	}
+	beforeHdr, beforeOK := extractGeneratedHeader(string(beforeBytes))
+	afterHdr, afterOK := extractGeneratedHeader(string(afterBytes))
+	if !beforeOK && !afterOK {
+		return nil, nil
+	}
+	display := filepath.ToSlash(afterPath)
+	if logical != nil && *logical != "" {
+		display = *logical
+	}
+	var reason string
+	switch {
+	case beforeOK && !afterOK:
+		reason = "DO NOT EDIT generated header was removed while modifying generated file"
+	case beforeHdr == afterHdr:
+		reason = "generated file carrying `DO NOT EDIT` header was modified without regenerating (header unchanged: `" + afterHdr + "`)"
+	default:
+		reason = "generated file carrying `DO NOT EDIT` header was modified without spec regeneration"
+	}
+	return []Violation{{
+		Path:    display,
+		Line:    1,
+		Rule:    ruleDoNotEdit,
+		Message: reason,
+	}}, nil
+}
+
+func (c *checker) checkGitDiff(ctx context.Context, repoRoot, baseRev string, headRev *string) ([]Violation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("git diff: %w", err)
+	}
+	root := prepareRoot(repoRoot)
+	if _, err := c.which("git"); err != nil {
+		return []Violation{{
+			Path:    ".",
+			Line:    1,
+			Rule:    ruleGitUnavailable,
+			Message: "git executable not found in PATH",
+		}}, nil
+	}
+	resolvedBase, baseErr, err := c.validateGitRev(ctx, root, baseRev, "--base")
+	if err != nil {
+		return nil, err
+	}
+	if baseErr != nil {
+		return []Violation{*baseErr}, nil
+	}
+	var resolvedHead string
+	headSet := false
+	if headRev != nil {
+		headSet = true
+		var headErr *Violation
+		resolvedHead, headErr, err = c.validateGitRev(ctx, root, *headRev, "--head")
+		if err != nil {
+			return nil, err
+		}
+		if headErr != nil {
+			return []Violation{*headErr}, nil
+		}
+	}
+
+	diffArgs := []string{"git", "-C", root, "diff", "--name-only", resolvedBase}
+	if headSet {
+		diffArgs = append(diffArgs, resolvedHead)
+	}
+	diffArgs = append(diffArgs, "--")
+	stdout, stderr, code, runErr := c.exec(ctx, diffArgs, "")
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("git diff: %w", ctx.Err())
+	}
+	if code != 0 || runErr != nil {
+		return []Violation{{
+			Path:    ".",
+			Line:    1,
+			Rule:    ruleGitDiffError,
+			Message: "git diff failed: " + outputDetail(stdout, stderr, runErr),
+		}}, nil
+	}
+
+	var violations []Violation
+	seen := map[string]struct{}{}
+	record := func(items []Violation) {
+		for _, item := range items {
+			key := item.Path + "\x00" + item.Rule
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			violations = append(violations, item)
+		}
+	}
+
+	targetHead := resolvedHead
+	if !headSet {
+		headOut, _, headCode, headErr := c.exec(ctx, []string{"git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"}, "")
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("git diff: %w", ctx.Err())
+		}
+		if headErr == nil && headCode == 0 {
+			targetHead = strings.TrimSpace(headOut)
+		} else {
+			targetHead = ""
+		}
+	}
+	untracked := map[string]struct{}{}
+	if !headSet {
+		untracked = c.listUntracked(ctx, root)
+	}
+	if targetHead != "" {
+		mbOut, _, mbCode, mbErr := c.exec(ctx, []string{"git", "-C", root, "merge-base", resolvedBase, targetHead}, "")
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("git diff: %w", ctx.Err())
+		}
+		mergeBase := resolvedBase
+		if mbErr == nil && mbCode == 0 && strings.TrimSpace(mbOut) != "" {
+			mergeBase = strings.TrimSpace(mbOut)
+		}
+		commitVs, err := c.collectCommitViolations(ctx, root, mergeBase, targetHead)
+		if err != nil {
+			return nil, err
+		}
+		record(commitVs)
+		if !headSet {
+			workVs, err := c.collectWorktreeViolations(ctx, root, targetHead, untracked)
+			if err != nil {
+				return nil, err
+			}
+			record(workVs)
+		}
+	}
+
+	var changedFiles []string
+	for _, line := range splitLines(stdout) {
+		line = strings.TrimSpace(line)
+		if line == "" || isExcludedRel(line) {
+			continue
+		}
+		changedFiles = append(changedFiles, filepath.ToSlash(line))
+	}
+	changed := setOf(changedFiles)
+	for p := range untracked {
+		changed[p] = struct{}{}
+	}
+	dc := diffContext{
+		repoRoot:    root,
+		baseRev:     resolvedBase,
+		headRev:     resolvedHead,
+		useWorktree: !headSet,
+		changed:     changed,
+	}
+	var aggregate []Violation
+	for _, rel := range uniqueSorted(changedFiles) {
+		v, err := c.checkSingleDiffFile(ctx, dc, rel)
+		if err != nil {
+			return nil, err
+		}
+		if v != nil {
+			aggregate = append(aggregate, *v)
+		}
+	}
+	record(aggregate)
+	return violations, nil
+}
+
+func (c *checker) validateGitRev(ctx context.Context, repoRoot, rev, label string) (string, *Violation, error) {
+	if strings.TrimSpace(rev) == "" || strings.HasPrefix(rev, "-") {
+		return "", &Violation{
+			Path:    ".",
+			Line:    1,
+			Rule:    ruleInvalidGitRev,
+			Message: invalidRevMessage(label, rev, ""),
+		}, nil
+	}
+	stdout, stderr, code, err := c.exec(ctx, []string{
+		"git", "-C", repoRoot, "rev-parse", "--verify", "--end-of-options", rev + "^{commit}",
+	}, "")
+	if ctx.Err() != nil {
+		return "", nil, fmt.Errorf("validate git rev: %w", ctx.Err())
+	}
+	if code != 0 || err != nil {
+		return "", &Violation{
+			Path:    ".",
+			Line:    1,
+			Rule:    ruleInvalidGitRev,
+			Message: invalidRevMessage(label, rev, outputDetail(stdout, stderr, err)),
+		}, nil
+	}
+	return strings.TrimSpace(stdout), nil, nil
+}
+
+func invalidRevMessage(label, rev, detail string) string {
+	if detail == "" {
+		return "invalid git revision for " + label + ": " + pythonRepr(rev)
+	}
+	return "invalid git revision for " + label + " (" + pythonRepr(rev) + "): " + detail
+}
+
+func (c *checker) gitShow(ctx context.Context, repoRoot, rev, rel string) (string, bool, error) {
+	stdout, _, code, err := c.exec(ctx, []string{
+		"git", "-C", repoRoot, "show", "--end-of-options", rev + ":" + rel,
+	}, "")
+	if ctx.Err() != nil {
+		return "", false, ctx.Err()
+	}
+	if err != nil || code != 0 {
+		return "", false, nil
+	}
+	return stdout, true, nil
+}
+
+func (c *checker) listUntracked(ctx context.Context, repoRoot string) map[string]struct{} {
+	stdout, _, code, err := c.exec(ctx, []string{"git", "-C", repoRoot, "ls-files", "--others", "--exclude-standard"}, "")
+	if err != nil || code != 0 {
+		return map[string]struct{}{}
+	}
+	out := map[string]struct{}{}
+	for _, line := range splitLines(stdout) {
+		line = strings.TrimSpace(line)
+		if line == "" || isExcludedRel(line) {
+			continue
+		}
+		out[filepath.ToSlash(line)] = struct{}{}
+	}
+	return out
+}
+
+func (c *checker) collectCommitViolations(ctx context.Context, repoRoot, mergeBase, targetHead string) ([]Violation, error) {
+	stdout, _, code, err := c.exec(ctx, []string{
+		"git", "-C", repoRoot, "rev-list", "--reverse", "--no-merges", mergeBase + ".." + targetHead,
+	}, "")
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("rev-list: %w", ctx.Err())
+	}
+	if err != nil || code != 0 {
+		return nil, nil
+	}
+	var violations []Violation
+	for _, commitSHA := range splitLines(stdout) {
+		commitSHA = strings.TrimSpace(commitSHA)
+		if commitSHA == "" {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("commit diff: %w", err)
+		}
+		parentOut, _, parentCode, parentErr := c.exec(ctx, []string{
+			"git", "-C", repoRoot, "rev-parse", "--verify", "--quiet", commitSHA + "^1^{commit}",
+		}, "")
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("commit parent: %w", ctx.Err())
+		}
+		if parentErr != nil || parentCode != 0 {
+			continue
+		}
+		parentSHA := strings.TrimSpace(parentOut)
+		dtOut, _, dtCode, dtErr := c.exec(ctx, []string{
+			"git", "-C", repoRoot, "diff-tree", "--no-commit-id", "-r", "--name-status", commitSHA,
+		}, "")
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("diff-tree: %w", ctx.Err())
+		}
+		if dtErr != nil || dtCode != 0 {
+			continue
+		}
+		changed, targets := parseNameStatus(dtOut)
+		label := commitSHA
+		if len(label) > 9 {
+			label = label[:9]
+		}
+		dc := diffContext{
+			repoRoot:    repoRoot,
+			baseRev:     parentSHA,
+			headRev:     commitSHA,
+			useWorktree: false,
+			changed:     changed,
+			commitLabel: label,
+		}
+		for _, rel := range uniqueSorted(targets) {
+			v, err := c.checkSingleDiffFile(ctx, dc, rel)
+			if err != nil {
+				return nil, err
+			}
+			if v != nil {
+				violations = append(violations, *v)
+			}
+		}
+	}
+	return violations, nil
+}
+
+func (c *checker) collectWorktreeViolations(ctx context.Context, repoRoot, headSHA string, untracked map[string]struct{}) ([]Violation, error) {
+	stdout, _, code, err := c.exec(ctx, []string{"git", "-C", repoRoot, "diff", "--name-status", headSHA, "--"}, "")
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("worktree diff: %w", ctx.Err())
+	}
+	if err != nil || code != 0 {
+		return nil, nil
+	}
+	changed, targets := parseNameStatus(stdout)
+	for p := range untracked {
+		changed[p] = struct{}{}
+	}
+	dc := diffContext{
+		repoRoot:    repoRoot,
+		baseRev:     headSHA,
+		useWorktree: true,
+		changed:     changed,
+	}
+	var violations []Violation
+	for _, rel := range uniqueSorted(targets) {
+		v, err := c.checkSingleDiffFile(ctx, dc, rel)
+		if err != nil {
+			return nil, err
+		}
+		if v != nil {
+			violations = append(violations, *v)
+		}
+	}
+	return violations, nil
+}
+
+func parseNameStatus(stdout string) (map[string]struct{}, []string) {
+	changed := map[string]struct{}{}
+	var targets []string
+	for _, raw := range splitLines(stdout) {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 2 {
+			continue
+		}
+		status := parts[0]
+		var rel string
+		if (strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C")) && len(parts) >= 3 {
+			rel = strings.TrimSpace(parts[2])
+		} else {
+			rel = strings.TrimSpace(parts[1])
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "" || isExcludedRel(rel) {
+			continue
+		}
+		changed[rel] = struct{}{}
+		if !strings.HasPrefix(status, "D") {
+			targets = append(targets, rel)
+		}
+	}
+	return changed, targets
+}
+
+func (c *checker) checkSingleDiffFile(ctx context.Context, dc diffContext, rel string) (*Violation, error) {
+	before, beforeOK, err := c.gitShow(ctx, dc.repoRoot, dc.baseRev, rel)
+	if err != nil {
+		return nil, fmt.Errorf("show base %s: %w", rel, err)
+	}
+	after, afterOK, unsafe, err := c.readDiffAfter(ctx, dc, rel, before, beforeOK)
+	if err != nil {
+		return nil, err
+	}
+	if unsafe != nil {
+		return unsafe, nil
+	}
+	if !beforeOK || !afterOK || before == after {
+		return nil, nil
+	}
+	_, beforeHas := extractGeneratedHeader(before)
+	_, afterHas := extractGeneratedHeader(after)
+	if !beforeHas && !afterHas {
+		return nil, nil
+	}
+	suffix := ""
+	if dc.commitLabel != "" {
+		suffix = " (commit " + dc.commitLabel + ")"
+	}
+	if beforeHas && !afterHas {
+		return &Violation{
+			Path:    rel,
+			Line:    1,
+			Rule:    ruleDoNotEdit,
+			Message: "DO NOT EDIT generated header was removed from tracked generated file" + suffix,
+		}, nil
+	}
+	var afterRev *string
+	if !dc.useWorktree {
+		afterRev = &dc.headRev
+	}
+	match, err := c.hasMatchingSpecChange(ctx, dc.repoRoot, rel, after, dc.changed, afterRev)
+	if err != nil {
+		return nil, err
+	}
+	if !match {
+		return &Violation{
+			Path: rel,
+			Line: 1,
+			Rule: ruleDoNotEdit,
+			Message: "generated file carrying `DO NOT EDIT` header was modified without any " +
+				"matching spec/source/generator change" + suffix,
+		}, nil
+	}
+	return nil, nil
+}
+
+func (c *checker) readDiffAfter(ctx context.Context, dc diffContext, rel, before string, beforeOK bool) (string, bool, *Violation, error) {
+	if !dc.useWorktree {
+		text, ok, err := c.gitShow(ctx, dc.repoRoot, dc.headRev, rel)
+		return text, ok, nil, err
+	}
+	full := filepath.Join(dc.repoRoot, filepath.FromSlash(rel))
+	if pathEscapes(dc.repoRoot, full) {
+		if beforeOK {
+			if _, ok := extractGeneratedHeader(before); ok {
+				return "", false, &Violation{
+					Path:    rel,
+					Line:    1,
+					Rule:    ruleDoNotEdit,
+					Message: "tracked generated file was replaced with a symlink or out-of-repo path",
+				}, nil
+			}
+		}
+		return "", false, nil, nil
+	}
+	if !isRegularFile(full) {
+		return "", false, nil, nil
+	}
+	raw, err := os.ReadFile(full)
+	if err != nil {
+		return "", false, nil, nil
+	}
+	return string(raw), true, nil, nil
+}
+
+func extractMockgenSource(text string) string {
+	lines := splitLines(text)
+	if len(lines) > headerScanLines {
+		lines = lines[:headerScanLines]
+	}
+	for _, line := range lines {
+		match := mockgenSourceRE.FindStringSubmatch(line)
+		if match != nil {
+			return match[1]
+		}
+	}
+	return ""
+}
+
+func extractProtoStem(rel string) (string, bool) {
+	name := path.Base(rel)
+	for _, suffix := range protoGenSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			stem := strings.TrimSuffix(name, suffix)
+			if stem == "" {
+				return "", false
+			}
+			return stem, true
+		}
+	}
+	return "", false
+}
+
+func findGoModuleRel(repoRoot, rel string) (string, bool) {
+	cur := path.Dir(filepath.ToSlash(rel))
+	for {
+		var candidate string
+		if cur == "." || cur == "" {
+			candidate = filepath.Join(repoRoot, "go.mod")
+		} else {
+			candidate = filepath.Join(repoRoot, filepath.FromSlash(cur), "go.mod")
+		}
+		if isRegularFile(candidate) {
+			if cur == "." || cur == "" {
+				return "", true
+			}
+			return cur, true
+		}
+		if cur == "." || cur == "" {
+			return "", false
+		}
+		parent := path.Dir(cur)
+		if parent == cur {
+			return "", false
+		}
+		cur = parent
+	}
+}
+
+func allowedMockPackageDirs(rel, modRel string, modFound bool) map[string]struct{} {
+	mockDir := path.Dir(filepath.ToSlash(rel))
+	allowed := map[string]struct{}{mockDir: {}}
+	if mockDir != "." {
+		parent := path.Dir(mockDir)
+		if !modFound || modRel == "" || parent == modRel || strings.HasPrefix(parent, modRel+"/") {
+			allowed[parent] = struct{}{}
+		}
+	}
+	return allowed
+}
+
+func (c *checker) hasMatchingMockGoSourceChange(ctx context.Context, repoRoot, rel string, changed map[string]struct{}, afterRev *string) (bool, error) {
+	name := path.Base(rel)
+	mockStem := strings.TrimSuffix(strings.TrimPrefix(name, "mock_"), ".go")
+	modRel, modFound := findGoModuleRel(repoRoot, rel)
+	prefix := ""
+	if modFound && modRel != "" {
+		prefix = modRel + "/"
+	}
+	allowed := allowedMockPackageDirs(rel, modRel, modFound)
+	for p := range changed {
+		if p == rel || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		if modFound && prefix != "" && !strings.HasPrefix(p, prefix) {
+			continue
+		}
+		if strings.Contains("/"+p+"/", "/mocks/") || strings.HasPrefix(path.Base(p), "mock_") {
+			continue
+		}
+		if mockStem != "" && strings.TrimSuffix(path.Base(p), ".go") == mockStem {
+			return true, nil
+		}
+		if _, ok := allowed[path.Dir(p)]; ok {
+			src, srcOK, err := c.readCandidateGoSource(ctx, repoRoot, p, afterRev)
+			if err != nil {
+				return false, err
+			}
+			if srcOK && goInterfaceRE.MatchString(src) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (c *checker) readCandidateGoSource(ctx context.Context, repoRoot, rel string, afterRev *string) (string, bool, error) {
+	if afterRev != nil {
+		return c.gitShow(ctx, repoRoot, *afterRev, rel)
+	}
+	root := prepareRoot(repoRoot)
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if !isSafeWorktreeFile(root, full) {
+		return "", false, nil
+	}
+	raw, err := os.ReadFile(full)
+	if err != nil {
+		return "", false, nil
+	}
+	return string(raw), true, nil
+}
+
+func (c *checker) hasMatchingSpecChange(ctx context.Context, repoRoot, rel, text string, changed map[string]struct{}, afterRev *string) (bool, error) {
+	if stem, ok := extractProtoStem(rel); ok {
+		expected := stem + ".proto"
+		for p := range changed {
+			if strings.HasPrefix(p, "proto/buf.gen") || p == "proto/buf.yaml" {
+				return true, nil
+			}
+			if strings.HasSuffix(p, ".proto") && path.Base(p) == expected {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if strings.HasSuffix(rel, "server.gen.go") || strings.HasSuffix(rel, "client.gen.go") {
+		if _, ok := changed["scripts/codegen/go.tool.mod"]; ok {
+			return true, nil
+		}
+		for p := range changed {
+			if strings.HasSuffix(p, "openapi.yaml") {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	for _, out := range protovisOutputs {
+		if rel != out {
+			continue
+		}
+		for p := range changed {
+			if strings.HasSuffix(p, ".proto") || strings.HasPrefix(p, "proto/tools/protovis/") || p == "proto/buf.yaml" {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if src := extractMockgenSource(text); src != "" {
+		if _, ok := changed["scripts/codegen/go.tool.mod"]; ok {
+			return true, nil
+		}
+		for p := range changed {
+			if p == src || strings.HasSuffix(p, "/"+src) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	name := path.Base(rel)
+	if strings.HasPrefix(name, "mock_") && strings.HasSuffix(name, ".go") {
+		if _, ok := changed["scripts/codegen/go.tool.mod"]; ok {
+			return true, nil
+		}
+		return c.hasMatchingMockGoSourceChange(ctx, repoRoot, rel, changed, afterRev)
+	}
+	return false, nil
+}
+
+func setOf(items []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		out[item] = struct{}{}
+	}
+	return out
+}
+
+func uniqueSorted(items []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
+}

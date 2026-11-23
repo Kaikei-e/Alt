@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Builds scripts/altharness/bin/alt-harness when sources are newer, then execs it.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+mod="$root/scripts/altharness"
+bin="$mod/bin/alt-harness"
+needs_build=0
+if [ ! -x "$bin" ]; then
+  needs_build=1
+else
+  while IFS= read -r src; do
+    if [ "$src" -nt "$bin" ]; then
+      needs_build=1
+      break
+    fi
+  done < <(find "$mod" -name '*.go' -type f 2>/dev/null)
+fi
+if [ "$needs_build" -eq 1 ]; then
+  mkdir -p "$mod/bin"
+  (cd "$mod" && GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "$bin" ./cmd/alt-harness)
+fi
+exec "$bin" "$@"

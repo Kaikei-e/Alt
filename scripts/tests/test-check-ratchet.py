@@ -1286,6 +1286,17 @@ def test_real_repository() -> None:
 
 
 def main() -> int:
+    bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
+    if bridge.is_file():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
+        if spec is not None and spec.loader is not None:
+            bridge_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bridge_mod)
+            delegated = bridge_mod.delegated(SCRIPT, ["./internal/ratchet"], ["ratchet"])
+            if delegated is not None:
+                return delegated
     mod = load_ratchet()
     test_counting_and_ratchet(mod)
     test_rule_fingerprint_baseline()
