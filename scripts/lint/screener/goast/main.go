@@ -90,23 +90,60 @@ func analyzeFile(path string) FileSummary {
 	nameCounts := map[string]int{}
 
 	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			if d.Body == nil {
+				continue
+			}
+			key := uniqueFuncKey(funcKey(fset, d), nameCounts)
+			functions[key] = analyzeNode(fset, d.Body, key, receiverKind(d), intConsts)
+		case *ast.GenDecl:
+			if d.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range d.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, ident := range vs.Names {
+					if i >= len(vs.Values) || !containsFuncLit(vs.Values[i]) {
+						continue
+					}
+					key := uniqueFuncKey("var:"+ident.Name, nameCounts)
+					functions[key] = analyzeNode(fset, vs.Values[i], key, "", intConsts)
+				}
+			}
 		}
-		baseName := funcKey(fset, fn)
-		nameCounts[baseName]++
-		key := baseName
-		if nameCounts[baseName] > 1 {
-			key = fmt.Sprintf("%s#%d", baseName, nameCounts[baseName])
-		}
-		functions[key] = analyzeFunc(fset, fn, key, intConsts)
 	}
 
 	return FileSummary{
 		Path:      path,
 		Functions: functions,
 	}
+}
+
+func uniqueFuncKey(baseName string, nameCounts map[string]int) string {
+	nameCounts[baseName]++
+	if nameCounts[baseName] > 1 {
+		return fmt.Sprintf("%s#%d", baseName, nameCounts[baseName])
+	}
+	return baseName
+}
+
+func containsFuncLit(expr ast.Expr) bool {
+	found := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if found || n == nil {
+			return false
+		}
+		if lit, ok := n.(*ast.FuncLit); ok && lit.Body != nil {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func receiverKind(fn *ast.FuncDecl) string {
@@ -241,15 +278,16 @@ func evalConstant(expr ast.Expr, consts map[string]int64) (constant.Value, bool)
 	}
 }
 
-func analyzeFunc(
+func analyzeNode(
 	fset *token.FileSet,
-	fn *ast.FuncDecl,
+	root ast.Node,
 	key string,
+	recvKind string,
 	intConsts map[string]int64,
 ) *FuncSummary {
 	summary := &FuncSummary{
 		Name:              key,
-		ReceiverKind:      receiverKind(fn),
+		ReceiverKind:      recvKind,
 		CondOps:           map[string]int{},
 		HTTPServerConfigs: []map[string]string{},
 		FileModes:         []CallArg{},
@@ -259,43 +297,38 @@ func analyzeFunc(
 	}
 
 	rpModes := map[string]struct{}{}
+	precedingTypeAssertOk := collectPrecedingTypeAssertOk(root)
 
-	// Direct return/defer count (excluding nested FuncLit closures).
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		if n == nil {
-			return false
-		}
-		if _, isLit := n.(*ast.FuncLit); isLit {
-			return false
-		}
-		switch n.(type) {
-		case *ast.ReturnStmt:
-			summary.ReturnCount++
-		case *ast.DeferStmt:
-			summary.DeferCount++
-		}
-		return true
-	})
-
-	// Full body inspection for conditions, server configs, file modes, limits, proxy, escaping, slog.
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	// Full body inspection including nested FuncLit closures for return/defer,
+	// conditions, server configs, file modes, limits, proxy, escaping, and slog.
+	ast.Inspect(root, func(n ast.Node) bool {
 		if n == nil {
 			return false
 		}
 		switch node := n.(type) {
+		case *ast.ReturnStmt:
+			summary.ReturnCount++
+		case *ast.DeferStmt:
+			summary.DeferCount++
 		case *ast.IfStmt:
-			collectCondOps(node.Cond, summary.CondOps)
+			taOk := ""
+			if node.Init != nil {
+				taOk = typeAssertOkIdent(node.Init)
+			} else {
+				taOk = precedingTypeAssertOk[node]
+			}
+			collectCondOps(node.Cond, summary.CondOps, taOk)
 		case *ast.ForStmt:
 			if node.Cond != nil {
-				collectCondOps(node.Cond, summary.CondOps)
+				collectCondOps(node.Cond, summary.CondOps, "")
 			}
 		case *ast.SwitchStmt:
 			if node.Tag != nil {
-				collectCondOps(node.Tag, summary.CondOps)
+				collectCondOps(node.Tag, summary.CondOps, "")
 			}
 		case *ast.CaseClause:
 			for _, expr := range node.List {
-				collectCondOps(expr, summary.CondOps)
+				collectCondOps(expr, summary.CondOps, "")
 			}
 		case *ast.CompositeLit:
 			inspectCompositeLit(fset, node, summary, rpModes)
@@ -331,7 +364,53 @@ func unwrapParens(expr ast.Expr) ast.Expr {
 	}
 }
 
-func isErrorsIsCall(expr ast.Expr) bool {
+func typeAssertOkIdent(stmt ast.Stmt) string {
+	assign, ok := stmt.(*ast.AssignStmt)
+	if !ok || len(assign.Lhs) != 2 || len(assign.Rhs) != 1 {
+		return ""
+	}
+	if _, ok := unwrapParens(assign.Rhs[0]).(*ast.TypeAssertExpr); !ok {
+		return ""
+	}
+	id, ok := assign.Lhs[1].(*ast.Ident)
+	if !ok || id.Name == "_" {
+		return ""
+	}
+	return id.Name
+}
+
+func recordPrecedingTypeAssert(stmts []ast.Stmt, out map[*ast.IfStmt]string) {
+	for i := 1; i < len(stmts); i++ {
+		ifStmt, ok := stmts[i].(*ast.IfStmt)
+		if !ok || ifStmt.Init != nil {
+			continue
+		}
+		if okName := typeAssertOkIdent(stmts[i-1]); okName != "" {
+			out[ifStmt] = okName
+		}
+	}
+}
+
+func collectPrecedingTypeAssertOk(root ast.Node) map[*ast.IfStmt]string {
+	out := map[*ast.IfStmt]string{}
+	ast.Inspect(root, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		switch blk := n.(type) {
+		case *ast.BlockStmt:
+			recordPrecedingTypeAssert(blk.List, out)
+		case *ast.CaseClause:
+			recordPrecedingTypeAssert(blk.Body, out)
+		case *ast.CommClause:
+			recordPrecedingTypeAssert(blk.Body, out)
+		}
+		return true
+	})
+	return out
+}
+
+func isErrorsCall(expr ast.Expr, fnName string) bool {
 	call, ok := unwrapParens(expr).(*ast.CallExpr)
 	if !ok {
 		return false
@@ -341,16 +420,55 @@ func isErrorsIsCall(expr ast.Expr) bool {
 		return false
 	}
 	pkg, ok := sel.X.(*ast.Ident)
-	return ok && pkg.Name == "errors" && sel.Sel.Name == "Is"
+	return ok && pkg.Name == "errors" && sel.Sel.Name == fnName
 }
 
-func collectCondOps(expr ast.Expr, ops map[string]int) {
+func isErrorsIsCall(expr ast.Expr) bool {
+	return isErrorsCall(expr, "Is")
+}
+
+func isErrorsAsCall(expr ast.Expr) bool {
+	return isErrorsCall(expr, "As")
+}
+
+func isTypeMatchExpr(expr ast.Expr, typeAssertOk string) bool {
+	expr = unwrapParens(expr)
+	if isErrorsAsCall(expr) {
+		return true
+	}
+	if typeAssertOk == "" {
+		return false
+	}
+	id, ok := expr.(*ast.Ident)
+	return ok && id.Name == typeAssertOk
+}
+
+func boolLiteralValue(expr ast.Expr) (bool, bool) {
+	id, ok := unwrapParens(expr).(*ast.Ident)
+	if !ok {
+		return false, false
+	}
+	switch id.Name {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func collectCondOps(expr ast.Expr, ops map[string]int, typeAssertOk string) {
 	if expr == nil {
 		return
 	}
 	expr = unwrapParens(expr)
 	if isErrorsIsCall(expr) {
 		ops["=="]++
+		return
+	}
+	if isTypeMatchExpr(expr, typeAssertOk) {
+		ops["type_match"]++
 		return
 	}
 
@@ -361,19 +479,40 @@ func collectCondOps(expr ast.Expr, ops map[string]int) {
 				ops["!="]++
 				return
 			}
+			if isTypeMatchExpr(e.X, typeAssertOk) {
+				ops["!"]++
+				ops["type_match"]++
+				return
+			}
 			ops["!"]++
 		}
-		collectCondOps(e.X, ops)
+		collectCondOps(e.X, ops, typeAssertOk)
 	case *ast.BinaryExpr:
+		if e.Op == token.EQL || e.Op == token.NEQ {
+			if bval, ok := boolLiteralValue(e.Y); ok && isTypeMatchExpr(e.X, typeAssertOk) {
+				if (e.Op == token.EQL) != bval {
+					ops["!"]++
+				}
+				ops["type_match"]++
+				return
+			}
+			if bval, ok := boolLiteralValue(e.X); ok && isTypeMatchExpr(e.Y, typeAssertOk) {
+				if (e.Op == token.EQL) != bval {
+					ops["!"]++
+				}
+				ops["type_match"]++
+				return
+			}
+		}
 		switch e.Op {
 		case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ, token.LAND, token.LOR:
 			ops[e.Op.String()]++
 		}
-		collectCondOps(e.X, ops)
-		collectCondOps(e.Y, ops)
+		collectCondOps(e.X, ops, typeAssertOk)
+		collectCondOps(e.Y, ops, typeAssertOk)
 	case *ast.CallExpr:
 		for _, arg := range e.Args {
-			collectCondOps(arg, ops)
+			collectCondOps(arg, ops, typeAssertOk)
 		}
 	}
 }

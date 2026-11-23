@@ -1,5 +1,5 @@
 ---
-max_judgment_rules: 9
+max_judgment_rules: 6
 ---
 
 # Rule Ledger (CHECK-07)
@@ -38,12 +38,12 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-23 | 構造 AST スクリーナで意図せぬ振る舞い変更候補を検出し、タスクハンドオフでの明示的承認を必須とする | `scripts/lint/behavior_screener.py`, `scripts/agent-harness/task_packet.py` | C-01 / C-02 / C-03 / C-06 / C-10 / C-13 / C-14 |
 | R-24 | インライン抑制数の単調減少ラチェット・期限切れ検査・PR 差分サマリを強制する | `scripts/lint/check_ratchet.py`, `scripts/lint/check_suppressions.py`, `scripts/lint/suppression_diff_report.py` | C-22 |
 | R-25 | 全 45 ターゲットのカバレッジ台帳と 6 言語ファミリの end-to-end エントリポイントカナリアを検証する | `scripts/lint/entrypoint_canary.py`, `scripts/lint/canary_ledger.toml`, `scripts/lint/canary_audit.py` | C-21 |
-| R-26 | 実装前に失敗テストを書く（TDD: RED → GREEN → REFACTOR） | 判断（実装前の RED 確認はプロセス規律） | AGENTS.md / CLAUDE.md |
+| R-26 | 実装前に失敗テストを書く（TDD: RED → GREEN → REFACTOR） | `scripts/agent-harness/task_packet.py`, `scripts/harness/corpus.py` | AGENTS.md / CLAUDE.md / C-18 |
 | R-27 | Go / Rust / TS 変更時は `--build` 付きでコンパイル済みサービスを再ビルドする | 判断（ビルド反映手順の確認） | AGENTS.md / CLAUDE.md |
 | R-28 | 変更前に `<service>/CLAUDE.md` を確認し、修復 PR では正規契約（`docs/plan/knowledge-trail-core-concept.md`）を再読込する | 判断（着手時の文脈ロードで確認） | ADR-000940 |
 | R-29 | 未配線 DI 依存のサイレントフォールバックを禁止し、起動ログとビジネス経路での panic を強制する | 判断（コードレビューと failure-pattern-review で確認） | ADR-000928 |
 | R-30 | 必須設定欠落時は起動時に非ゼロ終了（fail-fast）し、無効化は明示設定とする | 判断（起動処理レビューで確認） | AGENTS.md / CLAUDE.md |
 | R-31 | Stream コンシューマは永続化後に XACK し、XAUTOCLAIM 回収ループを実装する | 判断（コンシューマ実装レビューで確認） | AGENTS.md / CLAUDE.md |
-| R-32 | ロジック改変を伴う一括 autofix（`golangci-lint --fix`, `cargo clippy --fix`, `ruff --unsafe-fixes`）を実行しない | 判断（GUARD-01、タスクパケット規律で運用） | C-01 / C-02 / C-03 |
-| R-33 | 検証・ビルドはフォアグラウンド同期実行とし、歴史的資産 `stopped-using-k8s/` は明示指示なしに変更しない | 判断（実行手順と変更スコープ確認） | .agents/rules/task-packet.md |
+| R-32 | ロジック改変を伴う一括 autofix（`golangci-lint --fix`, `cargo clippy --fix`, `ruff --unsafe-fixes`）を実行しない | `scripts/agent-harness/guard_exec_commands.py`, `.claude/hooks/deny-unsafe-commands.sh`, `scripts/agent-harness/task_packet.py` | C-01 / C-02 / C-03 |
+| R-33 | 検証・ビルドはフォアグラウンド同期実行とし、歴史的資産 `stopped-using-k8s/` は明示指示なしに変更しない | `scripts/agent-harness/guard_exec_commands.py`, `scripts/agent-harness/guard_packet_scope.py` | .agents/rules/task-packet.md |
 | R-34 | `alt-backend/app` の 4 バイナリ（`backend` / `harvester` / `notifier` / `datahub`）責務分離を維持する | 判断（設計・変更レビューで確認） | ADR-000954 |

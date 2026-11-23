@@ -3,6 +3,7 @@ packet_version: "1.0"
 packet_id: "EXAMPLE-TASK-001"
 title: "タスクパケット標準テンプレート"
 owner: "agent-worker"
+task_kind: "lint-fix"
 scope:
   target: "scripts"
   allowed_paths:
@@ -21,6 +22,12 @@ execution_policy:
   forbid_repo_wide_test_build: true
   forbid_bulk_autofix: true
   verification_command: "./scripts/lint/run.sh scripts"
+  max_command_budget_s: 180
+  measured:
+    duration_s: 1.5
+    exit_code: 0
+    at_commit: "1111111111111111111111111111111111111111"
+    command_sha256: "19a6f68d9a7983303fca6f0c924c02aaabc34fea3a0a84ac28bbf7a6eaa889e9"
 handoff_requirements:
   require_modified_files_and_lines: true
   require_runtime_behavior_impact: true

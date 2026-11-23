@@ -990,6 +990,340 @@ def test_git_diff_security(tmp: pathlib.Path) -> None:
     )
 
 
+def test_wave2_ast_blind_spots_go_and_diff(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[9a] Wave 2 MF-4: deleted test files, removed funcs, Go closures & errors.As\n"
+    )
+
+    # 1. Deleted test file in git diff mode => test.file_deleted
+    del_repo = tmp / "del_test_repo"
+    del_repo.mkdir()
+    git_bin = shutil.which("git")
+    assert git_bin is not None
+
+    def git(*gargs: str) -> None:
+        subprocess.run(  # noqa: S603 -- test helper running resolved git binary in temp repo
+            [git_bin, "-C", str(del_repo), *gargs],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test User")
+    (del_repo / "pkg").mkdir()
+    go_test = del_repo / "pkg" / "calc_test.go"
+    go_test.write_text(
+        'package pkg\nimport "testing"\nfunc TestCalc(t *testing.T) { t.Fatal("x") }\n',
+        encoding="utf-8",
+    )
+    (del_repo / "tests").mkdir()
+    py_test = del_repo / "tests" / "test_calc.py"
+    py_test.write_text("def test_calc():\n    assert 1 == 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-q", "-m", "base")
+
+    go_test.unlink()
+    py_test.unlink()
+    res_del = run_screener("--repo-root", str(del_repo), "--base", "HEAD", "--fail-on-candidates")
+    del_cands = (
+        parse_candidates(res_del) if res_del.returncode in (EXIT_OK, EXIT_CANDIDATES) else []
+    )
+    del_pairs = {(c.get("file"), c.get("kind")) for c in del_cands}
+    check(
+        "Deleted test files emit test.file_deleted in git diff mode",
+        res_del.returncode == EXIT_CANDIDATES
+        and ("pkg/calc_test.go", "test.file_deleted") in del_pairs
+        and ("tests/test_calc.py", "test.file_deleted") in del_pairs,
+        f"rc={res_del.returncode} pairs={del_pairs}",
+    )
+
+    # 2. Go function removed / renamed emits go.function_removed; newly added emits 0
+    before_go_fn = "package p\nfunc Keep() int { return 1 }\nfunc DropMe() int { return 2 }\n"
+    after_go_fn = "package p\nfunc Keep() int { return 1 }\nfunc Renamed() int { return 2 }\n"
+    res_grem, cands_grem = run_pair(tmp, "go_fn_rem.go", before_go_fn, after_go_fn)
+    check(
+        "Go removed/renamed function emits go.function_removed",
+        res_grem.returncode == EXIT_OK
+        and any(
+            c.get("kind") == "go.function_removed" and c.get("function") == "DropMe"
+            for c in cands_grem
+        ),
+        f"cands={cands_grem}",
+    )
+    after_go_add = before_go_fn + "func BrandNew() int { return 3 }\n"
+    res_gadd, cands_gadd = run_pair(tmp, "go_fn_add.go", before_go_fn, after_go_add)
+    check(
+        "Go newly added function emits 0 candidates",
+        res_gadd.returncode == EXIT_OK and len(cands_gadd) == 0,
+        f"cands={cands_gadd}",
+    )
+
+    # 3. Go FuncLit nested defer / return drop caught
+    before_closure = """package p
+func Middleware(cleanup func()) func() error {
+    return func() error {
+        defer cleanup()
+        if true {
+            return nil
+        }
+        return nil
+    }
+}
+"""
+    after_closure = """package p
+func Middleware(cleanup func()) func() error {
+    return func() error {
+        _ = cleanup
+        return nil
+    }
+}
+"""
+    res_cl, cands_cl = run_pair(tmp, "go_closure_drop.go", before_closure, after_closure)
+    check(
+        "Go dropped defer/return inside nested FuncLit emits go.return_or_defer_count_change",
+        res_cl.returncode == EXIT_OK
+        and any(c.get("kind") == "go.return_or_defer_count_change" for c in cands_cl),
+        f"cands={cands_cl}",
+    )
+
+    # 4. Go package-level var fn = func(...) caught
+    before_pkg_var = """package p
+var handler = func(a, b bool, cleanup func()) int {
+    defer cleanup()
+    if a && b {
+        return 1
+    }
+    return 0
+}
+"""
+    after_pkg_var = """package p
+var handler = func(a, b bool, cleanup func()) int {
+    _ = cleanup
+    if a {
+        return 1
+    }
+    return 0
+}
+"""
+    res_pv, cands_pv = run_pair(tmp, "go_pkg_var_fn.go", before_pkg_var, after_pkg_var)
+    pv_kinds = {c.get("kind") for c in cands_pv}
+    check(
+        "Go package-level var fn = func(...) catches cond_op & defer drop",
+        res_pv.returncode == EXIT_OK
+        and {"go.condition_operator_change", "go.return_or_defer_count_change"}.issubset(pv_kinds),
+        f"kinds={sorted(pv_kinds)} cands={cands_pv}",
+    )
+
+    # 5. Go errors.As normalization: ok == false -> !errors.As is safe (0), dropping type assert is caught
+    before_as_eq_false = """package p
+type MyErr struct{}
+func (e *MyErr) Error() string { return "x" }
+func f(err error) bool {
+    if _, ok := err.(*MyErr); ok == false {
+        return false
+    }
+    return true
+}
+"""
+    after_as_neg = """package p
+import "errors"
+type MyErr struct{}
+func (e *MyErr) Error() string { return "x" }
+func f(err error) bool {
+    var v *MyErr
+    if !errors.As(err, &v) {
+        return false
+    }
+    return true
+}
+"""
+    res_as_ok, cands_as_ok = run_pair(tmp, "go_as_neg_safe.go", before_as_eq_false, after_as_neg)
+    check(
+        "Go safe rewrite: ok == false -> !errors.As emits 0 candidates",
+        res_as_ok.returncode == EXIT_OK and len(cands_as_ok) == 0,
+        f"cands={cands_as_ok}",
+    )
+
+    before_as_drop = """package p
+type MyErr struct{}
+func (e *MyErr) Error() string { return "x" }
+func f(err error) bool {
+    if _, ok := err.(*MyErr); ok {
+        return true
+    }
+    return false
+}
+"""
+    after_as_drop = """package p
+type MyErr struct{}
+func (e *MyErr) Error() string { return "x" }
+func f(err error) bool {
+    if true {
+        return true
+    }
+    return false
+}
+"""
+    res_as_drop, cands_as_drop = run_pair(tmp, "go_as_drop.go", before_as_drop, after_as_drop)
+    check(
+        "Go bug: dropping type assertion ok -> true emits go.condition_operator_change",
+        res_as_drop.returncode == EXIT_OK
+        and any(c.get("kind") == "go.condition_operator_change" for c in cands_as_drop),
+        f"cands={cands_as_drop}",
+    )
+
+
+def test_wave2_ast_blind_spots_rust_py_ts(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[9b] Wave 2 MF-4: Rust literals/cancellation/tests, Svelte/MJS, Python AST\n"
+    )
+
+    # 1. Rust char literal '"' and br#"..."# / cr#"..."# must not mask .ok()
+    before_rs_char = """pub fn parse<'a>(s: &'a str) -> Result<usize, std::num::ParseIntError> {
+    let q = '"';
+    let sq = '\\'';
+    let b = br#"has "quote" inside"#;
+    let c = cr#"another "quote""#;
+    let _ = (q, sq, b, c);
+    s.parse::<usize>()
+}
+"""
+    after_rs_char = """pub fn parse<'a>(s: &'a str) -> Option<usize> {
+    let q = '"';
+    let sq = '\\'';
+    let b = br#"has "quote" inside"#;
+    let c = cr#"another "quote""#;
+    let _ = (q, sq, b, c);
+    s.parse::<usize>().ok()
+}
+"""
+    res_rc, cands_rc = run_pair(tmp, "rs_char_lit.rs", before_rs_char, after_rs_char)
+    check(
+        "Rust char literal '\"' and br#/cr# do not hide newly added .ok()",
+        res_rc.returncode == EXIT_OK
+        and any(c.get("kind") == "rust.fallible_error_swallow" for c in cands_rc),
+        f"cands={cands_rc}",
+    )
+
+    # 2. Rust deleting .ok() in test cannot cancel out adding .ok() in prod function
+    before_rs_cancel = """pub fn prod(s: &str) -> Result<usize, std::num::ParseIntError> {
+    s.parse::<usize>()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_old() {
+        let _ = "1".parse::<usize>().ok();
+    }
+}
+"""
+    after_rs_cancel = """pub fn prod(s: &str) -> Option<usize> {
+    s.parse::<usize>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_old() {
+        let _ = "1".parse::<usize>();
+    }
+}
+"""
+    res_rs_c, cands_rs_c = run_pair(tmp, "rs_cancel.rs", before_rs_cancel, after_rs_cancel)
+    check(
+        "Rust removing .ok() in test does not cancel adding .ok() in prod function",
+        res_rs_c.returncode == EXIT_OK
+        and any(c.get("kind") == "rust.fallible_error_swallow" for c in cands_rs_c),
+        f"cands={cands_rs_c}",
+    )
+
+    # 3. Rust tests.rs, *_tests.rs, #[tokio::test], #[rstest], prop_assert!, assert_matches!
+    before_rs_tests = """#[tokio::test]
+async fn checks_prop() {
+    prop_assert_eq!(1 + 1, 2);
+    assert_matches!(Ok::<i32, ()>(1), Ok(1));
+}
+"""
+    after_rs_tests = """#[tokio::test]
+async fn checks_prop() {
+    prop_assert_eq!(1 + 1, 3);
+    assert_matches!(Ok::<i32, ()>(1), Ok(1));
+}
+"""
+    for rs_path in (
+        "recap-worker/recap-worker/src/store/dao/tests.rs",
+        "recap-worker/recap-worker/src/pki/issuer_http_tests.rs",
+        "recap-worker/recap-worker/src/inline_tokio.rs",
+    ):
+        res_rt, cands_rt = run_pair(
+            tmp,
+            f"rt_{pathlib.Path(rs_path).stem}.rs",
+            before_rs_tests,
+            after_rs_tests,
+            logical_path=rs_path,
+        )
+        check(
+            f"Rust test detection & prop_assert_eq! change caught for {rs_path}",
+            res_rt.returncode == EXIT_OK
+            and any(c.get("kind") == "test.expectation_change" for c in cands_rt),
+            f"cands={cands_rt}",
+        )
+
+    # 4. .svelte, .mjs, .cjs recognized as typescript
+    before_sv = "export async function check(page) { await page.waitForTimeout(500); }\n"
+    after_sv = 'export async function check(page) { await page.waitForLoadState("networkidle"); }\n'
+    for ext in (".svelte", ".mjs", ".cjs"):
+        res_ext, cands_ext = run_pair(tmp, f"sample{ext}", before_sv, after_sv)
+        check(
+            f"Extension {ext} screened as typescript (ts.playwright_wait_change)",
+            res_ext.returncode == EXIT_OK
+            and any(c.get("kind") == "ts.playwright_wait_change" for c in cands_ext),
+            f"cands={cands_ext}",
+        )
+
+    # 5. Python removed function, condition operators, and except raise count
+    before_py_ops = """def check_status(ok: bool, code: int) -> bool:
+    if not ok and code >= 500:
+        return False
+    return True
+
+def load_val(x: str) -> int:
+    try:
+        return int(x)
+    except ValueError:
+        raise
+
+def helper_removed() -> int:
+    return 1
+"""
+    after_py_ops = """def check_status(ok: bool, code: int) -> bool:
+    if ok:
+        return False
+    return True
+
+def load_val(x: str) -> int:
+    try:
+        return int(x)
+    except ValueError:
+        return 0
+"""
+    res_pyo, cands_pyo = run_pair(tmp, "py_wave2_ops.py", before_py_ops, after_py_ops)
+    pyo_kinds = {c.get("kind") for c in cands_pyo}
+    check(
+        "Python catches condition_operator_change, except_raise_change, and function_removed",
+        res_pyo.returncode == EXIT_OK
+        and {
+            "python.condition_operator_change",
+            "python.except_raise_change",
+            "python.function_removed",
+        }.issubset(pyo_kinds),
+        f"kinds={sorted(pyo_kinds)} cands={cands_pyo}",
+    )
+
+
 def main() -> int:
     sys.stdout.write("CHECK-01 AST Behavior-Change Screener tests\n")
     test_layout_invariants()
@@ -1003,6 +1337,8 @@ def main() -> int:
             test_git_diff_mode_and_output_file(tmp)
             test_fail_closed_security_and_precision(tmp)
             test_git_diff_security(tmp)
+            test_wave2_ast_blind_spots_go_and_diff(tmp)
+            test_wave2_ast_blind_spots_rust_py_ts(tmp)
 
     sys.stdout.write(f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return EXIT_OK if RESULTS.failed == 0 else EXIT_CANDIDATES

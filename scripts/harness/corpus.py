@@ -3,7 +3,7 @@
 
 Validates every failure case under `scripts/harness/corpus/<ID>/` (`C-01`..`C-NN`),
 executes active implemented checks (`pyrefly`, `REPO-02`, `REPO-03`, `ARCH-02`,
-`ARCH-03`, `ARCH-06`, `CHECK-01`, `CHECK-05`, `CHECK-06`) against each case's
+`ARCH-03`, `ARCH-06`, `CHECK-01`, `CHECK-05`, `CHECK-06`, `VERIFY-01`) against each case's
 `before` (must pass) and `after` (must fail with `expected_signal`), counts
 unimplemented checks as `expected-miss`, and reports the canonical capture rate.
 
@@ -18,6 +18,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -78,9 +79,16 @@ IMPLEMENTED_CHECKS = frozenset(
         "CHECK-05",
         "CHECK-06",
         "CHECK-07",
+        "VERIFY-01",
+        "LOOP-01",
+        "LOOP-02",
+        "LOOP-03",
+        "EXEC-01",
+        "EXEC-02",
+        "EXEC-03",
     }
 )
-DIFF_CHECKS: frozenset[str] = frozenset({"CHECK-01", "CHECK-05", "CHECK-06"})
+DIFF_CHECKS: frozenset[str] = frozenset({"CHECK-01", "CHECK-05", "CHECK-06", "VERIFY-01"})
 UNIMPLEMENTED_CORPUS_CHECKS: frozenset[str] = frozenset()
 PROCESS_CHECKS = frozenset(
     {
@@ -103,8 +111,21 @@ PROCESS_CHECKS = frozenset(
         "EXEC-04",
     }
 )
-UNIMPLEMENTED_CHECKS = UNIMPLEMENTED_CORPUS_CHECKS | PROCESS_CHECKS
+UNIMPLEMENTED_CHECKS = UNIMPLEMENTED_CORPUS_CHECKS | (PROCESS_CHECKS - IMPLEMENTED_CHECKS)
 ALL_KNOWN_CHECKS = IMPLEMENTED_CHECKS | UNIMPLEMENTED_CORPUS_CHECKS | PROCESS_CHECKS
+VERIFY01_MIN_COMMITS = 2
+VERIFY01_TEST_FILE_RE = re.compile(
+    r"(?:^|/)(?:"
+    r"[^/]+_test\.go|"
+    r"tests?/[^/].*\.py|test_[^/]+\.py|test-[^/]+\.py|[^/]+_test\.py|"
+    r"[^/]*test[^/]*\.sh|"
+    r"(?:__tests__|tests|e2e)/.*\.(?:[cm]?[jt]sx?|svelte)|"
+    r"[^/]+\.(?:spec|test)\.(?:[cm]?[jt]sx?|svelte)|"
+    r"[^/]+_test\.[cm]?[jt]sx?|"
+    r"tests/.*\.rs|tests\.rs|[^/]+_tests?\.rs"
+    r")$",
+    re.IGNORECASE,
+)
 
 PYREFLY_FALLBACK_SERVICES = (
     "recap-subworker",
@@ -1285,22 +1306,380 @@ def _run_check05_diff(
     return CheckOutcome(exit_code=res.returncode, output=combined)
 
 
-def _run_git_step(git_bin: str, repo_dir: pathlib.Path, args: list[str]) -> str | None:
+def _exec_subprocess(
+    cmd: list[str],
+    *,
+    cwd: pathlib.Path | None = None,
+    timeout: float = SUBPROCESS_TIMEOUT_SECONDS,
+    label: str = "subprocess",
+) -> tuple[subprocess.CompletedProcess[str] | None, str | None]:
     try:
-        res = subprocess.run(  # noqa: S603 - fixed git command inside temporary corpus directory
-            [git_bin, "-C", str(repo_dir), *args],
+        res = subprocess.run(  # noqa: S603 - fixed corpus runner command inside temporary directory
+            cmd,
+            cwd=str(cwd) if cwd is not None else None,
             capture_output=True,
             text=True,
-            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            timeout=timeout,
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return f"CHECK-06 git {args[0]} timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        return None, f"{label} timed out after {timeout}s"
     except OSError as exc:
-        return f"CHECK-06 git {args[0]} exec error: {exc}"
-    if res.returncode != 0:
-        return f"CHECK-06 git {args[0]} failed: {_snippet(res.stderr or res.stdout)}"
+        return None, f"{label} exec error: {exc}"
+    return res, None
+
+
+def _run_git_step(
+    git_bin: str,
+    repo_dir: pathlib.Path,
+    args: list[str],
+    *,
+    prefix: str = "CHECK-06",
+) -> str | None:
+    res, err = _exec_subprocess(
+        [git_bin, "-C", str(repo_dir), *args],
+        label=f"{prefix} git {args[0]}",
+    )
+    if err is not None:
+        return err
+    if res is None or res.returncode != 0:
+        detail = _snippet((res.stderr or res.stdout) if res is not None else "")
+        return f"{prefix} git {args[0]} failed: {detail}"
     return None
+
+
+def _run_git_stdout(
+    git_bin: str,
+    repo_dir: pathlib.Path,
+    args: list[str],
+) -> tuple[str, str | None]:
+    res, err = _exec_subprocess(
+        [git_bin, "-C", str(repo_dir), *args],
+        label=f"VERIFY-01 git {args[0]}",
+    )
+    if err is not None:
+        return "", err
+    if res is None or res.returncode != 0:
+        detail = _snippet((res.stderr or res.stdout) if res is not None else "")
+        return "", f"VERIFY-01 git {args[0]} failed: {detail}"
+    return res.stdout, None
+
+
+def _is_verify01_test_file(rel_path: str) -> bool:
+    return bool(VERIFY01_TEST_FILE_RE.search(rel_path))
+
+
+def _mark_executable_if_shell(path: pathlib.Path) -> None:
+    if path.suffix == ".sh":
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _verify01_target_filename(case: CorpusCase, before_path: pathlib.Path) -> str:
+    if case.origin.files:
+        candidate = pathlib.Path(case.origin.files[0]).name
+        if candidate and candidate not in (".", ".."):
+            return candidate
+    return f"sample{before_path.suffix}"
+
+
+def _task_packet_supports_verify_sequence(task_packet_py: pathlib.Path) -> bool:
+    if not task_packet_py.is_file():
+        return False
+    res, err = _exec_subprocess(
+        [sys.executable, str(task_packet_py), "--help"],
+        label="VERIFY-01 task_packet --help",
+    )
+    return (
+        err is None and res is not None and res.returncode == 0 and "verify-sequence" in res.stdout
+    )
+
+
+def _safe_overlay_copy(tmp_repo: pathlib.Path, wt_dir: pathlib.Path, rel: str) -> str | None:
+    if not _is_normalized_repo_rel_path(rel):
+        return f"VERIFY-01 refused unsafe overlay path: {rel!r}"
+    repo_resolved = tmp_repo.resolve()
+    wt_resolved = wt_dir.resolve()
+    src = tmp_repo / rel
+    if src.is_symlink() or not src.is_file() or not src.resolve().is_relative_to(repo_resolved):
+        return f"VERIFY-01 refused non-regular or symlink source file: {rel!r}"
+
+    cur = wt_dir
+    for part in pathlib.PurePosixPath(rel).parts[:-1]:
+        cur = cur / part
+        if cur.is_symlink():
+            return f"VERIFY-01 refused symlink parent directory in worktree: {rel!r}"
+    raw_dest = wt_dir / rel
+    if raw_dest.is_symlink():
+        raw_dest.unlink()
+    raw_dest.parent.mkdir(parents=True, exist_ok=True)
+    if not raw_dest.parent.resolve().is_relative_to(wt_resolved):
+        return f"VERIFY-01 overlay destination escapes worktree: {rel!r}"
+    shutil.copy2(src, raw_dest)
+    return None
+
+
+def _run_verify01_baseline_on_base(
+    git_bin: str,
+    tmp_repo: pathlib.Path,
+    base_sha: str,
+    c1_files: list[str],
+    test_argv: list[str],
+) -> CheckOutcome | None:
+    with tempfile.TemporaryDirectory(prefix="alt-corpus-verify01-base-") as wt_parent:
+        wt_dir = pathlib.Path(wt_parent) / "base"
+        err = _run_git_step(
+            git_bin,
+            tmp_repo,
+            ["worktree", "add", "--detach", str(wt_dir), base_sha],
+            prefix="VERIFY-01",
+        )
+        if err is not None:
+            return CheckOutcome(exit_code=-1, output="", runner_error=err)
+        try:
+            for rel in c1_files:
+                copy_err = _safe_overlay_copy(tmp_repo, wt_dir, rel)
+                if copy_err is not None:
+                    return CheckOutcome(exit_code=-1, output="", runner_error=copy_err)
+            base_res, base_err = _exec_subprocess(
+                test_argv,
+                cwd=wt_dir,
+                label="VERIFY-01 baseline test",
+            )
+        finally:
+            _run_git_step(
+                git_bin,
+                tmp_repo,
+                ["worktree", "remove", "--force", str(wt_dir)],
+                prefix="VERIFY-01",
+            )
+    if base_err is not None or base_res is None:
+        return CheckOutcome(
+            exit_code=-1, output="", runner_error=base_err or "baseline test failed"
+        )
+    if base_res.returncode != 0:
+        combined = f"{base_res.stdout}\n{base_res.stderr}".strip()
+        return CheckOutcome(
+            exit_code=1,
+            output=f"ERROR [SEQUENCE_BASELINE_TEST_FAILED]: {combined}",
+        )
+    return None
+
+
+def _run_git_steps(
+    git_bin: str,
+    repo_dir: pathlib.Path,
+    steps: tuple[list[str], ...],
+    *,
+    prefix: str = "VERIFY-01",
+) -> str | None:
+    for args in steps:
+        err = _run_git_step(git_bin, repo_dir, args, prefix=prefix)
+        if err is not None:
+            return err
+    return None
+
+
+def _validate_verify01_commits(
+    git_bin: str,
+    tmp_repo: pathlib.Path,
+    base_sha: str,
+) -> tuple[list[str], CheckOutcome | None]:
+    commits_out, err = _run_git_stdout(
+        git_bin,
+        tmp_repo,
+        ["rev-list", "--reverse", "--no-merges", f"{base_sha}..HEAD"],
+    )
+    if err is not None:
+        return [], CheckOutcome(exit_code=-1, output="", runner_error=err)
+    commits = [line.strip() for line in commits_out.splitlines() if line.strip()]
+    if len(commits) < VERIFY01_MIN_COMMITS:
+        return [], CheckOutcome(
+            exit_code=1,
+            output=f"ERROR [SEQUENCE_TOO_FEW_COMMITS]: found {len(commits)} commit(s)",
+        )
+
+    c1_out, c1_err = _run_git_stdout(
+        git_bin,
+        tmp_repo,
+        ["diff-tree", "--no-commit-id", "--name-only", "-r", commits[0]],
+    )
+    later_out, later_err = _run_git_stdout(
+        git_bin,
+        tmp_repo,
+        ["diff", "--name-only", f"{commits[0]}..HEAD"],
+    )
+    git_err = c1_err or later_err
+    if git_err is not None:
+        return [], CheckOutcome(exit_code=-1, output="", runner_error=git_err)
+
+    c1_files = [line.strip() for line in c1_out.splitlines() if line.strip()]
+    later_files = {line.strip() for line in later_out.splitlines() if line.strip()}
+    fail_msg = ""
+    if not c1_files or any(not _is_verify01_test_file(path) for path in c1_files):
+        fail_msg = f"ERROR [SEQUENCE_FIRST_COMMIT_NOT_TEST_ONLY]: {c1_files}"
+    elif later_files & set(c1_files):
+        fail_msg = "ERROR [SEQUENCE_TEST_MUTATED_IN_IMPL]: test file modified after first commit"
+    if fail_msg:
+        return [], CheckOutcome(exit_code=1, output=fail_msg)
+    return c1_files, None
+
+
+def _run_verify01_sequence_fallback(
+    git_bin: str,
+    tmp_repo: pathlib.Path,
+    base_sha: str,
+    test_argv: list[str],
+) -> CheckOutcome:
+    c1_files, commit_fail = _validate_verify01_commits(git_bin, tmp_repo, base_sha)
+    if commit_fail is not None:
+        return commit_fail
+
+    baseline_fail = _run_verify01_baseline_on_base(git_bin, tmp_repo, base_sha, c1_files, test_argv)
+    if baseline_fail is not None:
+        return baseline_fail
+
+    final_res, final_err = _exec_subprocess(
+        test_argv,
+        cwd=tmp_repo,
+        label="VERIFY-01 final test",
+    )
+    if final_err is not None or final_res is None:
+        return CheckOutcome(exit_code=-1, output="", runner_error=final_err or "final test failed")
+    if final_res.returncode != 0:
+        combined = f"{final_res.stdout}\n{final_res.stderr}".strip()
+        return CheckOutcome(
+            exit_code=1,
+            output=f"ERROR [SEQUENCE_FINAL_TEST_FAILED]: {combined}",
+        )
+    return CheckOutcome(exit_code=0, output="VERIFY-01 sequence passed")
+
+
+def _stage_verify01_repo(
+    case: CorpusCase,
+    before_path: pathlib.Path,
+    after_path: pathlib.Path,
+    git_bin: str,
+    tmp_repo: pathlib.Path,
+) -> tuple[str, str | None]:
+    target_name = _verify01_target_filename(case, before_path)
+    target_path = tmp_repo / target_name
+    shutil.copyfile(before_path, target_path)
+    _mark_executable_if_shell(target_path)
+
+    err = _run_git_steps(
+        git_bin,
+        tmp_repo,
+        (
+            ["init", "-q"],
+            ["config", "user.name", "Corpus Runner"],
+            ["config", "user.email", "corpus@example.com"],
+            ["add", target_name],
+            ["commit", "-q", "-m", "base: before state"],
+        ),
+    )
+    if err is not None:
+        return "", err
+
+    base_out, err = _run_git_stdout(git_bin, tmp_repo, ["rev-parse", "HEAD"])
+    if err is not None:
+        return "", err
+    base_sha = base_out.strip()
+
+    for sf in case.support_files:
+        sf_dest = tmp_repo / sf
+        shutil.copyfile(case.case_dir / sf, sf_dest)
+        _mark_executable_if_shell(sf_dest)
+
+    err = _run_git_steps(
+        git_bin,
+        tmp_repo,
+        (
+            ["add", *case.support_files],
+            ["commit", "-q", "-m", "test: add characterization test"],
+        ),
+    )
+    if err is not None:
+        return "", err
+
+    if after_path == before_path:
+        c2_steps: tuple[list[str], ...] = (
+            ["commit", "-q", "--allow-empty", "-m", "impl: preserve behavior"],
+        )
+    else:
+        target_path.write_bytes(after_path.read_bytes())
+        _mark_executable_if_shell(target_path)
+        c2_steps = (["add", target_name], ["commit", "-q", "-m", "impl: apply change"])
+
+    err = _run_git_steps(git_bin, tmp_repo, c2_steps)
+    return base_sha, err
+
+
+def _run_verify01_diff(
+    case: CorpusCase,
+    before_path: pathlib.Path,
+    after_path: pathlib.Path,
+    repo_root: pathlib.Path,
+) -> CheckOutcome:
+    test_script = next((sf for sf in case.support_files if _is_verify01_test_file(sf)), None)
+    if test_script is None:
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error=f"VERIFY-01 case {case.case_id} missing test script in support_files",
+        )
+
+    git_bin = shutil.which("git")
+    bash_bin = shutil.which("bash")
+    if git_bin is None or (test_script.endswith(".sh") and bash_bin is None):
+        return CheckOutcome(
+            exit_code=-1,
+            output="",
+            runner_error="VERIFY-01 prerequisites missing (git or bash)",
+        )
+
+    test_argv = (
+        [bash_bin or "bash", f"./{test_script}"]
+        if test_script.endswith(".sh")
+        else [sys.executable, f"./{test_script}"]
+    )
+    test_cmd_str = (
+        f"bash ./{test_script}"
+        if test_script.endswith(".sh")
+        else f"{sys.executable} ./{test_script}"
+    )
+    task_packet_py = repo_root / "scripts" / "agent-harness" / "task_packet.py"
+
+    with tempfile.TemporaryDirectory(prefix="alt-corpus-verify01-") as tmp_str:
+        tmp_repo = pathlib.Path(tmp_str)
+        base_sha, err = _stage_verify01_repo(case, before_path, after_path, git_bin, tmp_repo)
+        if err is not None:
+            return CheckOutcome(exit_code=-1, output="", runner_error=err)
+
+        if _task_packet_supports_verify_sequence(task_packet_py):
+            res, run_err = _exec_subprocess(
+                [
+                    sys.executable,
+                    str(task_packet_py),
+                    "verify-sequence",
+                    "--repo-root",
+                    str(tmp_repo),
+                    "--base-commit",
+                    base_sha,
+                    "--test-command",
+                    test_cmd_str,
+                ],
+                label="VERIFY-01 task_packet verify-sequence",
+            )
+            if run_err is not None or res is None:
+                return CheckOutcome(
+                    exit_code=-1,
+                    output="",
+                    runner_error=run_err or "verify-sequence failed",
+                )
+            combined = f"{res.stdout}\n{res.stderr}".strip()
+            return CheckOutcome(exit_code=res.returncode, output=combined)
+
+        return _run_verify01_sequence_fallback(git_bin, tmp_repo, base_sha, test_argv)
 
 
 def _run_check06_diff(
@@ -1384,6 +1763,7 @@ BUILTIN_RUNNERS: dict[str, RegisteredRunner] = {
     "CHECK-01": RegisteredRunner(mode="diff", run_diff=_run_check01_diff),
     "CHECK-05": RegisteredRunner(mode="diff", run_diff=_run_check05_diff),
     "CHECK-06": RegisteredRunner(mode="diff", run_diff=_run_check06_diff),
+    "VERIFY-01": RegisteredRunner(mode="diff", run_diff=_run_verify01_diff),
 }
 
 

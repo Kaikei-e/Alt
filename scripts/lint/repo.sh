@@ -81,37 +81,49 @@ run_ast_grep_scan() {
 
 resolve_suppression_diff_base() {
   local head_sha raw_base target_sha merge_base
-  head_sha="$(git rev-parse --verify --quiet 'HEAD^{commit}')" || return 1
+  if ! head_sha="$(git rev-parse --verify --quiet 'HEAD^{commit}')"; then
+    echo "error: cannot resolve HEAD commit" >&2
+    return 1
+  fi
 
   raw_base="${LINT_BASE:-}"
   if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
     if target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
-      merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || return 1
-      [ -n "$merge_base" ] || return 1
+      if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+        echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
+        return 1
+      fi
       if [ "$merge_base" = "$head_sha" ]; then
-        git rev-parse --verify --quiet 'HEAD~1^{commit}'
-        return $?
+        if ! merge_base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+          echo "error: LINT_BASE '${raw_base}' matches HEAD and HEAD~1 cannot be resolved (shallow clone?)" >&2
+          return 1
+        fi
       fi
       printf '%s\n' "$merge_base"
       return 0
     fi
     if [[ ! "$raw_base" =~ ^[0-9a-fA-F]{40}$ ]]; then
+      echo "error: LINT_BASE '${raw_base}' cannot be resolved to a commit" >&2
+      return 1
+    fi
+    echo "warn: LINT_BASE '${raw_base}' not found (force-push?); falling back to origin/main / HEAD~1" >&2
+  fi
+
+  if ! target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then
+    echo "error: cannot resolve origin/main (fetch full history from origin)" >&2
+    return 1
+  fi
+  if ! merge_base="$(git merge-base "$head_sha" "$target_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+    echo "error: cannot compute merge-base between HEAD and origin/main (shallow clone or unrelated history)" >&2
+    return 1
+  fi
+  if [ "$merge_base" = "$head_sha" ]; then
+    if ! merge_base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+      echo "error: HEAD matches merge-base with origin/main and HEAD~1 cannot be resolved (shallow clone?)" >&2
       return 1
     fi
   fi
-
-  if target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')" &&
-    merge_base="$(git merge-base "$head_sha" "$target_sha" 2>/dev/null)" &&
-    [ -n "$merge_base" ]; then
-    if [ "$merge_base" = "$head_sha" ]; then
-      git rev-parse --verify --quiet 'HEAD~1^{commit}'
-      return $?
-    fi
-    printf '%s\n' "$merge_base"
-    return 0
-  fi
-
-  git rev-parse --verify --quiet 'HEAD~1^{commit}'
+  printf '%s\n' "$merge_base"
 }
 
 run_suppression_diff_summary() {
@@ -125,6 +137,15 @@ run_suppression_diff_summary() {
     return 1
   fi
   python3 scripts/lint/suppression_diff_report.py --base "$base" --summary-file "$GITHUB_STEP_SUMMARY"
+}
+
+run_suppression_governance() {
+  local base
+  if ! base="$(resolve_suppression_diff_base)"; then
+    echo "ERROR: unable to resolve base commit for suppression governance" >&2
+    return 1
+  fi
+  python3 scripts/lint/check_suppressions.py --base "$base"
 }
 
 run_generated_code_governance() {
@@ -145,7 +166,7 @@ run_step "workflow-safety-check" python3 .github/workflows/scripts/workflow-safe
 run_step "lint-run-tests" bash scripts/tests/test-lint-run.sh
 run_step "lint-canary-tests" python3 scripts/tests/test-lint-canary.py
 run_step "suppression-check-tests" python3 scripts/tests/test-check-suppressions.py
-run_step "suppression-governance" python3 scripts/lint/check_suppressions.py
+run_step "suppression-governance" run_suppression_governance
 run_step "suppression-ratchet-tests" python3 scripts/tests/test-check-ratchet.py
 run_step "suppression-ratchet" python3 scripts/lint/check_ratchet.py
 run_step "suppression-diff-tests" python3 scripts/tests/test-suppression-diff-report.py

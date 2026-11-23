@@ -21,6 +21,7 @@ import datetime
 import hashlib
 import io
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -36,6 +37,8 @@ EXIT_CLEAN = 0
 EXIT_VIOLATIONS = 1
 EXIT_USAGE_ERROR = 2
 FROZEN_BASELINE_MAX_EXPIRES = datetime.date(2027, 5, 22)
+MAX_EXPIRES_HORIZON_DAYS = 366
+ADR_PATH_RE = re.compile(r"^docs/ADR/(\d{6})\.md$")
 
 LEGACY_RUFF_KEYS = ("ignore", "extend-ignore", "per-file-ignores", "extend-per-file-ignores")
 SOURCE_EXTENSIONS = (".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".svelte")
@@ -330,6 +333,18 @@ def _validate_ledger_expires(
                 "config.allowlist.expired",
                 f"{label}: suppression expired on {exp_date.isoformat()} "
                 f"(today is {today.isoformat()})",
+            )
+        ]
+    max_expires = today + datetime.timedelta(days=MAX_EXPIRES_HORIZON_DAYS)
+    if exp_date > max_expires:
+        return [
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.expires-too-far",
+                f"{label}: 'expires' ({exp_date.isoformat()}) exceeds maximum horizon of "
+                f"{MAX_EXPIRES_HORIZON_DAYS} days from {today.isoformat()} "
+                f"(max {max_expires.isoformat()})",
             )
         ]
     return []
@@ -996,17 +1011,31 @@ def _check_broad_suppression(
                 f"{ctx.directive_desc} requires 'expires: YYYY-MM-DD' in comment context",
             )
         )
-    elif min(exp_dates) < ref_today:
-        earliest = min(exp_dates)
-        violations.append(
-            Violation(
-                ctx.rel_path,
-                ctx.line_no,
-                "source.broad.expired",
-                f"{ctx.directive_desc} expired on {earliest.isoformat()} "
-                f"(today is {ref_today.isoformat()})",
+    else:
+        if min(exp_dates) < ref_today:
+            earliest = min(exp_dates)
+            violations.append(
+                Violation(
+                    ctx.rel_path,
+                    ctx.line_no,
+                    "source.broad.expired",
+                    f"{ctx.directive_desc} expired on {earliest.isoformat()} "
+                    f"(today is {ref_today.isoformat()})",
+                )
             )
-        )
+        max_expires = ref_today + datetime.timedelta(days=MAX_EXPIRES_HORIZON_DAYS)
+        if max(exp_dates) > max_expires:
+            furthest = max(exp_dates)
+            violations.append(
+                Violation(
+                    ctx.rel_path,
+                    ctx.line_no,
+                    "source.broad.expires-too-far",
+                    f"{ctx.directive_desc} 'expires' ({furthest.isoformat()}) exceeds maximum "
+                    f"horizon of {MAX_EXPIRES_HORIZON_DAYS} days from {ref_today.isoformat()} "
+                    f"(max {max_expires.isoformat()})",
+                )
+            )
     return violations
 
 
@@ -2092,17 +2121,460 @@ def render_python_noqa_baseline_toml(counts: dict[PythonNoqaKey, int]) -> str:
     return "\n".join(out)
 
 
-def _git_ls_files(repo_root: pathlib.Path) -> list[str]:
+@dataclass(frozen=True)
+class _BroadRecord:
+    line_no: int
+    directive_desc: str
+    adr_ids: tuple[str, ...]
+    max_expires: datetime.date | None
+
+
+def _run_git(
+    repo_root: pathlib.Path,
+    args: list[str],
+    *,
+    check: bool = False,
+) -> subprocess.CompletedProcess[str]:
     git_bin = shutil.which("git")
     if git_bin is None:
         raise FileNotFoundError("git")
-    proc = subprocess.run(  # noqa: S603 - fixed git ls-files invocation
-        [git_bin, "-C", str(repo_root), "ls-files", "--cached", "--others", "--exclude-standard"],
+    return subprocess.run(  # noqa: S603 - fixed git invocation
+        [git_bin, "-C", str(repo_root), *args],
         capture_output=True,
         text=True,
+        check=check,
+    )
+
+
+def _git_ls_files(repo_root: pathlib.Path) -> list[str]:
+    proc = _run_git(
+        repo_root,
+        ["ls-files", "--cached", "--others", "--exclude-standard"],
         check=True,
     )
     return sorted({line for line in proc.stdout.splitlines() if line})
+
+
+def _git_show_text(repo_root: pathlib.Path, rev: str, rel_path: str) -> str | None:
+    proc = _run_git(repo_root, ["show", "--end-of-options", f"{rev}:{rel_path}"])
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _validate_git_rev(repo_root: pathlib.Path, rev: str) -> tuple[str | None, str | None]:
+    if not rev or not rev.strip() or rev.startswith("-"):
+        return None, f"invalid --base git revision: {rev!r}"
+    proc = _run_git(
+        repo_root,
+        ["rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}"],
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout).strip()
+        return None, f"invalid --base git revision {rev!r}: {err}"
+    return proc.stdout.strip(), None
+
+
+def _resolve_auto_base_rev(repo_root: pathlib.Path) -> str | None:
+    if not (repo_root / ".git").exists():
+        return None
+    head_proc = _run_git(repo_root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])
+    if head_proc.returncode != 0:
+        return None
+    head_sha = head_proc.stdout.strip()
+
+    env_base = os.environ.get("LINT_BASE", "").strip()
+    candidates: list[str] = []
+    if env_base and not re.fullmatch(r"0+", env_base) and not env_base.startswith("-"):
+        candidates.append(env_base)
+    candidates.append("origin/main")
+
+    for cand in candidates:
+        target_proc = _run_git(
+            repo_root,
+            ["rev-parse", "--verify", "--quiet", "--end-of-options", f"{cand}^{{commit}}"],
+        )
+        if target_proc.returncode != 0:
+            continue
+        target_sha = target_proc.stdout.strip()
+        mb_proc = _run_git(repo_root, ["merge-base", target_sha, head_sha])
+        if mb_proc.returncode == 0 and mb_proc.stdout.strip():
+            merge_base = mb_proc.stdout.strip()
+            if merge_base == head_sha:
+                prev_proc = _run_git(
+                    repo_root, ["rev-parse", "--verify", "--quiet", "HEAD~1^{commit}"]
+                )
+                if prev_proc.returncode == 0 and prev_proc.stdout.strip():
+                    return prev_proc.stdout.strip()
+            return merge_base
+
+    return head_sha
+
+
+def _changed_adr_ids(repo_root: pathlib.Path, base_rev: str) -> set[str]:
+    changed: set[str] = set()
+    diff_proc = _run_git(
+        repo_root,
+        ["diff", "--name-only", "--diff-filter=AMCR", base_rev, "--", "docs/ADR"],
+    )
+    untracked_proc = _run_git(
+        repo_root,
+        ["ls-files", "--others", "--exclude-standard", "--", "docs/ADR"],
+    )
+    for out in (diff_proc.stdout, untracked_proc.stdout):
+        for raw_line in out.splitlines():
+            rel = raw_line.strip()
+            match = ADR_PATH_RE.match(rel)
+            if match and (repo_root / rel).is_file():
+                changed.add(match.group(1))
+    return changed
+
+
+def _extract_allowlist_expires_records(
+    data: dict[str, object],
+) -> list[tuple[str, tuple[object, ...], tuple[object, ...] | None, datetime.date, str | None]]:
+    records: list[
+        tuple[str, tuple[object, ...], tuple[object, ...] | None, datetime.date, str | None]
+    ] = []
+
+    ruff_cfg = data.get("ruff")
+    if isinstance(ruff_cfg, dict):
+        exp = (
+            _parse_iso_date(str(ruff_cfg["expires"]))
+            if isinstance(ruff_cfg.get("expires"), str)
+            else None
+        )
+        adr = str(ruff_cfg["adr"]).strip() if isinstance(ruff_cfg.get("adr"), str) else None
+        if exp is not None:
+            records.append(("ruff", ("ruff",), None, exp, adr))
+
+    for idx, entry in enumerate(data.get("bandit") or []):
+        if not isinstance(entry, dict):
+            continue
+        exp = _parse_iso_date(entry["expires"]) if isinstance(entry.get("expires"), str) else None
+        adr = entry["adr"].strip() if isinstance(entry.get("adr"), str) else None
+        if exp is not None and isinstance(entry.get("path"), str):
+            records.append((f"bandit[{idx}]", ("bandit", entry["path"]), None, exp, adr))
+
+    for idx, entry in enumerate(data.get("golangci_exclusions") or []):
+        if not isinstance(entry, dict):
+            continue
+        exp = _parse_iso_date(entry["expires"]) if isinstance(entry.get("expires"), str) else None
+        adr = entry["adr"].strip() if isinstance(entry.get("adr"), str) else None
+        if exp is not None:
+            linters = tuple(sorted(str(x) for x in entry.get("linters") or []))
+            base_sig = (
+                "golangci_exclusions",
+                str(entry.get("config", ".golangci.yml")),
+                entry.get("path"),
+                entry.get("path_except"),
+                entry.get("text"),
+                entry.get("source"),
+            )
+            full_sig = (*base_sig, linters)
+            records.append((f"golangci_exclusions[{idx}]", full_sig, base_sig, exp, adr))
+
+    for idx, entry in enumerate(data.get("cargo_lint_allows") or []):
+        if not isinstance(entry, dict):
+            continue
+        exp = _parse_iso_date(entry["expires"]) if isinstance(entry.get("expires"), str) else None
+        adr = entry["adr"].strip() if isinstance(entry.get("adr"), str) else None
+        if (
+            exp is not None
+            and isinstance(entry.get("path"), str)
+            and isinstance(entry.get("section"), str)
+        ):
+            key = ("cargo_lint_allows", entry["path"], entry["section"])
+            records.append((f"cargo_lint_allows[{idx}]", key, None, exp, adr))
+
+    return records
+
+
+def _check_allowlist_expires_extensions(
+    repo_root: pathlib.Path,
+    allowlist_path: pathlib.Path,
+    base_rev: str,
+    changed_adrs: set[str],
+) -> list[Violation]:
+    try:
+        allowlist_rel = allowlist_path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return []
+    base_text = _git_show_text(repo_root, base_rev, allowlist_rel)
+    if base_text is None:
+        return []
+    try:
+        base_data = tomllib.loads(base_text)
+        cur_data = tomllib.loads(allowlist_path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError):
+        return []
+
+    base_exact: dict[tuple[object, ...], datetime.date] = {}
+    base_loose: dict[tuple[object, ...], datetime.date] = {}
+    for _, key, loose_key, exp, _ in _extract_allowlist_expires_records(base_data):
+        base_exact[key] = exp
+        if loose_key is not None and (loose_key not in base_loose or exp < base_loose[loose_key]):
+            base_loose[loose_key] = exp
+
+    violations: list[Violation] = []
+    for label, key, loose_key, cur_exp, adr in _extract_allowlist_expires_records(cur_data):
+        prev_exp = base_exact.get(key)
+        if prev_exp is None and loose_key is not None:
+            prev_exp = base_loose.get(loose_key)
+        if prev_exp is None or cur_exp <= prev_exp:
+            continue
+        adr_match = ADR_EXACT_RE.match(adr) if adr else None
+        adr_num = adr_match.group(1) if adr_match else None
+        if adr_num is not None and adr_num in changed_adrs:
+            continue
+        cited_desc = f"docs/ADR/{adr_num}.md" if adr_num else "a cited docs/ADR/NNNNNN.md"
+        violations.append(
+            Violation(
+                allowlist_rel,
+                0,
+                "config.allowlist.expires-extended-without-adr-update",
+                f"{label}: 'expires' extended from {prev_exp.isoformat()} to {cur_exp.isoformat()} "
+                f"without modifying or adding {cited_desc} in the same diff",
+            )
+        )
+    return violations
+
+
+def _make_broad_record(line_no: int, desc: str, context_text: str) -> _BroadRecord:
+    dates = _extract_broad_expires_dates(context_text)
+    return _BroadRecord(
+        line_no=line_no,
+        directive_desc=desc,
+        adr_ids=tuple(ADR_ID_RE.findall(context_text)),
+        max_expires=max(dates) if dates else None,
+    )
+
+
+def _collect_broad_suppressions_py(text: str) -> list[_BroadRecord]:
+    comments = _tokenize_python_comments(text)
+    comment_by_line = {ln: _strip_comment_delimiters(raw) for ln, raw in comments}
+    records: list[_BroadRecord] = []
+    for line_no, raw in comments:
+        file_match = PY_FILE_NOQA_RE.match(raw)
+        if file_match:
+            trailing = _python_file_noqa_trailing_reason(file_match.group(1))
+            preceding = _preceding_comment_text(comment_by_line, line_no)
+            records.append(
+                _make_broad_record(
+                    line_no,
+                    "file-level Python noqa",
+                    f"{preceding}\n{trailing}".strip(),
+                )
+            )
+    return records
+
+
+def _collect_broad_suppressions_go(text: str) -> list[_BroadRecord]:
+    comments = _scan_go_comments(text)
+    comment_by_line: dict[int, str] = {}
+    comments_on_line: dict[int, list[str]] = {}
+    for start_line, end_line, raw, _ in comments:
+        comments_on_line.setdefault(start_line, []).append(raw)
+        if start_line == end_line:
+            comment_by_line[start_line] = _strip_comment_delimiters(raw)
+    records: list[_BroadRecord] = []
+    for start_line, _, raw, before_package in comments:
+        nolint_match = GO_NOLINT_RE.match(raw)
+        if not nolint_match:
+            continue
+        linters_raw = nolint_match.group(1)
+        linter_names = (
+            [name.strip().lower() for name in linters_raw.split(",") if name.strip()]
+            if linters_raw
+            else []
+        )
+        if "gosec" in linter_names:
+            continue
+        if before_package or not linter_names or "all" in linter_names:
+            same_line_list = comments_on_line.get(start_line, [])
+            trailing = " ".join(same_line_list[same_line_list.index(raw) + 1 :])
+            reason_part = _extract_go_nolint_reason(nolint_match.group(2), trailing)
+            preceding = _preceding_comment_text(comment_by_line, start_line)
+            desc = "file-level Go nolint" if before_package else "blanket Go nolint"
+            records.append(
+                _make_broad_record(start_line, desc, f"{preceding}\n{reason_part}".strip())
+            )
+    return records
+
+
+def _collect_broad_suppressions_rs(text: str) -> list[_BroadRecord]:
+    tokens = _scan_rust_tokens(text)
+    records: list[_BroadRecord] = []
+    for idx, tok in enumerate(tokens):
+        if tok.kind == "ATTR_INNER" and RUST_INNER_ALLOW_RE.match(tok.text):
+            ctx = _rust_context_for_attr(tokens, idx)
+            records.append(
+                _make_broad_record(tok.start_line, "Rust crate/module inner #![allow(...)]", ctx)
+            )
+        elif (
+            tok.kind == "ATTR_OUTER"
+            and RUST_OUTER_ALLOW_RE.match(tok.text)
+            and _rust_attr_applies_to_mod(tokens, idx)
+        ):
+            ctx = _rust_context_for_attr(tokens, idx)
+            records.append(
+                _make_broad_record(tok.start_line, "Rust module-level #[allow(...)] on mod", ctx)
+            )
+    return records
+
+
+def _collect_broad_suppressions_ts(rel_path: str, text: str) -> list[_BroadRecord]:
+    comments = _scan_ts_comments(text, is_svelte=rel_path.endswith(".svelte"))
+    comment_by_line = {
+        start: _strip_comment_delimiters(raw) for start, end, raw in comments if start == end
+    }
+    records: list[_BroadRecord] = []
+    for start_line, _, raw in comments:
+        body = _strip_comment_delimiters(raw)
+        preceding = _preceding_comment_text(comment_by_line, start_line)
+        biome_all = TS_BIOME_ALL_RE.search(body)
+        if biome_all:
+            trailing = biome_all.group(1)
+            if ":" in trailing:
+                trailing = trailing.split(":", 1)[1]
+            records.append(
+                _make_broad_record(
+                    start_line,
+                    "file-level biome-ignore-all",
+                    f"{preceding}\n{trailing}".strip(),
+                )
+            )
+            continue
+        deno_file = TS_DENO_FILE_RE.search(body)
+        if deno_file:
+            records.append(
+                _make_broad_record(
+                    start_line,
+                    "file-level deno-lint-ignore-file",
+                    f"{preceding}\n{deno_file.group(1)}".strip(),
+                )
+            )
+            continue
+        eslint_broad = TS_ESLINT_BROAD_RE.search(body)
+        if eslint_broad:
+            trailing = eslint_broad.group(1)
+            reason_part = trailing.split("--", 1)[1] if "--" in trailing else ""
+            records.append(
+                _make_broad_record(
+                    start_line,
+                    "file/block-level eslint-disable",
+                    f"{preceding}\n{reason_part}".strip(),
+                )
+            )
+    return records
+
+
+def _collect_broad_suppressions(rel_path: str, text: str) -> list[_BroadRecord]:
+    if is_excluded_source_path(rel_path):
+        return []
+    if rel_path.endswith(".py"):
+        return _collect_broad_suppressions_py(text)
+    if rel_path.endswith(".go"):
+        return _collect_broad_suppressions_go(text)
+    if rel_path.endswith(".rs"):
+        return _collect_broad_suppressions_rs(text)
+    if rel_path.endswith(TS_EXTENSIONS):
+        return _collect_broad_suppressions_ts(rel_path, text)
+    return []
+
+
+def _compare_broad_group_expires(
+    rel_path: str,
+    base_group: list[_BroadRecord],
+    cur_group: list[_BroadRecord],
+    changed_adrs: set[str],
+) -> list[Violation]:
+    violations: list[Violation] = []
+    if len(base_group) == len(cur_group):
+        pairs = list(zip(base_group, cur_group, strict=True))
+        for prev, cur in pairs:
+            if (
+                prev.max_expires is not None
+                and cur.max_expires is not None
+                and cur.max_expires > prev.max_expires
+                and not any(adr_id in changed_adrs for adr_id in cur.adr_ids)
+            ):
+                violations.append(
+                    Violation(
+                        rel_path,
+                        cur.line_no,
+                        "source.broad.expires-extended-without-adr-update",
+                        f"{cur.directive_desc} extended 'expires' from {prev.max_expires.isoformat()} "
+                        f"to {cur.max_expires.isoformat()} without modifying or adding a cited "
+                        f"docs/ADR/NNNNNN.md in the same diff",
+                    )
+                )
+        return violations
+
+    base_dates = [rec.max_expires for rec in base_group if rec.max_expires is not None]
+    if not base_dates:
+        return []
+    base_max = max(base_dates)
+    return [
+        Violation(
+            rel_path,
+            cur.line_no,
+            "source.broad.expires-extended-without-adr-update",
+            f"{cur.directive_desc} extended 'expires' from {base_max.isoformat()} "
+            f"to {cur.max_expires.isoformat()} without modifying or adding a cited "
+            f"docs/ADR/NNNNNN.md in the same diff",
+        )
+        for cur in cur_group
+        if (
+            cur.max_expires is not None
+            and cur.max_expires > base_max
+            and not any(adr_id in changed_adrs for adr_id in cur.adr_ids)
+        )
+    ]
+
+
+def _check_source_broad_expires_extensions(
+    repo_root: pathlib.Path,
+    base_rev: str,
+    changed_adrs: set[str],
+) -> list[Violation]:
+    diff_proc = _run_git(repo_root, ["diff", "--name-only", base_rev, "--"])
+    if diff_proc.returncode != 0:
+        return []
+
+    violations: list[Violation] = []
+    for raw_line in diff_proc.stdout.splitlines():
+        rel_path = raw_line.strip()
+        if not rel_path or is_excluded_source_path(rel_path):
+            continue
+        full_path = repo_root / rel_path
+        if not _is_safe_repo_file(full_path, repo_root):
+            continue
+        base_text = _git_show_text(repo_root, base_rev, rel_path)
+        if base_text is None:
+            continue
+        base_records = _collect_broad_suppressions(rel_path, base_text)
+        if not base_records:
+            continue
+        cur_text = full_path.read_text(encoding="utf-8", errors="replace")
+        cur_records = _collect_broad_suppressions(rel_path, cur_text)
+        if not cur_records:
+            continue
+
+        base_by_desc: dict[str, list[_BroadRecord]] = {}
+        cur_by_desc: dict[str, list[_BroadRecord]] = {}
+        for rec in base_records:
+            base_by_desc.setdefault(rec.directive_desc, []).append(rec)
+        for rec in cur_records:
+            cur_by_desc.setdefault(rec.directive_desc, []).append(rec)
+
+        for desc, cur_group in cur_by_desc.items():
+            base_group = base_by_desc.get(desc)
+            if base_group:
+                violations.extend(
+                    _compare_broad_group_expires(rel_path, base_group, cur_group, changed_adrs)
+                )
+    return violations
 
 
 def check_repo(
@@ -2111,6 +2583,7 @@ def check_repo(
     *,
     today: datetime.date | None = None,
     python_noqa_baseline: dict[PythonNoqaKey, int] | None = None,
+    base_rev: str | None = None,
 ) -> list[Violation]:
     """Run all config allowlist and tracked source-code suppression checks."""
     ref_today = today if today is not None else default_today()
@@ -2144,6 +2617,13 @@ def check_repo(
                     python_noqa_baseline=python_noqa_baseline,
                 )
             )
+
+    if base_rev is not None:
+        changed_adrs = _changed_adr_ids(repo_root, base_rev)
+        violations.extend(
+            _check_allowlist_expires_extensions(repo_root, allowlist_path, base_rev, changed_adrs)
+        )
+        violations.extend(_check_source_broad_expires_extensions(repo_root, base_rev, changed_adrs))
 
     violations.sort(key=lambda v: (v.path, v.line, v.rule, v.message))
     return violations
@@ -2189,6 +2669,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Write/update python_noqa_baseline.toml from current reasonless Python # noqa lines.",
+    )
+    parser.add_argument(
+        "--base",
+        type=str,
+        default=None,
+        help="Git base revision for detecting expires extensions without a same-diff ADR update.",
     )
     return parser.parse_args(argv)
 
@@ -2243,17 +2729,13 @@ def _report_violations(violations: list[Violation]) -> int:
     return EXIT_CLEAN
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
-    repo_root: pathlib.Path = args.repo_root.resolve()
-
-    if args.update_python_noqa_baseline:
-        return _update_python_noqa_baseline(args, repo_root)
-
+def _resolve_cli_inputs(
+    args: argparse.Namespace,
+    repo_root: pathlib.Path,
+) -> tuple[tuple[datetime.date, pathlib.Path, str | None] | None, str | None]:
     ref_today = _resolve_today_arg(args.today)
     if ref_today is None:
-        sys.stderr.write(f"ERROR: invalid --today date {args.today!r} (expected YYYY-MM-DD)\n")
-        return EXIT_USAGE_ERROR
+        return None, f"invalid --today date {args.today!r} (expected YYYY-MM-DD)"
 
     allowlist_path: pathlib.Path = (
         args.allowlist.resolve()
@@ -2261,8 +2743,30 @@ def main(argv: list[str] | None = None) -> int:
         else repo_root / "scripts" / "lint" / "suppression_allowlist.toml"
     )
     if not allowlist_path.is_file():
-        sys.stderr.write(f"ERROR: allowlist not found: {allowlist_path}\n")
+        return None, f"allowlist not found: {allowlist_path}"
+
+    if args.base is not None:
+        resolved_base, base_err = _validate_git_rev(repo_root, args.base)
+        if base_err is not None:
+            return None, base_err
+    else:
+        resolved_base = _resolve_auto_base_rev(repo_root)
+
+    return (ref_today, allowlist_path, resolved_base), None
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    repo_root: pathlib.Path = args.repo_root.resolve()
+
+    if args.update_python_noqa_baseline:
+        return _update_python_noqa_baseline(args, repo_root)
+
+    resolved, err = _resolve_cli_inputs(args, repo_root)
+    if err is not None or resolved is None:
+        sys.stderr.write(f"ERROR: {err}\n")
         return EXIT_USAGE_ERROR
+    ref_today, allowlist_path, resolved_base = resolved
 
     try:
         baseline, bl_err = _resolve_baseline(args, repo_root)
@@ -2274,6 +2778,7 @@ def main(argv: list[str] | None = None) -> int:
             allowlist_path,
             today=ref_today,
             python_noqa_baseline=baseline,
+            base_rev=resolved_base,
         )
     except (subprocess.CalledProcessError, FileNotFoundError, tomllib.TOMLDecodeError) as exc:
         sys.stderr.write(f"ERROR: suppression check failed to execute: {exc}\n")

@@ -33,11 +33,13 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import platform
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import zipfile
 from dataclasses import dataclass
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -1329,36 +1331,76 @@ if CARGO_BIN is not None and (ROOT / "plecto" / "Cargo.toml").is_file():
     )
     check("plecto tree unchanged after rust-canary", before_plecto == after_plecto)
 
+
 # ---------------------------------------------------------------------------
 # Group D: Frontend canary tests (frontend-canary + frontend.sh)
 # ---------------------------------------------------------------------------
-sys.stdout.write("D1. Frontend frontend-canary wired in frontend.sh (healthy vs silent_pass)\n")
-for biome_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
-    with tempfile.TemporaryDirectory() as td:
-        td_path = pathlib.Path(td)
-        repo = td_path / "repo"
-        lint_dir = repo / "scripts" / "lint"
-        lint_dir.mkdir(parents=True)
-        shutil.copy2(FRONTEND_SH, lint_dir / "frontend.sh")
-        shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
-        shutil.copy2(RUN_SH, lint_dir / "run.sh")
-        fe = repo / "svc-fe"
-        (fe / "node_modules" / "@biomejs" / "biome").mkdir(parents=True)
-        (fe / "node_modules" / "svelte-check").mkdir(parents=True)
-        (fe / "node_modules" / ".bin").mkdir(parents=True)
-        (fe / "package.json").write_text('{"name":"svc-fe"}\n', encoding="utf-8")
-        (fe / "Dockerfile").write_text("FROM oven/bun:1.3.12-alpine AS base\n", encoding="utf-8")
-        (fe / "bun.lock").write_text(
-            '"@biomejs/biome": ["@biomejs/biome@2.5.2"]\n"svelte-check": ["svelte-check@4.7.6"]\n',
-            encoding="utf-8",
-        )
-        (fe / "node_modules" / "@biomejs" / "biome" / "package.json").write_text(
-            '{"version":"2.5.2"}\n', encoding="utf-8"
-        )
-        (fe / "node_modules" / "svelte-check" / "package.json").write_text(
-            '{"version":"4.7.6"}\n', encoding="utf-8"
-        )
-        biome_stub = f"""#!{sys.executable}
+def _expected_bun_archive_name() -> str:
+    os_name = platform.system()
+    arch_name = platform.machine()
+    table = {
+        ("Linux", "x86_64"): "bun-linux-x64",
+        ("Linux", "aarch64"): "bun-linux-aarch64",
+        ("Linux", "arm64"): "bun-linux-aarch64",
+        ("Darwin", "arm64"): "bun-darwin-aarch64",
+        ("Darwin", "aarch64"): "bun-darwin-aarch64",
+        ("Darwin", "x86_64"): "bun-darwin-x64",
+    }
+    archive = table.get((os_name, arch_name))
+    assert archive is not None, f"unsupported test platform: {os_name}/{arch_name}"
+    return archive
+
+
+def _make_bun_stub(path: pathlib.Path, version: str, *, fail_on_run: bool = False) -> None:
+    script = f"""#!{sys.executable}
+import sys
+
+args = sys.argv[1:]
+if args == ["--version"]:
+    sys.stdout.write("{version}\\n")
+    sys.exit(0)
+if {fail_on_run!r}:
+    sys.stderr.write("unexpected invocation of wrong bun stub ({version})\\n")
+    sys.exit(2)
+sys.stdout.write("stub-bun-{version}:" + " ".join(args) + "\\n")
+sys.exit(0)
+"""
+    make_executable(path, script)
+
+
+def build_frontend_test_repo(
+    td_path: pathlib.Path,
+    *,
+    biome_mode: str = "healthy",
+    pinned_version: str = "1.3.12",
+    path_bun_version: str | None = "1.3.12",
+    path_bun_fail_on_run: bool = False,
+) -> tuple[pathlib.Path, pathlib.Path, dict[str, str]]:
+    repo = td_path / "repo"
+    lint_dir = repo / "scripts" / "lint"
+    lint_dir.mkdir(parents=True)
+    shutil.copy2(FRONTEND_SH, lint_dir / "frontend.sh")
+    shutil.copy2(CANARY_AUDIT_PY, lint_dir / "canary_audit.py")
+    shutil.copy2(RUN_SH, lint_dir / "run.sh")
+    fe = repo / "svc-fe"
+    (fe / "node_modules" / "@biomejs" / "biome").mkdir(parents=True)
+    (fe / "node_modules" / "svelte-check").mkdir(parents=True)
+    (fe / "node_modules" / ".bin").mkdir(parents=True)
+    (fe / "package.json").write_text('{"name":"svc-fe"}\n', encoding="utf-8")
+    (fe / "Dockerfile").write_text(
+        f"FROM oven/bun:{pinned_version}-alpine AS base\n", encoding="utf-8"
+    )
+    (fe / "bun.lock").write_text(
+        '"@biomejs/biome": ["@biomejs/biome@2.5.2"]\n"svelte-check": ["svelte-check@4.7.6"]\n',
+        encoding="utf-8",
+    )
+    (fe / "node_modules" / "@biomejs" / "biome" / "package.json").write_text(
+        '{"version":"2.5.2"}\n', encoding="utf-8"
+    )
+    (fe / "node_modules" / "svelte-check" / "package.json").write_text(
+        '{"version":"4.7.6"}\n', encoding="utf-8"
+    )
+    biome_stub = f"""#!{sys.executable}
 import pathlib, sys
 
 mode = {biome_mode!r}
@@ -1369,29 +1411,44 @@ if mode == "silent_pass":
 for tok in args:
     p = pathlib.Path(tok)
     if p.is_file() and "debugger;" in p.read_text(encoding="utf-8"):
-        sys.stderr.write("lint/suspicious/noDebugger: This is an unexpected use of the debugger statement.\\n")
+        sys.stderr.write(f"{{p}}: lint/suspicious/noDebugger: This is an unexpected use of the debugger statement.\\n")
         sys.exit(1)
 sys.exit(0)
 """
-        make_executable(fe / "node_modules" / ".bin" / "biome", biome_stub)
-        bin_dir = td_path / "stub-bin"
-        bun_stub = f"""#!{sys.executable}
-import sys
-if sys.argv[1:] == ["--version"]:
-    sys.stdout.write("1.3.12\\n")
-sys.exit(0)
-"""
-        make_executable(bin_dir / "bun", bun_stub)
-        env = os.environ.copy()
-        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
-        res = subprocess.run(  # noqa: S603 - fixed argv running frontend.sh under test
-            [BASH_BIN, str(lint_dir / "frontend.sh"), "svc-fe"],
-            cwd=str(repo),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    make_executable(fe / "node_modules" / ".bin" / "biome", biome_stub)
+    bin_dir = td_path / "stub-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    if path_bun_version is not None:
+        _make_bun_stub(bin_dir / "bun", path_bun_version, fail_on_run=path_bun_fail_on_run)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    env["XDG_CACHE_HOME"] = str(td_path / "cache")
+    env.pop("ALT_LINT_BUN_BIN", None)
+    env.pop("ALT_LINT_BUN_DOWNLOAD_BASE_URL", None)
+    return repo, fe, env
+
+
+def run_frontend_sh(
+    repo: pathlib.Path,
+    target: str,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    assert BASH_BIN is not None
+    return subprocess.run(  # noqa: S603 - fixed argv running frontend.sh under test
+        [BASH_BIN, str(repo / "scripts" / "lint" / "frontend.sh"), target],
+        cwd=str(repo),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+sys.stdout.write("D1. Frontend frontend-canary wired in frontend.sh (healthy vs silent_pass)\n")
+for biome_mode, expected_rc in (("healthy", 0), ("silent_pass", 1)):
+    with tempfile.TemporaryDirectory() as td:
+        repo, _fe, env = build_frontend_test_repo(pathlib.Path(td), biome_mode=biome_mode)
+        res = run_frontend_sh(repo, "svc-fe", env)
         check(
             f"frontend.sh ({biome_mode}) exits {expected_rc}",
             res.returncode == expected_rc,
@@ -1403,6 +1460,108 @@ sys.exit(0)
                 "CANARY AUDIT FAILED" in res.stderr,
                 res.stderr,
             )
+
+sys.stdout.write(
+    "D2. Frontend resolves pinned bun from XDG_CACHE_HOME even when PATH bun is 9.9.9\n"
+)
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    repo, _fe, env = build_frontend_test_repo(
+        td_path,
+        pinned_version="1.3.12",
+        path_bun_version="9.9.9",
+        path_bun_fail_on_run=True,
+    )
+    cached_bun = td_path / "cache" / "alt-lint" / "bun" / "1.3.12" / "bun"
+    _make_bun_stub(cached_bun, "1.3.12")
+    res = run_frontend_sh(repo, "svc-fe", env)
+    check(
+        "frontend.sh resolves cached 1.3.12 bun when PATH has 9.9.9",
+        res.returncode == 0
+        and "stub-bun-1.3.12:run lint:check" in res.stdout
+        and "stub-bun-1.3.12:run check" in res.stdout,
+        f"rc={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}",
+    )
+
+sys.stdout.write(
+    "D3. Frontend fails closed on bad ALT_LINT_BUN_BIN and on offline download failure\n"
+)
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    repo, _fe, env = build_frontend_test_repo(
+        td_path,
+        pinned_version="1.3.12",
+        path_bun_version="1.3.12",
+    )
+    cached_bun = td_path / "cache" / "alt-lint" / "bun" / "1.3.12" / "bun"
+    _make_bun_stub(cached_bun, "1.3.12")
+    wrong_bun = td_path / "wrong-bun" / "bun"
+    _make_bun_stub(wrong_bun, "9.9.9")
+
+    env_wrong = env.copy()
+    env_wrong["ALT_LINT_BUN_BIN"] = str(wrong_bun)
+    res_wrong = run_frontend_sh(repo, "svc-fe", env_wrong)
+    check(
+        "frontend.sh fails closed when ALT_LINT_BUN_BIN reports 9.9.9",
+        res_wrong.returncode == 1 and "1.3.12" in res_wrong.stderr and "9.9.9" in res_wrong.stderr,
+        f"rc={res_wrong.returncode}, stdout={res_wrong.stdout!r}, stderr={res_wrong.stderr!r}",
+    )
+
+    env_missing = env.copy()
+    env_missing["ALT_LINT_BUN_BIN"] = str(td_path / "does-not-exist" / "bun")
+    res_missing = run_frontend_sh(repo, "svc-fe", env_missing)
+    check(
+        "frontend.sh fails closed when ALT_LINT_BUN_BIN is missing",
+        res_missing.returncode == 1 and "ALT_LINT_BUN_BIN" in res_missing.stderr,
+        f"rc={res_missing.returncode}, stdout={res_missing.stdout!r}, stderr={res_missing.stderr!r}",
+    )
+
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    repo, _fe, env = build_frontend_test_repo(
+        td_path,
+        pinned_version="1.3.12",
+        path_bun_version="9.9.9",
+        path_bun_fail_on_run=True,
+    )
+    env["ALT_LINT_BUN_DOWNLOAD_BASE_URL"] = "file:///nonexistent"
+    res_offline = run_frontend_sh(repo, "svc-fe", env)
+    check(
+        "frontend.sh fails closed when offline download fails",
+        res_offline.returncode == 1 and "download" in res_offline.stderr.lower(),
+        f"rc={res_offline.returncode}, stdout={res_offline.stdout!r}, stderr={res_offline.stderr!r}",
+    )
+
+sys.stdout.write("D4. Frontend auto-installs pinned bun from download mirror into XDG_CACHE_HOME\n")
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    repo, _fe, env = build_frontend_test_repo(
+        td_path,
+        pinned_version="1.3.12",
+        path_bun_version="9.9.9",
+        path_bun_fail_on_run=True,
+    )
+    archive_name = _expected_bun_archive_name()
+    payload_bun = td_path / "payload" / "bun"
+    _make_bun_stub(payload_bun, "1.3.12")
+    mirror_dir = td_path / "mirror" / "bun-v1.3.12"
+    mirror_dir.mkdir(parents=True)
+    zip_path = mirror_dir / f"{archive_name}.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(payload_bun, arcname=f"{archive_name}/bun")
+
+    env["ALT_LINT_BUN_DOWNLOAD_BASE_URL"] = f"file://{td_path / 'mirror'}"
+    res_install = run_frontend_sh(repo, "svc-fe", env)
+    installed_bun = td_path / "cache" / "alt-lint" / "bun" / "1.3.12" / "bun"
+    check(
+        "frontend.sh auto-installs pinned bun into XDG_CACHE_HOME and runs lint/check",
+        res_install.returncode == 0
+        and installed_bun.is_file()
+        and os.access(installed_bun, os.X_OK)
+        and "stub-bun-1.3.12:run lint:check" in res_install.stdout
+        and "stub-bun-1.3.12:run check" in res_install.stdout,
+        f"rc={res_install.returncode}, stdout={res_install.stdout!r}, stderr={res_install.stderr!r}",
+    )
 
 # ---------------------------------------------------------------------------
 # Group E: Deno canary tests (deno-canary + deno.sh)
@@ -1959,6 +2118,58 @@ check(
     res_ep_help.returncode == 0 and "--available-only" in res_ep_help.stdout,
     res_ep_help.stdout + res_ep_help.stderr,
 )
+
+sys.stdout.write(
+    "I2. entrypoint_canary.py frontend uses cached pinned bun without rewriting Dockerfile\n"
+)
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    fe_repo, fe_svc, fe_env = build_frontend_test_repo(
+        td_path,
+        pinned_version="1.3.12",
+        path_bun_version="9.9.9",
+        path_bun_fail_on_run=True,
+    )
+    shutil.copy2(ENTRYPOINT_CANARY_PY, fe_repo / "scripts" / "lint" / "entrypoint_canary.py")
+    fe_target = fe_repo / "alt-frontend-sv"
+    shutil.move(str(fe_svc), str(fe_target))
+    (fe_target / "src" / "lib").mkdir(parents=True)
+    cached_bun = td_path / "cache" / "alt-lint" / "bun" / "1.3.12" / "bun"
+    # Stub cached bun that runs local biome on lint:check so injected debugger violation is caught
+    cached_bun_script = f"""#!{sys.executable}
+import pathlib, subprocess, sys
+
+args = sys.argv[1:]
+if args == ["--version"]:
+    sys.stdout.write("1.3.12\\n")
+    sys.exit(0)
+if args == ["run", "lint:check"]:
+    biome = pathlib.Path.cwd() / "node_modules" / ".bin" / "biome"
+    violation = pathlib.Path.cwd() / "src" / "lib" / "entrypoint_canary_violation.ts"
+    if violation.is_file():
+        res = subprocess.run([str(biome), "ci", str(violation)], check=False)
+        sys.exit(res.returncode)
+    sys.exit(0)
+sys.exit(0)
+"""
+    make_executable(cached_bun, cached_bun_script)
+
+    res_ep_fe = _run_py_tool(
+        [
+            str(ENTRYPOINT_CANARY_PY),
+            "--repo-root",
+            str(fe_repo),
+            "--languages",
+            "frontend",
+        ],
+        env=fe_env,
+    )
+    ep_fe_out = res_ep_fe.stdout + res_ep_fe.stderr
+    check(
+        "entrypoint_canary.py frontend passes using cached 1.3.12 bun without Dockerfile rewrite",
+        res_ep_fe.returncode == 0 and "staged Dockerfile bun pin aligned" not in ep_fe_out,
+        f"rc={res_ep_fe.returncode}, out={ep_fe_out!r}",
+    )
 
 sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
 sys.exit(1 if RESULTS.failed else 0)

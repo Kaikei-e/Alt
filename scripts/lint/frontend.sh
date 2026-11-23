@@ -24,12 +24,10 @@ if [ ! -d "${project_dir}/node_modules" ]; then
   exit 1
 fi
 
-for cmd in bun python3; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "error: required command not found in PATH: $cmd" >&2
-    exit 1
-  fi
-done
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "error: required command not found in PATH: python3" >&2
+  exit 1
+fi
 
 dockerfile="${project_dir}/Dockerfile"
 if [ ! -f "$dockerfile" ]; then
@@ -44,11 +42,134 @@ if [ -z "$bun_pins" ] || [ "$(wc -l <<<"$bun_pins")" -ne 1 ]; then
 fi
 expected_bun_version="$bun_pins"
 
-actual_bun_version="$(bun --version | tr -d '[:space:]')"
+bun_version_of() {
+  local bin="$1"
+  local out
+  if ! out="$("$bin" --version 2>/dev/null)"; then
+    return 1
+  fi
+  out="$(printf '%s' "$out" | tr -d '[:space:]')"
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+bun_bin=""
+if [ -n "${ALT_LINT_BUN_BIN:-}" ]; then
+  if [ ! -x "$ALT_LINT_BUN_BIN" ]; then
+    echo "error: ALT_LINT_BUN_BIN is not executable: ${ALT_LINT_BUN_BIN}" >&2
+    exit 1
+  fi
+  override_ver="$(bun_version_of "$ALT_LINT_BUN_BIN" || true)"
+  if [ "$override_ver" != "$expected_bun_version" ]; then
+    echo "error: ALT_LINT_BUN_BIN (${ALT_LINT_BUN_BIN}) bun version mismatch: expected ${expected_bun_version}, got '${override_ver:-unknown}'" >&2
+    exit 1
+  fi
+  bun_bin="$ALT_LINT_BUN_BIN"
+else
+  if path_bun="$(command -v bun 2>/dev/null || true)" && [ -n "$path_bun" ]; then
+    path_ver="$(bun_version_of "$path_bun" || true)"
+    if [ "$path_ver" = "$expected_bun_version" ]; then
+      bun_bin="$path_bun"
+    fi
+  fi
+
+  if [ -z "$bun_bin" ]; then
+    cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/alt-lint/bun/${expected_bun_version}"
+    cached_bun="${cache_dir}/bun"
+    if [ -x "$cached_bun" ] && cached_ver="$(bun_version_of "$cached_bun" || true)" && [ "$cached_ver" = "$expected_bun_version" ]; then
+      bun_bin="$cached_bun"
+    else
+      os_name="$(uname -s)"
+      arch_name="$(uname -m)"
+      case "${os_name}:${arch_name}" in
+        Linux:x86_64) target_zip="bun-linux-x64" ;;
+        Linux:aarch64|Linux:arm64) target_zip="bun-linux-aarch64" ;;
+        Darwin:arm64|Darwin:aarch64) target_zip="bun-darwin-aarch64" ;;
+        Darwin:x86_64) target_zip="bun-darwin-x64" ;;
+        *)
+          echo "error: unsupported platform for automatic Bun ${expected_bun_version} install: ${os_name}/${arch_name}" >&2
+          exit 1
+          ;;
+      esac
+
+      if ! command -v curl >/dev/null 2>&1; then
+        echo "error: required command not found in PATH for Bun ${expected_bun_version} download: curl" >&2
+        exit 1
+      fi
+
+      download_base_url="${ALT_LINT_BUN_DOWNLOAD_BASE_URL:-https://github.com/oven-sh/bun/releases/download}"
+      download_url="${download_base_url%/}/bun-v${expected_bun_version}/${target_zip}.zip"
+      tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/alt-bun-install-XXXXXX")"
+      zip_path="${tmp_dir}/${target_zip}.zip"
+      extract_dir="${tmp_dir}/extract"
+      mkdir -p "$extract_dir"
+
+      echo "==> [${project_rel}] installing pinned bun ${expected_bun_version} into ${cache_dir}" >&2
+      if ! curl -fsSL --retry 3 "$download_url" -o "$zip_path"; then
+        rm -rf "$tmp_dir"
+        echo "error: failed to download bun ${expected_bun_version} from ${download_url}" >&2
+        exit 1
+      fi
+
+      if ! python3 -m zipfile -e "$zip_path" "$extract_dir"; then
+        rm -rf "$tmp_dir"
+        echo "error: failed to extract bun archive downloaded from ${download_url}" >&2
+        exit 1
+      fi
+
+      extracted_bun="${extract_dir}/${target_zip}/bun"
+      if [ ! -f "$extracted_bun" ]; then
+        extracted_bun="$(find "$extract_dir" -maxdepth 2 -type f -name bun | head -n 1 || true)"
+      fi
+      if [ -z "$extracted_bun" ] || [ ! -f "$extracted_bun" ]; then
+        rm -rf "$tmp_dir"
+        echo "error: bun binary not found in extracted archive ${download_url}" >&2
+        exit 1
+      fi
+
+      mkdir -p "$cache_dir"
+      tmp_cached="$(mktemp "${cache_dir}/bun.tmp.XXXXXX")"
+      cp "$extracted_bun" "$tmp_cached"
+      if [ -n "${ALT_LINT_BUN_SHA256:-}" ]; then
+        expected_sha="$(printf '%s' "$ALT_LINT_BUN_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        if [[ ! "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+          rm -f "$tmp_cached"
+          rm -rf "$tmp_dir"
+          echo "error: invalid ALT_LINT_BUN_SHA256 (expected 64 hex chars): '${ALT_LINT_BUN_SHA256}'" >&2
+          exit 1
+        fi
+        actual_sha="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$tmp_cached")"
+        if [ "$actual_sha" != "$expected_sha" ]; then
+          rm -f "$tmp_cached"
+          rm -rf "$tmp_dir"
+          echo "error: downloaded bun SHA-256 mismatch: expected ${expected_sha}, got ${actual_sha}" >&2
+          exit 1
+        fi
+      fi
+      chmod +x "$tmp_cached"
+      downloaded_ver="$(bun_version_of "$tmp_cached" || true)"
+      if [ "$downloaded_ver" != "$expected_bun_version" ]; then
+        rm -f "$tmp_cached"
+        rm -rf "$tmp_dir"
+        echo "error: downloaded bun version mismatch: expected ${expected_bun_version}, got '${downloaded_ver:-unknown}'" >&2
+        exit 1
+      fi
+      mv -f "$tmp_cached" "$cached_bun"
+      rm -rf "$tmp_dir"
+      bun_bin="$cached_bun"
+    fi
+  fi
+fi
+
+actual_bun_version="$(bun_version_of "$bun_bin" || true)"
 if [ "$actual_bun_version" != "$expected_bun_version" ]; then
-  echo "error: bun version mismatch: expected ${expected_bun_version}, got '${actual_bun_version}'" >&2
+  echo "error: bun version mismatch: expected ${expected_bun_version}, got '${actual_bun_version:-unknown}'" >&2
   exit 1
 fi
+
+bun_bin_dir="$(cd "$(dirname "$bun_bin")" && pwd)"
+bun_bin="${bun_bin_dir}/$(basename "$bun_bin")"
+export PATH="${bun_bin_dir}:${PATH}"
 
 if [ ! -f "${project_dir}/bun.lock" ]; then
   echo "error: ${project_rel}/bun.lock is missing" >&2
@@ -109,16 +230,26 @@ fi
 
 cd "$project_dir"
 
+fmt_rc=0
+fmt_status="pass"
 lint_rc=0
 lint_policy="${LINT_POLICY:-fix-existing}"
 if [ "$lint_policy" = "block-new" ]; then
+  if ./node_modules/.bin/biome format .; then
+    fmt_status="pass"
+  else
+    fmt_rc=$?
+    fmt_status="fail"
+  fi
   biome_json="$(mktemp "${TMPDIR:-/tmp}/alt-biome-lint-XXXXXX.json")"
   set +e
-  ./node_modules/.bin/biome lint --reporter=json . > "$biome_json"
+  ./node_modules/.bin/biome check --error-on-warnings --reporter=json . > "$biome_json"
   lint_rc=$?
   set -e
   if [ "$lint_rc" -eq 0 ]; then
     lint_status="pass"
+  elif [ "$fmt_rc" -ne 0 ]; then
+    lint_status="fail"
   elif python3 "${script_dir}/check_ratchet.py" check-fingerprints \
     --repo-root "${repo_root}" \
     --project-dir "${project_dir}" \
@@ -131,7 +262,7 @@ if [ "$lint_policy" = "block-new" ]; then
   fi
   rm -f "$biome_json"
 else
-  if bun run lint:check; then
+  if "$bun_bin" run lint:check; then
     lint_status="pass"
   else
     lint_rc=$?
@@ -140,16 +271,19 @@ else
 fi
 
 check_rc=0
-if bun run check; then
+if "$bun_bin" run check; then
   check_status="pass"
 else
   check_rc=$?
   check_status="fail"
 fi
 
+if [ "$lint_policy" = "block-new" ]; then
+  echo "format: ${fmt_status} (exit ${fmt_rc})"
+fi
 echo "lint:check: ${lint_status} (exit ${lint_rc})"
 echo "check: ${check_status} (exit ${check_rc})"
 
-if [ "$lint_rc" -ne 0 ] || [ "$check_rc" -ne 0 ]; then
+if [ "$fmt_rc" -ne 0 ] || [ "$lint_rc" -ne 0 ] || [ "$check_rc" -ne 0 ]; then
   exit 1
 fi
