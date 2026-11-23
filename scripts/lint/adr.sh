@@ -41,16 +41,25 @@ resolve_base() {
 
   raw_base="${LINT_BASE:-}"
   if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
-    if ! target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+    if target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+      if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+        echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
+        return 1
+      fi
+      if [ "$merge_base" = "$head_sha" ]; then
+        if ! merge_base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+          echo "error: LINT_BASE '${raw_base}' matches HEAD and HEAD~1 cannot be resolved (shallow clone?)" >&2
+          return 1
+        fi
+      fi
+      printf '%s\n' "$merge_base"
+      return 0
+    fi
+    if [[ ! "$raw_base" =~ ^[0-9a-fA-F]{40}$ ]]; then
       echo "error: LINT_BASE '${raw_base}' cannot be resolved to a commit" >&2
       return 1
     fi
-    if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
-      echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
-      return 1
-    fi
-    printf '%s\n' "$merge_base"
-    return 0
+    echo "warn: LINT_BASE '${raw_base}' not found (force-push?); falling back to origin/main / HEAD~1" >&2
   fi
 
   if ! target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then

@@ -80,7 +80,7 @@ RULE_REASONS: dict[str, str] = {
         "sidecars absent."
     ),
     "O3": (
-        "Rule O3 (PM-2026-001, PM-2026-005): Confirm docker compose up/down/rm on the "
+        "Rule O3 (PM-2026-001, PM-2026-005): Confirm docker compose up/down/rm/restart on the "
         "production project because compose lifecycle changes can recreate dependent "
         "stateful or GPU containers as a side effect."
     ),
@@ -348,12 +348,19 @@ def _parse_compose_args(args: list[str]) -> tuple[str | None, str | None, bool]:
     while i < n:
         tok = args[i]
         if tok == "--":
+            if compose_subcmd is not None:
+                break
+            if i + 1 < n:
+                compose_subcmd = args[i + 1]
+                i += 2
+                continue
             break
         if tok in ("-p", "--project-name"):
             if i + 1 < n:
                 cli_project = args[i + 1]
                 i += 2
                 continue
+            cli_project = ""
             i += 1
             continue
         if tok.startswith(("--project-name=", "-p=")):
@@ -379,15 +386,13 @@ def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
     """Classify a docker compose / docker-compose argument list into O2, O3, O4, or None."""
     cli_project, compose_subcmd, has_build_or_recreate = _parse_compose_args(args)
 
-    if compose_subcmd not in ("up", "down", "rm", "stop", "kill"):
+    if compose_subcmd not in ("up", "down", "rm", "stop", "kill", "restart"):
         return None
 
     effective_project = (
-        cli_project
-        if (cli_project is not None and cli_project != "")
-        else env_vars.get("COMPOSE_PROJECT_NAME", "")
+        cli_project if cli_project is not None else env_vars.get("COMPOSE_PROJECT_NAME", "")
     )
-    if effective_project not in ("", "alt") and "$" not in effective_project:
+    if effective_project.strip() not in ("", "alt") and "$" not in effective_project:
         return None
 
     if compose_subcmd in ("stop", "kill"):
@@ -405,7 +410,9 @@ def _first_positional_arg(
     while i < n:
         tok = tokens[i]
         if tok == "--":
-            break
+            if i + 1 < n:
+                return tokens[i + 1], i + 2
+            return None, n
         if tok in value_flags:
             i += 2
             continue
