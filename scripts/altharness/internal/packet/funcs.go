@@ -1,9 +1,13 @@
 package packet
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 func normalizeGoReceiver(raw string) string {
@@ -304,11 +308,11 @@ func countModifiedFunctionsInFile(rel, before, after string) (int, error) {
 	case "python":
 		bMap, err = extractPythonFuncBodies(before)
 		if err != nil {
-			return 0, err
+			return 0, pErr("failed to parse Python file %s: %s", rel, err.Error())
 		}
 		aMap, err = extractPythonFuncBodies(after)
 		if err != nil {
-			return 0, err
+			return 0, pErr("failed to parse Python file %s: %s", rel, err.Error())
 		}
 	case "go":
 		bMap = extractGoFuncBodies(before)
@@ -386,7 +390,115 @@ func countIndent(line string) int {
 	return i
 }
 
-func pythonLogicalLines(src string) []logicalLine {
+func firstContent(line logicalLine) string {
+	raw := line.text
+	if i := strings.IndexByte(raw, '\n'); i >= 0 {
+		raw = raw[:i]
+	}
+	return strings.TrimSpace(raw)
+}
+
+func isPyDecorator(line logicalLine) bool {
+	return strings.HasPrefix(firstContent(line), "@")
+}
+
+func pyHeader(line logicalLine) (kind, name string, ok bool) {
+	s := firstContent(line)
+	if m := pyFuncHeadRe.FindStringSubmatch(s); m != nil {
+		kind = "FunctionDef"
+		if m[1] == "async" {
+			kind = "AsyncFunctionDef"
+		}
+		return kind, m[2], true
+	}
+	if m := pyClassHeadRe.FindStringSubmatch(s); m != nil {
+		return "class", m[1], true
+	}
+	return "", "", false
+}
+
+const pyFuncASTScript = `import ast, collections, hashlib, json, sys
+
+source = sys.stdin.read()
+if not source.strip():
+    json.dump({}, sys.stdout)
+    raise SystemExit(0)
+try:
+    tree = ast.parse(source)
+except SyntaxError as exc:
+    sys.stderr.write(f"{exc}\n")
+    raise SystemExit(1)
+
+def fp(fn):
+    filtered_body = [
+        stmt for stmt in fn.body
+        if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    parts = [
+        type(fn).__name__,
+        fn.name,
+        ast.dump(fn.args, include_attributes=False),
+        ast.dump(fn.returns, include_attributes=False) if fn.returns is not None else "",
+        *(ast.dump(dec, include_attributes=False) for dec in fn.decorator_list),
+        *(ast.dump(stmt, include_attributes=False) for stmt in filtered_body),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+funcs = {}
+counts = collections.Counter()
+
+def walk(stmts, prefix):
+    for stmt in stmts:
+        if isinstance(stmt, ast.ClassDef):
+            cls_prefix = f"{prefix}.{stmt.name}" if prefix else stmt.name
+            walk(stmt.body, cls_prefix)
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            base = f"{prefix}.{stmt.name}" if prefix else stmt.name
+            counts[base] += 1
+            key = f"{base}#{counts[base]}" if counts[base] > 1 else base
+            funcs[key] = fp(stmt)
+            walk(stmt.body, base)
+
+walk(tree.body, "")
+json.dump(funcs, sys.stdout)
+`
+
+func extractPythonFuncBodies(source string) (map[string]string, error) {
+	if strings.TrimSpace(source) == "" {
+		return map[string]string{}, nil
+	}
+	if py, err := exec.LookPath("python3"); err == nil {
+		return extractPythonFuncBodiesAST(py, source)
+	}
+	return extractPythonFuncBodiesPureGo(source)
+}
+
+func extractPythonFuncBodiesAST(py, source string) (map[string]string, error) {
+	res := runProcessWithStdin(context.Background(), []string{py, "-c", pyFuncASTScript}, "", []byte(source), subprocessTimeoutSeconds*time.Second)
+	if res.Timeout {
+		return nil, pErr("python3 AST parser timed out after %ds", subprocessTimeoutSeconds)
+	}
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	if res.Code != 0 {
+		msg := strings.TrimSpace(validUTF8(res.Stderr))
+		if msg == "" {
+			msg = fmt.Sprintf("python3 AST parser exited with code %d", res.Code)
+		}
+		return nil, pErr("%s", msg)
+	}
+	var funcs map[string]string
+	if err := json.Unmarshal(res.Stdout, &funcs); err != nil {
+		return nil, pErr("invalid AST digest output: %s", err.Error())
+	}
+	if funcs == nil {
+		funcs = map[string]string{}
+	}
+	return funcs, nil
+}
+
+func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
 	phys := splitLines(src)
 	var out []logicalLine
 	var buf strings.Builder
@@ -396,7 +508,7 @@ func pythonLogicalLines(src string) []logicalLine {
 	var quote byte
 	triple := false
 	escaped := false
-	for _, line := range phys {
+	for lineNo, line := range phys {
 		if !started && quote == 0 && strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -408,7 +520,14 @@ func pythonLogicalLines(src string) []logicalLine {
 			buf.WriteByte('\n')
 		}
 		buf.WriteString(line)
-		depth, quote, triple, escaped = scanPyLineState(line, depth, quote, triple, escaped)
+		var underflow bool
+		depth, quote, triple, escaped, underflow = scanPyLineStateStrict(line, depth, quote, triple, escaped)
+		if underflow {
+			return nil, pErr("unmatched closing bracket at line %d", lineNo+1)
+		}
+		if quote != 0 && !triple && !strings.HasSuffix(strings.TrimRight(line, " \t"), `\`) {
+			return nil, pErr("unterminated string literal at line %d", lineNo+1)
+		}
 		cont := depth > 0 || quote != 0 || strings.HasSuffix(strings.TrimRight(line, " \t"), `\`)
 		if cont {
 			continue
@@ -418,13 +537,19 @@ func pythonLogicalLines(src string) []logicalLine {
 		started = false
 		escaped = false
 	}
+	if quote != 0 {
+		return nil, pErr("unterminated string literal at EOF")
+	}
+	if depth != 0 {
+		return nil, pErr("unclosed bracket/parenthesis at EOF")
+	}
 	if buf.Len() > 0 {
 		out = append(out, logicalLine{indent: baseIndent, text: strings.TrimRight(buf.String(), "\n")})
 	}
-	return out
+	return out, nil
 }
 
-func scanPyLineState(line string, depth int, quote byte, triple, escaped bool) (int, byte, bool, bool) {
+func scanPyLineStateStrict(line string, depth int, quote byte, triple, escaped bool) (int, byte, bool, bool, bool) {
 	i := 0
 	for i < len(line) {
 		ch := line[i]
@@ -434,7 +559,7 @@ func scanPyLineState(line string, depth int, quote byte, triple, escaped bool) (
 			continue
 		}
 		if quote != 0 {
-			if ch == '\\' && !triple {
+			if ch == '\\' {
 				escaped = true
 				i++
 				continue
@@ -475,107 +600,218 @@ func scanPyLineState(line string, depth int, quote byte, triple, escaped bool) (
 		case '(', '[', '{':
 			depth++
 		case ')', ']', '}':
-			if depth > 0 {
-				depth--
+			if depth == 0 {
+				return 0, quote, triple, escaped, true
 			}
+			depth--
 		}
 		i++
 	}
-	return depth, quote, triple, escaped
+	return depth, quote, triple, escaped, false
 }
 
-func firstContent(line logicalLine) string {
-	raw := line.text
-	if i := strings.IndexByte(raw, '\n'); i >= 0 {
-		raw = raw[:i]
+func normalizePyQuotedString(seg string) string {
+	if len(seg) < 2 {
+		return seg
 	}
-	return strings.TrimSpace(raw)
-}
-
-func isPyDecorator(line logicalLine) bool {
-	return strings.HasPrefix(firstContent(line), "@")
-}
-
-func pyHeader(line logicalLine) (kind, name string, ok bool) {
-	s := firstContent(line)
-	if m := pyFuncHeadRe.FindStringSubmatch(s); m != nil {
-		kind = "FunctionDef"
-		if m[1] == "async" {
-			kind = "AsyncFunctionDef"
+	q := seg[0]
+	if (q != '\'' && q != '"') || seg[len(seg)-1] != q {
+		return seg
+	}
+	if len(seg) >= 6 && seg[1] == q && seg[2] == q && seg[len(seg)-2] == q && seg[len(seg)-3] == q {
+		return seg
+	}
+	inner := seg[1 : len(seg)-1]
+	var out strings.Builder
+	out.WriteByte('"')
+	for i := 0; i < len(inner); i++ {
+		ch := inner[i]
+		if ch == '\\' && i+1 < len(inner) {
+			nxt := inner[i+1]
+			if q == '\'' && nxt == '\'' {
+				out.WriteByte('\'')
+				i++
+				continue
+			}
+			if q == '"' && nxt == '"' {
+				out.WriteString(`\"`)
+				i++
+				continue
+			}
+			out.WriteByte(ch)
+			out.WriteByte(nxt)
+			i++
+			continue
 		}
-		return kind, m[2], true
+		if ch == '"' {
+			out.WriteString(`\"`)
+			continue
+		}
+		out.WriteByte(ch)
 	}
-	if m := pyClassHeadRe.FindStringSubmatch(s); m != nil {
-		return "class", m[1], true
-	}
-	return "", "", false
+	out.WriteByte('"')
+	return out.String()
 }
 
 func collapseCode(text string) string {
 	var b strings.Builder
-	inQuote := byte(0)
-	triple := false
-	escaped := false
-	for i := 0; i < len(text); i++ {
+	n := len(text)
+	for i := 0; i < n; {
 		ch := text[i]
-		if escaped {
-			b.WriteByte(ch)
-			escaped = false
+		if ch == '#' {
+			for i < n && text[i] != '\n' {
+				i++
+			}
+			if i < n {
+				b.WriteByte(' ')
+				i++
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			// Check for string prefix (r, b, u, f, etc.) immediately before quote.
+			rawOrFmt := false
+			if i > 0 {
+				prev := text[i-1]
+				if prev == 'r' || prev == 'R' || prev == 'f' || prev == 'F' || prev == 'b' || prev == 'B' {
+					rawOrFmt = true
+				}
+			}
+			triple := i+2 < n && text[i+1] == ch && text[i+2] == ch
+			start := i
+			if triple {
+				i += 3
+				for i < n {
+					if text[i] == '\\' && i+1 < n {
+						i += 2
+						continue
+					}
+					if i+2 < n && text[i] == ch && text[i+1] == ch && text[i+2] == ch {
+						i += 3
+						break
+					}
+					i++
+				}
+				b.WriteString(text[start:i])
+			} else {
+				i++
+				for i < n {
+					if text[i] == '\\' && i+1 < n {
+						i += 2
+						continue
+					}
+					if text[i] == ch {
+						i++
+						break
+					}
+					i++
+				}
+				seg := text[start:i]
+				if !rawOrFmt {
+					seg = normalizePyQuotedString(seg)
+				}
+				b.WriteString(seg)
+			}
+			continue
+		}
+		if ch == '\n' || ch == '\r' || ch == '\t' {
+			b.WriteByte(' ')
+			i++
+			continue
+		}
+		b.WriteByte(ch)
+		i++
+	}
+	collapsed := strings.Join(strings.Fields(b.String()), " ")
+	// Normalize spaces adjacent to delimiters and strip trailing commas before ), ], }.
+	var out strings.Builder
+	inQuote := byte(0)
+	esc := false
+	for i := 0; i < len(collapsed); i++ {
+		ch := collapsed[i]
+		if esc {
+			out.WriteByte(ch)
+			esc = false
 			continue
 		}
 		if inQuote != 0 {
-			b.WriteByte(ch)
-			if ch == '\\' && !triple {
-				escaped = true
-				continue
-			}
-			if triple && i+2 < len(text) && text[i] == inQuote && text[i+1] == inQuote && text[i+2] == inQuote {
-				b.WriteByte(text[i+1])
-				b.WriteByte(text[i+2])
-				inQuote = 0
-				triple = false
-				i += 2
-				continue
-			}
-			if !triple && ch == inQuote {
+			out.WriteByte(ch)
+			switch ch {
+			case '\\':
+				esc = true
+			case inQuote:
 				inQuote = 0
 			}
-			continue
-		}
-		if ch == '#' {
-			for i < len(text) && text[i] != '\n' {
-				i++
-			}
-			if i < len(text) {
-				b.WriteByte('\n')
-			}
-			continue
-		}
-		if (ch == '"' || ch == '\'') && i+2 < len(text) && text[i+1] == ch && text[i+2] == ch {
-			inQuote = ch
-			triple = true
-			b.WriteByte(ch)
-			b.WriteByte(ch)
-			b.WriteByte(ch)
-			i += 2
 			continue
 		}
 		if ch == '"' || ch == '\'' {
 			inQuote = ch
-			triple = false
-			b.WriteByte(ch)
+			out.WriteByte(ch)
 			continue
 		}
-		b.WriteByte(ch)
+		if ch == ',' {
+			// Skip trailing comma before closing delimiter.
+			j := i + 1
+			for j < len(collapsed) && collapsed[j] == ' ' {
+				j++
+			}
+			if j < len(collapsed) && (collapsed[j] == ')' || collapsed[j] == ']' || collapsed[j] == '}') {
+				i = j - 1
+				continue
+			}
+		}
+		if ch == ' ' {
+			prev := byte(0)
+			if out.Len() > 0 {
+				s := out.String()
+				prev = s[len(s)-1]
+			}
+			next := byte(0)
+			if i+1 < len(collapsed) {
+				next = collapsed[i+1]
+			}
+			if prev == '(' || prev == '[' || prev == '{' || next == ')' || next == ']' || next == '}' || next == ',' || next == ':' {
+				continue
+			}
+		}
+		out.WriteByte(ch)
 	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	return out.String()
 }
 
-func extractPythonFuncBodies(source string) (map[string]string, error) {
+var (
+	pyDefLikeRe   = regexp.MustCompile(`^(?:async\s+)?def\b`)
+	pyClassLikeRe = regexp.MustCompile(`^class\b`)
+)
+
+func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
 	if strings.TrimSpace(source) == "" {
 		return map[string]string{}, nil
 	}
-	lines := pythonLogicalLines(source)
+	lines, err := pythonLogicalLinesStrict(source)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range lines {
+		head := firstContent(line)
+		if pyDefLikeRe.MatchString(head) {
+			if _, _, ok := pyHeader(line); !ok {
+				return nil, pErr("invalid def header: %q", head)
+			}
+			norm := collapseCode(line.text)
+			if !strings.Contains(norm, ":") {
+				return nil, pErr("def header missing ':': %q", head)
+			}
+		} else if pyClassLikeRe.MatchString(head) {
+			if _, _, ok := pyHeader(line); !ok {
+				return nil, pErr("invalid class header: %q", head)
+			}
+			norm := collapseCode(line.text)
+			if !strings.Contains(norm, ":") {
+				return nil, pErr("class header missing ':': %q", head)
+			}
+		}
+	}
 	funcs := map[string]string{}
 	counts := map[string]int{}
 	var walk func(start, end, minIndent int, prefix string) int
@@ -654,7 +890,8 @@ func fingerprintPython(kind, name string, header, body []logicalLine, headerInde
 		b.WriteByte('\n')
 	}
 	skipAt := -1
-	for _, line := range body {
+	for idx := 0; idx < len(body); idx++ {
+		line := body[idx]
 		if strings.TrimSpace(line.text) == "" {
 			continue
 		}
@@ -665,7 +902,17 @@ func fingerprintPython(kind, name string, header, body []logicalLine, headerInde
 			skipAt = -1
 		}
 		if line.indent > headerIndent && isPyDecorator(line) {
-			// Peek is handled by treating a decorator run plus def as nested.
+			k := idx
+			for k < len(body) && (strings.TrimSpace(body[k].text) == "" || (isPyDecorator(body[k]) && body[k].indent == line.indent)) {
+				k++
+			}
+			if k < len(body) && body[k].indent == line.indent {
+				if _, _, ok := pyHeader(body[k]); ok {
+					skipAt = body[k].indent
+					idx = k
+					continue
+				}
+			}
 		}
 		if line.indent > headerIndent {
 			if _, _, ok := pyHeader(line); ok {

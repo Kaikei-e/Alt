@@ -3013,6 +3013,144 @@ def test_wave7_mf05_fs03_fs04_hfc(tmp: pathlib.Path) -> None:
     )
 
 
+def test_wave8_packet_verify_hardening(tmp: pathlib.Path) -> None:
+    sys.stdout.write(
+        "\n[18] Wave 8 hardening: Python AST ruff-invariance, syntax fail-closed, nested decorators, thin wrappers & base_commit template\n"
+    )
+
+    # 1. task_packet.py and host-final-check.sh are thin wrappers with no dead Python duplicate
+    max_wrapper_lines = 40
+    tp_lines = SCRIPT_PATH.read_text(encoding="utf-8").splitlines()
+    hfc_text = HOST_FINAL_CHECK_PATH.read_text(encoding="utf-8")
+    check(
+        "task_packet.py is a thin os.execv wrapper (< 40 lines)",
+        len(tp_lines) < max_wrapper_lines and "os.execv(" in "\n".join(tp_lines),
+        f"lines={len(tp_lines)}",
+    )
+    check(
+        "host-final-check.sh delegates to alt-harness host-final without importing task_packet",
+        "import task_packet" not in hfc_text
+        and "alt-harness" in hfc_text
+        and "host-final" in hfc_text,
+        hfc_text,
+    )
+
+    # 2. task-packet.md.tmpl includes base_commit
+    tmpl_text = PACKET_TMPL_PATH.read_text(encoding="utf-8")
+    check(
+        "task-packet.md.tmpl declares base_commit in YAML frontmatter",
+        'base_commit: "' in tmpl_text,
+        "missing base_commit in task-packet.md.tmpl",
+    )
+
+    # 3. verify-handoff Python AST ruff-format invariance, nested decorator edit, and broken syntax fail-closed
+    repo = tmp / "w8_py_ast"
+    _init_temp_git_repo(repo)
+    _write_stub_run_sh(repo, exit_code=0)
+    (repo / "mod.py").write_text(
+        "def greet(name: str) -> str:\n"
+        "    return 'hello ' + name\n\n"
+        "def outer(x: int) -> int:\n"
+        "    @deco('v1')\n"
+        "    def inner(y: int) -> int:\n"
+        "        return y + 1\n"
+        "    return inner(x)\n",
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "base")
+    base_sha = _run_git(repo, "rev-parse", "HEAD")
+
+    pkt = _make_loop01_packet(base_sha)
+    pkt["scope"]["allowed_paths"] = ["**"]
+    pkt["scope"]["max_functions"] = 5
+    pkt_path = write_json(tmp, "w8_pkt.json", pkt)
+
+    # 3a. Format-only quote/comma/wrap edit -> 0 modified functions
+    (repo / "mod.py").write_text(
+        "def greet(\n"
+        "    name: str,\n"
+        ") -> str:\n"
+        "    return (\n"
+        '        "hello "\n'
+        "        + name\n"
+        "    )\n\n"
+        "def outer(x: int) -> int:\n"
+        '    @deco("v1")\n'
+        "    def inner(y: int,) -> int:\n"
+        "        return y + 1\n"
+        "    return inner(x)\n",
+        encoding="utf-8",
+    )
+    ho_zero = write_json(
+        tmp,
+        "w8_ho_zero.json",
+        _make_loop01_handoff([{"path": "mod.py", "added_lines": 7, "deleted_lines": 2}], 0),
+    )
+    res_fmt = run_cli(
+        "verify-handoff",
+        str(ho_zero),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff counts 0 modified functions for ruff-format-only Python edit",
+        res_fmt.returncode == EXIT_OK,
+        f"rc={res_fmt.returncode} err={res_fmt.stderr!r}",
+    )
+
+    # 3b. Nested decorated inner function edit -> 1 modified function (outer not double-counted)
+    (repo / "mod.py").write_text(
+        "def greet(name: str) -> str:\n"
+        "    return 'hello ' + name\n\n"
+        "def outer(x: int) -> int:\n"
+        "    @deco('v2')\n"
+        "    def inner(y: int) -> int:\n"
+        "        return y + 2\n"
+        "    return inner(x)\n",
+        encoding="utf-8",
+    )
+    ho_one = write_json(
+        tmp,
+        "w8_ho_one.json",
+        _make_loop01_handoff([{"path": "mod.py", "added_lines": 2, "deleted_lines": 2}], 1),
+    )
+    res_nested = run_cli(
+        "verify-handoff",
+        str(ho_one),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff counts 1 modified function when editing a nested decorated Python function",
+        res_nested.returncode == EXIT_OK,
+        f"rc={res_nested.returncode} err={res_nested.stderr!r}",
+    )
+
+    # 3c. Broken Python syntax -> fail closed with VERIFY_HANDOFF_ERROR
+    (repo / "mod.py").write_text("def broken(:\n    return 1\n", encoding="utf-8")
+    res_broken = run_cli(
+        "verify-handoff",
+        str(ho_zero),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(repo),
+        "--no-rerun",
+    )
+    check(
+        "verify-handoff fails closed on broken Python syntax",
+        res_broken.returncode == EXIT_INVALID and "VERIFY_HANDOFF_ERROR" in res_broken.stderr,
+        f"rc={res_broken.returncode} err={res_broken.stderr!r}",
+    )
+
+
 def main() -> int:
     sys.stdout.write("Task Packet specification & validator tests\n")
     test_schema_structure()
@@ -3043,6 +3181,7 @@ def main() -> int:
         test_wave7_mf02_mf03_ast_and_comments(tmp)
         test_wave7_mf04_fs01_fs02(tmp)
         test_wave7_mf05_fs03_fs04_hfc(tmp)
+        test_wave8_packet_verify_hardening(tmp)
 
     sys.stdout.write(
         f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n",

@@ -1,6 +1,8 @@
 package packet
 
 import (
+	"alt/scripts/altharness/internal/screener"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -8,7 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 var (
@@ -504,26 +505,14 @@ func parseScreenerCandidates(raw, source string) ([]map[string]any, error) {
 	return out, nil
 }
 
-func runBehaviorScreener(ctx context.Context, repo, base, script string) ([]map[string]any, error) {
+func runBehaviorScreener(ctx context.Context, repo, base string) ([]map[string]any, error) {
 	if strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
 		return nil, pErr("invalid --base-commit revision: %q", base)
 	}
-	if !isFile(script) {
-		return nil, pErr("behavior screener script not found: %s", script)
+	var stdout, stderr bytes.Buffer
+	rc := screener.Run(ctx, []string{"--repo-root", repo, "--base", base}, &stdout, &stderr)
+	if rc != 0 {
+		return nil, pErr("behavior screener failed (rc=%d): %s", rc, strings.TrimSpace(stderr.String()))
 	}
-	py, err := lookPython()
-	if err != nil {
-		return nil, err
-	}
-	res := runProcess(ctx, []string{py, script, "--repo-root", repo, "--base", base}, "", subprocessTimeoutSeconds*time.Second)
-	if res.Timeout {
-		return nil, pErr("behavior_screener.py timed out after %ds", subprocessTimeoutSeconds)
-	}
-	if res.Err != nil {
-		return nil, res.Err
-	}
-	if res.Code != 0 {
-		return nil, pErr("behavior_screener.py failed (rc=%d): %s", res.Code, strings.TrimSpace(validUTF8(res.Stderr)))
-	}
-	return parseScreenerCandidates(validUTF8(res.Stdout), "--base-commit")
+	return parseScreenerCandidates(stdout.String(), "--base-commit")
 }

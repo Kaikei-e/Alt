@@ -334,7 +334,7 @@ func cmdValidateHandoff(ctx context.Context, args []string, stdout, stderr io.Wr
 			return emitResult(stdout, stderr, "handoff", handoffPath, nil, []Issue{{Code: "PARSE_ERROR", Path: "$", Message: err.Error()}}, format)
 		}
 	} else if base, ok := p.values["base-commit"]; ok {
-		candidates, err = runBehaviorScreener(ctx, root, base, screenerScriptPath())
+		candidates, err = runBehaviorScreener(ctx, root, base)
 		if err != nil {
 			return emitResult(stdout, stderr, "handoff", handoffPath, handoffDoc.Data["packet_id"], []Issue{{Code: "PARSE_ERROR", Path: "$", Message: err.Error()}}, format)
 		}
@@ -522,6 +522,17 @@ func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writ
 	if err != nil {
 		return loadFail(stdout, stderr, "verify-handoff", handoffPath, format, err)
 	}
+	runs := filepath.Join(root, ".harness", "runs")
+	if v, ok := p.values["runs-dir"]; ok {
+		runs = resolveExisting(v)
+	}
+	preIssues, err := preValidateVerifyHandoff(handoffDoc, packetDoc, schema, root, runs, !p.bools["no-rerun"])
+	if err != nil {
+		return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], []Issue{{Code: "VERIFY_HANDOFF_ERROR", Path: "$", Message: err.Error()}}, format)
+	}
+	if len(preIssues) > 0 {
+		return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], preIssues, format)
+	}
 	rawBase := p.values["base-commit"]
 	if rawBase == "" {
 		if s, ok := asString(packetDoc.Data["base_commit"]); ok {
@@ -544,7 +555,7 @@ func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writ
 			Message: fmt.Sprintf("unable to resolve base_commit %q in %s", rawBase, root),
 		}}, format)
 	}
-	screener, err := runBehaviorScreener(ctx, root, resolved, screenerScriptPath())
+	screener, err := runBehaviorScreener(ctx, root, resolved)
 	if err != nil {
 		return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], []Issue{{Code: "VERIFY_HANDOFF_ERROR", Path: "$", Message: err.Error()}}, format)
 	}
@@ -572,10 +583,6 @@ func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writ
 		return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], issues, format)
 	}
 	if !p.bools["no-rerun"] {
-		runs := filepath.Join(root, ".harness", "runs")
-		if v, ok := p.values["runs-dir"]; ok {
-			runs = resolveExisting(v)
-		}
 		if err := verifyHandoffHostRerun(ctx, handoffDoc.Data, packetDoc.Data, root, runs, resolved, &issues); err != nil {
 			issues = append(issues, Issue{Code: "VERIFY_HANDOFF_ERROR", Path: "$", Message: err.Error()})
 			return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], issues, format)

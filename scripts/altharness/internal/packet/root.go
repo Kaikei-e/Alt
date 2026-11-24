@@ -70,7 +70,3 @@ func packetTemplatePath() string {
 func handoffTemplatePath() string {
 	return filepath.Join(harnessDir(), "templates", "task-handoff.md.tmpl")
 }
-
-func screenerScriptPath() string {
-	return filepath.Join(repoRoot(), "scripts", "lint", "behavior_screener.py")
-}

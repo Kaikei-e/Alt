@@ -28,6 +28,48 @@ func safeEvidencePath(runsDir, branchDir, packetID string) (string, bool) {
 	return raw, true
 }
 
+func preValidateVerifyHandoff(handoffDoc, packetDoc *Document, schema map[string]any, repo, runsDir string, checkEvidencePath bool) ([]Issue, error) {
+	var issues []Issue
+	hoID, hoOK := asString(handoffDoc.Data["packet_id"])
+	pktID, pktOK := asString(packetDoc.Data["packet_id"])
+	if !hoOK || !packetIDRe.MatchString(hoID) || !pktOK || !packetIDRe.MatchString(pktID) {
+		if err := validateSchemaNode(handoffDoc.Data, refSchema("TaskHandoff"), schema, "$", &issues); err != nil {
+			return issues, err
+		}
+		var pktIssues []Issue
+		if err := validateSchemaNode(packetDoc.Data, refSchema("TaskPacket"), schema, "$", &pktIssues); err != nil {
+			return issues, err
+		}
+		for _, item := range pktIssues {
+			issues = append(issues, Issue{
+				Code:    "PACKET_" + item.Code,
+				Path:    "packet:" + item.Path,
+				Message: item.Message,
+			})
+		}
+		if !hasCode(issues, "SCHEMA_PATTERN") && !hasCode(issues, "PACKET_SCHEMA_PATTERN") {
+			issues = append(issues, Issue{
+				Code:    "INVALID_PACKET_ID",
+				Path:    "$.packet_id",
+				Message: fmt.Sprintf("refusing verify-handoff for invalid packet_id (handoff=%v, packet=%v)", handoffDoc.Data["packet_id"], packetDoc.Data["packet_id"]),
+			})
+		}
+		return issues, nil
+	}
+	if checkEvidencePath {
+		branch := currentBranchSanitized(repo)
+		if _, ok := safeEvidencePath(runsDir, branch, pktID); !ok {
+			issues = append(issues, Issue{
+				Code:    "UNSAFE_EVIDENCE_PATH",
+				Path:    "$.packet_id",
+				Message: fmt.Sprintf("evidence path for packet_id=%q escapes runs_dir or hits symlink", pktID),
+			})
+			return issues, nil
+		}
+	}
+	return nil, nil
+}
+
 func verifyHandoffActualFiles(ctx context.Context, handoff, packet map[string]any, repo, resolvedBase string, issues *[]Issue) (map[string]struct{}, error) {
 	actual, err := gitActualModifiedFiles(ctx, repo, resolvedBase)
 	if err != nil {

@@ -244,7 +244,7 @@
         "base_commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$",
-          "description": "Optional base commit SHA used by LOOP-01 verify-handoff and VERIFY-01 verify-sequence."
+          "description": "Base commit SHA used by LOOP-01 verify-handoff (required via packet.base_commit or --base-commit; fails closed if both are absent) and VERIFY-01 verify-sequence."
         },
         "task_kind": {
           "type": "string",

@@ -20,6 +20,10 @@ type cmdResult struct {
 }
 
 func runProcess(ctx context.Context, argv []string, dir string, timeout time.Duration) cmdResult {
+	return runProcessWithStdin(ctx, argv, dir, nil, timeout)
+}
+
+func runProcessWithStdin(ctx context.Context, argv []string, dir string, stdin []byte, timeout time.Duration) cmdResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -41,6 +45,9 @@ func runProcess(ctx context.Context, argv []string, dir string, timeout time.Dur
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, path, argv[1:]...)
 	cmd.Dir = dir
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -103,14 +110,6 @@ func timeDur(seconds int64) time.Duration {
 func roundSeconds(d time.Duration) float64 {
 	ms := float64(d) / float64(time.Second)
 	return float64(int64(ms*1000+0.5)) / 1000
-}
-
-func lookPython() (string, error) {
-	path, err := exec.LookPath("python3")
-	if err != nil {
-		return "", pErr("python3 executable not found in PATH")
-	}
-	return path, nil
 }
 
 func lookGit() (string, error) {
