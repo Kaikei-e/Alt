@@ -1,15 +1,15 @@
 package generated
 
 import (
+	"alt/scripts/altharness/internal/codegen"
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/pki"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-
-	"alt/scripts/altharness/internal/codegen"
 )
 
 type openAPITarget struct {
@@ -73,51 +73,57 @@ func (m *canonMemo) put(key string, hit canonResult) {
 func (c *checker) checkRegeneration(ctx context.Context, repoRoot string) ([]Violation, error) {
 	root := prepareRoot(repoRoot)
 	memo := &canonMemo{}
+
+	type slot struct {
+		vs  []Violation
+		err error
+	}
+	var results [4]slot
+	var wg sync.WaitGroup
+	wg.Add(4)
+
+	go func() {
+		defer wg.Done()
+		results[0].vs, results[0].err = c.checkGoCanonical(ctx, root, "scripts/codegen/go_canonical", ruleDriftGoCanonical, memo)
+	}()
+	go func() {
+		defer wg.Done()
+		results[1].vs, results[1].err = c.checkPythonPKI(ctx, root)
+	}()
+	go func() {
+		defer wg.Done()
+		results[2].vs, results[2].err = c.checkOpenAPIRegen(ctx, root)
+	}()
+	go func() {
+		defer wg.Done()
+		results[3].vs, results[3].err = c.checkProtovisRegen(ctx, root)
+	}()
+	wg.Wait()
+
 	var violations []Violation
-	found, err := c.checkGoCanonical(ctx, root, "scripts/codegen/sync_go_canonical.py", ruleDriftGoCanonical, memo)
-	if err != nil {
-		return nil, err
+	for _, res := range results {
+		if res.err != nil {
+			return nil, res.err
+		}
+		violations = append(violations, res.vs...)
 	}
-	violations = append(violations, found...)
-	found, err = c.checkPythonPKI(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-	violations = append(violations, found...)
-	found, err = c.checkOpenAPIRegen(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-	violations = append(violations, found...)
-	found, err = c.checkProtovisRegen(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-	violations = append(violations, found...)
 	return violations, nil
 }
 
-func (c *checker) checkGoCanonical(ctx context.Context, repoRoot, scriptRel, rule string, memo *canonMemo) ([]Violation, error) {
-	python := "0"
-	if c != nil && c.forcePython {
-		python = "1"
-	}
-	key := repoRoot + "\x00" + scriptRel + "\x00" + rule + "\x00" + python
+func (c *checker) checkGoCanonical(ctx context.Context, repoRoot, dirRel, rule string, memo *canonMemo) ([]Violation, error) {
+	key := repoRoot + "\x00" + dirRel + "\x00" + rule
 	if hit, ok := memo.get(key); ok {
 		return hit.vs, hit.err
 	}
-	vs, err := c.runGoCanonical(ctx, repoRoot, scriptRel, rule)
+	vs, err := c.runGoCanonical(ctx, repoRoot, dirRel, rule)
 	memo.put(key, canonResult{vs: vs, err: err})
 	return vs, err
 }
 
-func (c *checker) runGoCanonical(ctx context.Context, repoRoot, scriptRel, rule string) ([]Violation, error) {
-	script := filepath.Join(repoRoot, filepath.FromSlash(scriptRel))
-	if !isRegularFile(script) {
+func (c *checker) runGoCanonical(ctx context.Context, repoRoot, dirRel, rule string) ([]Violation, error) {
+	canonicalDir := filepath.Join(repoRoot, filepath.FromSlash(dirRel))
+	if !isDir(canonicalDir) {
 		return nil, nil
-	}
-	if c != nil && c.forcePython {
-		return c.runExternalCheck(ctx, repoRoot, script, scriptRel, rule, "python3")
 	}
 	sctx, cancel := context.WithTimeout(ctx, subprocessTimeout)
 	defer cancel()
@@ -129,9 +135,9 @@ func (c *checker) runGoCanonical(ctx context.Context, repoRoot, scriptRel, rule 
 	if code == 0 {
 		return nil, nil
 	}
-	summary := lastOutputLine(stdout.String(), stderr.String(), fmt.Sprintf("%s --check failed (exit %d)", scriptRel, code))
+	summary := lastOutputLine(stdout.String(), stderr.String(), fmt.Sprintf("sync-go --check failed (exit %d)", code))
 	return []Violation{{
-		Path:    scriptRel,
+		Path:    dirRel,
 		Line:    1,
 		Rule:    rule,
 		Message: summary,
@@ -139,44 +145,26 @@ func (c *checker) runGoCanonical(ctx context.Context, repoRoot, scriptRel, rule 
 }
 
 func (c *checker) checkPythonPKI(ctx context.Context, repoRoot string) ([]Violation, error) {
-	const rel = "scripts/codegen/pki_py/sync_python_pki.py"
-	script := filepath.Join(repoRoot, filepath.FromSlash(rel))
-	if !isRegularFile(script) {
+	const dirRel = "scripts/codegen/pki_py/templates"
+	templatesDir := filepath.Join(repoRoot, filepath.FromSlash(dirRel))
+	if !isDir(templatesDir) {
 		return nil, nil
 	}
-	return c.runExternalCheck(ctx, repoRoot, script, rel, ruleDriftPythonPKI, "python3")
-}
-
-func (c *checker) runExternalCheck(ctx context.Context, repoRoot, script, scriptRel, rule, binName string) ([]Violation, error) {
-	bin, err := c.which(binName)
-	if err != nil {
-		return []Violation{{
-			Path:    scriptRel,
-			Line:    1,
-			Rule:    ruleRegenToolMissing,
-			Message: binName + " binary not found in PATH for " + scriptRel + " regeneration check",
-		}}, nil
-	}
-	stdout, stderr, code, runErr := c.exec(ctx, []string{bin, script, "--check", "--repo-root", repoRoot}, "")
+	sctx, cancel := context.WithTimeout(ctx, subprocessTimeout)
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	code := pki.Sync(sctx, repoRoot, true, &stdout, &stderr)
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("run %s: %w", scriptRel, ctx.Err())
+		return nil, fmt.Errorf("sync python pki: %w", ctx.Err())
 	}
-	if runErr != nil && code == 127 {
-		return []Violation{{
-			Path:    scriptRel,
-			Line:    1,
-			Rule:    ruleRegenToolMissing,
-			Message: binName + " binary not found in PATH for " + scriptRel + " regeneration check",
-		}}, nil
-	}
-	if code == 0 && runErr == nil {
+	if code == 0 {
 		return nil, nil
 	}
-	summary := lastOutputLine(stdout, stderr, fmt.Sprintf("%s --check failed (exit %d)", scriptRel, code))
+	summary := lastOutputLine(stdout.String(), stderr.String(), fmt.Sprintf("pki --check failed (exit %d)", code))
 	return []Violation{{
-		Path:    scriptRel,
+		Path:    dirRel,
 		Line:    1,
-		Rule:    rule,
+		Rule:    ruleDriftPythonPKI,
 		Message: summary,
 	}}, nil
 }
@@ -208,20 +196,74 @@ func (c *checker) checkOpenAPIRegen(ctx context.Context, repoRoot string) ([]Vio
 	}
 	defer os.RemoveAll(tmp)
 
-	var violations []Violation
+	type targetResult struct {
+		v         *Violation
+		missingGo bool
+		err       error
+	}
+	slots := make([]targetResult, len(openAPITargets))
+	var wg sync.WaitGroup
 	for idx, target := range openAPITargets {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("openapi regeneration: %w", err)
+		wg.Add(1)
+		go func(idx int, target openAPITarget) {
+			defer wg.Done()
+			if err := ctx.Err(); err != nil {
+				slots[idx].err = fmt.Errorf("openapi regeneration: %w", err)
+				return
+			}
+			outPath := filepath.Join(tmp, fmt.Sprintf("gen_%d.go", idx))
+			args := []string{goBin, "-C", ragDir, "tool", "-modfile=" + toolMod, "oapi-codegen"}
+			args = append(args, target.flags...)
+			args = append(args, "-o", outPath, "spec/openapi.yaml")
+			stdout, stderr, code, runErr := c.exec(ctx, args, "")
+			if ctx.Err() != nil {
+				slots[idx].err = fmt.Errorf("openapi regeneration: %w", ctx.Err())
+				return
+			}
+			if code == 127 {
+				slots[idx].missingGo = true
+				return
+			}
+			if code != 0 || runErr != nil {
+				slots[idx].v = &Violation{
+					Path:    target.rel,
+					Line:    1,
+					Rule:    ruleDriftOpenAPI,
+					Message: "oapi-codegen execution failed: " + outputDetail(stdout, stderr, runErr),
+				}
+				return
+			}
+			targetPath := filepath.Join(repoRoot, filepath.FromSlash(target.rel))
+			if !isRegularFile(targetPath) {
+				slots[idx].v = &Violation{
+					Path:    target.rel,
+					Line:    1,
+					Rule:    ruleDriftOpenAPI,
+					Message: "committed generated file missing: " + target.rel,
+				}
+				return
+			}
+			actual, readErr := os.ReadFile(targetPath)
+			expected, expErr := os.ReadFile(outPath)
+			if readErr != nil || expErr != nil || !bytes.Equal(actual, expected) {
+				slots[idx].v = &Violation{
+					Path: target.rel,
+					Line: 1,
+					Rule: ruleDriftOpenAPI,
+					Message: "generated OpenAPI file drifted from rag-orchestrator/spec/openapi.yaml; " +
+						"run `make -C rag-orchestrator generate` (" + target.rel + ")",
+				}
+			}
+		}(idx, target)
+	}
+	wg.Wait()
+
+	var violations []Violation
+	for _, res := range slots {
+		if res.err != nil {
+			return nil, res.err
 		}
-		outPath := filepath.Join(tmp, fmt.Sprintf("gen_%d.go", idx))
-		args := []string{goBin, "-C", ragDir, "tool", "-modfile=" + toolMod, "oapi-codegen"}
-		args = append(args, target.flags...)
-		args = append(args, "-o", outPath, "spec/openapi.yaml")
-		stdout, stderr, code, runErr := c.exec(ctx, args, "")
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("openapi regeneration: %w", ctx.Err())
-		}
-		if code == 127 {
+		if res.missingGo {
 			return []Violation{{
 				Path:    "rag-orchestrator/spec/openapi.yaml",
 				Line:    1,
@@ -229,35 +271,8 @@ func (c *checker) checkOpenAPIRegen(ctx context.Context, repoRoot string) ([]Vio
 				Message: "go binary not found in PATH for oapi-codegen regeneration check",
 			}}, nil
 		}
-		if code != 0 || runErr != nil {
-			violations = append(violations, Violation{
-				Path:    target.rel,
-				Line:    1,
-				Rule:    ruleDriftOpenAPI,
-				Message: "oapi-codegen execution failed: " + outputDetail(stdout, stderr, runErr),
-			})
-			continue
-		}
-		targetPath := filepath.Join(repoRoot, filepath.FromSlash(target.rel))
-		if !isRegularFile(targetPath) {
-			violations = append(violations, Violation{
-				Path:    target.rel,
-				Line:    1,
-				Rule:    ruleDriftOpenAPI,
-				Message: "committed generated file missing: " + target.rel,
-			})
-			continue
-		}
-		actual, readErr := os.ReadFile(targetPath)
-		expected, expErr := os.ReadFile(outPath)
-		if readErr != nil || expErr != nil || !bytes.Equal(actual, expected) {
-			violations = append(violations, Violation{
-				Path: target.rel,
-				Line: 1,
-				Rule: ruleDriftOpenAPI,
-				Message: "generated OpenAPI file drifted from rag-orchestrator/spec/openapi.yaml; " +
-					"run `make -C rag-orchestrator generate` (" + target.rel + ")",
-			})
+		if res.v != nil {
+			violations = append(violations, *res.v)
 		}
 	}
 	return violations, nil

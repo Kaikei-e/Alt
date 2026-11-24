@@ -1,9 +1,13 @@
 package corpus
 
 import (
+	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/pyver"
+	"alt/scripts/altharness/internal/suppress"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -126,7 +130,7 @@ func runPyrefly(ctx context.Context, c Case, phase, repoRoot string, timeout tim
 	return runSimple(ctx, timeout, tmp, "pyrefly", []string{bin, "check", "--config", cfg, filepath.Join(tmp, "sample.py")})
 }
 
-func runRepo02(ctx context.Context, c Case, phase, repoRoot string, timeout time.Duration) CheckOutcome {
+func runRepo02(ctx context.Context, c Case, phase, _ string, timeout time.Duration) CheckOutcome {
 	var missing []string
 	for _, sf := range repo02RequiredSupport {
 		if _, ok := c.SupportSet[sf]; !ok {
@@ -135,14 +139,6 @@ func runRepo02(ctx context.Context, c Case, phase, repoRoot string, timeout time
 	}
 	if len(missing) > 0 {
 		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("REPO-02 case %s missing required support_files: %s", c.CaseID, pyList(missing))}
-	}
-	script := filepath.Join(repoRoot, "scripts", "lint", "canary_audit.py")
-	if !regularFile(script) {
-		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("missing canary_audit.py at %s", script)}
-	}
-	py, errMsg := python3()
-	if py == "" {
-		return CheckOutcome{ExitCode: -1, RunnerError: "REPO-02 exec error: " + errMsg}
 	}
 	gosecName, sarifName := c.BeforeFile, "before.sarif"
 	if phase != "before" {
@@ -160,11 +156,14 @@ func runRepo02(ctx context.Context, c Case, phase, repoRoot string, timeout time
 	if err := copyFile(filepath.Join(c.CaseDir, "sample.go"), filepath.Join(proj, "sample.go")); err != nil {
 		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("REPO-02 exec error: %v", err)}
 	}
-	return runSimple(ctx, timeout, "", "REPO-02", []string{
-		py, script, "go-verify-scan",
+	args := []string{
+		"go-verify-scan",
 		"--project-dir", proj,
 		"--gosec-out", filepath.Join(c.CaseDir, gosecName),
 		"--gosec-sarif", filepath.Join(c.CaseDir, sarifName),
+	}
+	return runInProcess(ctx, timeout, "REPO-02", func(cctx context.Context, stdout, stderr io.Writer) int {
+		return canary.RunAudit(cctx, args, stdout, stderr)
 	})
 }
 
@@ -178,15 +177,10 @@ func normalizeRepo03Dest(targetName, suffix string) string {
 }
 
 func runRepo03(ctx context.Context, c Case, phase, repoRoot string, timeout time.Duration) CheckOutcome {
-	script := filepath.Join(repoRoot, "scripts", "lint", "check_suppressions.py")
 	allow := filepath.Join(repoRoot, "scripts", "lint", "suppression_allowlist.toml")
 	git, gitErr := exec.LookPath("git")
-	if !regularFile(script) || !regularFile(allow) || gitErr != nil {
-		return CheckOutcome{ExitCode: -1, RunnerError: "REPO-03 prerequisites missing (check_suppressions.py, allowlist, or git)"}
-	}
-	py, errMsg := python3()
-	if py == "" {
-		return CheckOutcome{ExitCode: -1, RunnerError: "REPO-03 exec error: " + errMsg}
+	if !regularFile(allow) || gitErr != nil {
+		return CheckOutcome{ExitCode: -1, RunnerError: "REPO-03 prerequisites missing (allowlist or git)"}
 	}
 	target := phaseTarget(c, phase)
 	targetSrc := filepath.Join(c.CaseDir, target)
@@ -232,7 +226,10 @@ func runRepo03(ctx context.Context, c Case, phase, repoRoot string, timeout time
 			return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("REPO-03 exec error: %v", err)}
 		}
 	}
-	return runSimple(ctx, timeout, "", "REPO-03", []string{py, script, "--repo-root", tmp, "--allowlist", allow})
+	args := []string{"--repo-root", tmp, "--allowlist", allow}
+	return runInProcess(ctx, timeout, "REPO-03", func(cctx context.Context, stdout, stderr io.Writer) int {
+		return suppress.RunCheck(cctx, args, stdout, stderr)
+	})
 }
 
 func arch02RulePaths(language, repoRoot string) ([]string, string) {
@@ -334,15 +331,7 @@ func selectPhasePyproject(c Case, phase string) string {
 	return ""
 }
 
-func runArch03(ctx context.Context, c Case, phase, repoRoot string, timeout time.Duration) CheckOutcome {
-	script := filepath.Join(repoRoot, "scripts", "lint", "check_python_versions.py")
-	if !regularFile(script) {
-		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("missing check_python_versions.py at %s", script)}
-	}
-	py, errMsg := python3()
-	if py == "" {
-		return CheckOutcome{ExitCode: -1, RunnerError: "ARCH-03 exec error: " + errMsg}
-	}
+func runArch03(ctx context.Context, c Case, phase, _ string, timeout time.Duration) CheckOutcome {
 	tmp, err := os.MkdirTemp("", "alt-corpus-arch03-")
 	if err != nil {
 		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("ARCH-03 exec error: %v", err)}
@@ -386,11 +375,13 @@ func runArch03(ctx context.Context, c Case, phase, repoRoot string, timeout time
 			sources = append(sources, dest)
 		}
 	}
-	args := []string{py, script, "--repo-root", tmp, "--pyproject", pyprojectDest}
+	args := []string{"--repo-root", tmp, "--pyproject", pyprojectDest}
 	for _, src := range sources {
 		args = append(args, "--source", src)
 	}
-	return runSimple(ctx, timeout, "", "ARCH-03", args)
+	return runInProcess(ctx, timeout, "ARCH-03", func(cctx context.Context, stdout, stderr io.Writer) int {
+		return pyver.Run(cctx, args, stdout, stderr)
+	})
 }
 
 func runArch06(ctx context.Context, c Case, phase, repoRoot string, timeout time.Duration) CheckOutcome {

@@ -24,12 +24,17 @@ const usageText = `usage: sync_python_pki.py [-h] [--check] [--repo-root REPO_RO
 Sync or drift-check canonical Python PKI modules across 6 services.
 `
 
-// Run is the CLI for sync_python_pki.py.
+// Run is the CLI for Python PKI codegen sync/check.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_ = ctx
 	check := false
 	repoFlag := ""
 	sawRepo := false
@@ -57,15 +62,36 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return exitUsage
 		}
 	}
+	if !sawRepo {
+		repoFlag = ""
+	}
+	return Sync(ctx, repoFlag, check, stdout, stderr)
+}
 
-	templates, err := findTemplates(repoFlag)
+// Sync checks or regenerates canonical Python PKI modules in repoRoot.
+// If repoRoot is empty, the repository root is inferred from the templates directory.
+func Sync(ctx context.Context, repoRoot string, check bool, stdout, stderr io.Writer) int {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", err.Error())
+		return exitDrift
+	}
+	templates, err := findTemplates(repoRoot)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %s\n", err.Error())
 		return exitDrift
 	}
 	repo := ""
-	if sawRepo {
-		repo, err = filepath.Abs(repoFlag)
+	if repoRoot != "" {
+		repo, err = filepath.Abs(repoRoot)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err.Error())
 			return exitDrift
@@ -85,7 +111,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			for _, issue := range issues {
 				fmt.Fprintf(stderr, "  - %s\n", issue)
 			}
-			fmt.Fprint(stderr, "Run `python3 scripts/codegen/pki_py/sync_python_pki.py` to regenerate.\n")
+			fmt.Fprint(stderr, "Run `scripts/altharness/alt-harness pki` to regenerate.\n")
 			return exitDrift
 		}
 		fmt.Fprintf(stdout, "OK: all %d Python services match canonical PKI templates.\n", len(services))
@@ -107,13 +133,13 @@ func defaultRepo(templates string) string {
 
 func findTemplates(repoFlag string) (string, error) {
 	var starts []string
-	if cwd, err := os.Getwd(); err == nil {
-		starts = append(starts, cwd)
-	}
 	if repoFlag != "" {
 		if abs, err := filepath.Abs(repoFlag); err == nil {
 			starts = append(starts, abs)
 		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
 	}
 	for _, start := range starts {
 		dir := start

@@ -1,9 +1,9 @@
 # 45-target scanner canary coverage ledger (CHECK-04).
-# Verified by: python3 scripts/lint/canary_audit.py verify-ledger --repo-root .
+# Verified by: scripts/altharness/alt-harness canary verify-ledger --repo-root .
 #
 # Every target enumerated by `./scripts/lint/run.sh --list` MUST appear under
 # `[targets."<target>"]`, and every scanner for that target MUST declare either:
-#   - `status = "canary"` with `canary = "<canary_audit.py subcommand>"`, OR
+#   - `status = "canary"` with `canary = "<alt-harness canary subcommand>"`, OR
 #   - `status = "exempt"` / `status = "not-applicable"` with a non-empty `reason`.
 version = 1
 
@@ -621,19 +621,19 @@ status = "canary"
 canary = "actionlint-canary"
 [targets."repo".scanners.workflow-safety-check]
 status = "exempt"
-reason = "Covered by test_workflow_safety_check.py executed directly inside repo.sh"
+reason = "Covered by scripts/altharness/internal/workflow Go test suite"
 [targets."repo".scanners.ast-grep]
 status = "exempt"
-reason = "Rule self-tests executed directly via ast-grep test inside repo.sh before scanning"
+reason = "Rule self-tests executed directly via ast-grep test inside repo gate before scanning"
 [targets."repo".scanners.suppression-governance]
 status = "exempt"
-reason = "Covered by test-check-suppressions.py executed directly inside repo.sh"
+reason = "Covered by scripts/altharness/internal/suppress Go test suite"
 [targets."repo".scanners.suppression-ratchet]
 status = "exempt"
-reason = "Covered by test-check-ratchet.py and test-suppression-diff-report.py executed directly inside repo.sh"
+reason = "Covered by scripts/altharness/internal/ratchet and internal/suppress Go test suites"
 [targets."repo".scanners.generated-code-governance]
 status = "exempt"
-reason = "Covered by test-check-generated-code.py executed directly inside repo.sh"
+reason = "Covered by scripts/altharness/internal/generated Go test suite"
 [targets."repo".scanners.worktree-hygiene]
 status = "exempt"
-reason = "Covered by test-worktree-hygiene.py executed directly inside repo.sh"
+reason = "Covered by scripts/altharness/internal/hygiene Go test suite"

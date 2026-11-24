@@ -2,6 +2,7 @@ package corpus
 
 import (
 	"alt/scripts/altharness/internal/fsperm"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -53,12 +54,28 @@ func runSimple(ctx context.Context, timeout time.Duration, dir, label string, ar
 	return outcomeFrom(stdout, stderr, code, errMsg)
 }
 
-func python3() (string, string) {
-	p, err := exec.LookPath("python3")
-	if err != nil {
-		return "", "python3 executable not found"
+func runInProcess(ctx context.Context, timeout time.Duration, label string, fn func(context.Context, io.Writer, io.Writer) int) CheckOutcome {
+	if ctx == nil {
+		return CheckOutcome{ExitCode: -1, RunnerError: label + " exec error: nil context"}
 	}
-	return p, ""
+	if timeout <= 0 {
+		timeout = subprocessTimeout()
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	code := fn(cctx, &stdout, &stderr)
+	if errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		secs := int(timeout / time.Second)
+		if secs <= 0 {
+			secs = SubprocessTimeoutSecond
+		}
+		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("%s timed out after %ds", label, secs)}
+	}
+	if ctx.Err() != nil {
+		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("%s exec error: %v", label, ctx.Err())}
+	}
+	return outcomeFrom(stdout.String(), stderr.String(), code, "")
 }
 
 func lookExecutable(envKey, name string, extras []string) (string, string) {

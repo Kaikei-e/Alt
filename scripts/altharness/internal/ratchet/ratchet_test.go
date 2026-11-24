@@ -562,13 +562,19 @@ func TestProjectDirAndScopedBaselines(t *testing.T) {
 
 func TestTOMLEscapesRoundTrip(t *testing.T) {
 	t.Parallel()
-	counts := map[fpKey]int{{rule: "R\"\\1\n", file: "pkg/a\"b\\c.py", sha: strings.Repeat("a", 64)}: 1}
+	key := fpKey{rule: "R\"\\1\n", file: "pkg/a\"b\\c.py", sha: strings.Repeat("a", 64)}
+	counts := map[fpKey]int{key: 1}
 	rendered := renderBaselines(counts)
-	py := exec.Command("python3", "-c", "import sys,tomllib; d=tomllib.loads(sys.stdin.read()); e=d['fingerprints'][0]; assert e['rule']=='R\"\\\\1\\n' and e['file']=='pkg/a\"b\\\\c.py' and e['count']==1")
-	py.Stdin = strings.NewReader(rendered)
-	out, err := py.CombinedOutput()
+	path := filepath.Join(t.TempDir(), "rule_baselines.toml")
+	if err := os.WriteFile(path, []byte(rendered), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadBaselines(path)
 	if err != nil {
-		t.Fatalf("tomllib: %v %s\nrendered:\n%s", err, out, rendered)
+		t.Fatalf("loadBaselines: %v\nrendered:\n%s", err, rendered)
+	}
+	if got[key] != 1 || len(got) != 1 {
+		t.Fatalf("round-trip mismatch: got=%#v want=%#v\nrendered:\n%s", got, counts, rendered)
 	}
 }
 

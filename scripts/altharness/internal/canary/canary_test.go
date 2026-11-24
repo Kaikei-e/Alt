@@ -362,6 +362,7 @@ func TestVerifyLedgerTemp(t *testing.T) {
 }
 
 func TestRealLedgerParses(t *testing.T) {
+	t.Parallel()
 	root, ok := findRepoRoot(".")
 	if !ok {
 		t.Fatal("repo root not found")
@@ -462,6 +463,7 @@ func TestEntrypointCLI(t *testing.T) {
 }
 
 func TestLanguagePoolOrderAndBound(t *testing.T) {
+	t.Parallel()
 	started := make(chan string, 3)
 	release := make(chan struct{})
 	done := make(chan []caseResult, 1)
@@ -507,6 +509,7 @@ func TestLanguagePoolOrderAndBound(t *testing.T) {
 }
 
 func TestLanguagePoolContextCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	results := runLanguagePool(ctx, []string{"go", "python"}, 2, time.Second, func(ctx context.Context, lang string) caseResult {
@@ -541,6 +544,228 @@ func TestActionlintCanaryStub(t *testing.T) {
 	if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
 		t.Fatalf("exit %d stderr %s", code, stderr)
 	}
+}
+
+func TestCanaryGroupsAToIStubs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Group A go-canary stub pass and silent fail", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "proj")
+		if err := os.MkdirAll(proj, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(proj, "go.mod"), []byte("module demo\n\ngo 1.27.4\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		cfg := filepath.Join(dir, ".golangci.yml")
+		if err := os.WriteFile(cfg, []byte("version: \"2\"\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		good := filepath.Join(dir, "golangci-good")
+		goodScript := `#!/bin/sh
+sarif=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--output.sarif.path" ]; then shift; sarif="$1"; fi
+  shift
+done
+cat >"$sarif" <<'EOF'
+{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"golangci-lint","rules":[]}},"results":[{"ruleId":"gosec","message":{"text":"G402: TLS InsecureSkipVerify"}},{"ruleId":"ineffassign","message":{"text":"ineffectual assignment"}}]}]}
+EOF
+exit 1
+`
+		if err := os.WriteFile(good, []byte(goodScript), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "go-canary", "--project-dir", proj, "--config", cfg, "--golangci-lint-bin", good)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (go)") {
+			t.Fatalf("go-canary good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+
+		silent := filepath.Join(dir, "golangci-silent")
+		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runAudit(t, "go-canary", "--project-dir", proj, "--config", cfg, "--golangci-lint-bin", silent)
+		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+			t.Fatalf("go-canary silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group A9 go-verify-govulncheck valid stream passes", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "proj")
+		if err := os.MkdirAll(proj, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(proj, "main.go"), []byte("package main\nfunc main() {}\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		sarif := filepath.Join(dir, "govuln.sarif")
+		if err := os.WriteFile(sarif, []byte(`{"runs":[{"tool":{"driver":{"name":"govulncheck","rules":[],"properties":{"db":"https://vuln.go.dev","go_version":"go1.27.4"}}}}]}`), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		stream := filepath.Join(dir, "govuln.json")
+		if err := os.WriteFile(stream, []byte("{\"config\":{\"db\":\"https://vuln.go.dev\",\"go_version\":\"go1.27.4\"}}\n{\"SBOM\":{\"modules\":[{\"path\":\"demo\"}],\"roots\":[\"demo\"]}}\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "go-verify-govulncheck", "--project-dir", proj, "--govulncheck-sarif", sarif, "--govulncheck-json", stream)
+		if code != exitOK || !strings.Contains(stdout, "govulncheck scan check passed") {
+			t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+	})
+
+	t.Run("Group B python-verify-bandit-scan zero vs nonzero", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "proj")
+		if err := os.MkdirAll(proj, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(proj, "app.py"), []byte("x = 1\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		zeroOut := filepath.Join(dir, "zero.out")
+		if err := os.WriteFile(zeroOut, []byte("Run metrics:\n  Total lines of code: 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr := runAudit(t, "python-verify-bandit-scan", "--project-dir", proj, "--bandit-out", zeroOut)
+		if code != exitFail || !strings.Contains(stderr, "ZERO-FILE SCAN DETECTED") {
+			t.Fatalf("zero bandit: code=%d stderr=%s", code, stderr)
+		}
+		okOut := filepath.Join(dir, "ok.out")
+		if err := os.WriteFile(okOut, []byte("Run metrics:\n  Total lines of code: 42\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "python-verify-bandit-scan", "--project-dir", proj, "--bandit-out", okOut)
+		if code != exitOK || !strings.Contains(stdout, "42 lines of code scanned") {
+			t.Fatalf("ok bandit: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+	})
+
+	t.Run("Group C rust-canary stub", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "crate")
+		if err := os.MkdirAll(proj, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		tc := filepath.Join(proj, "rust-toolchain.toml")
+		if err := os.WriteFile(tc, []byte("[toolchain]\nchannel = \"1.86.0\"\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		good := filepath.Join(dir, "cargo-good")
+		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'error: equal expressions as operands to `==` (clippy::eq_op)' >&2\nexit 101\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "rust-canary", "--project-dir", proj, "--cargo-bin", good, "--target-dir", filepath.Join(dir, "target"))
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (rust)") {
+			t.Fatalf("rust good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		silent := filepath.Join(dir, "cargo-silent")
+		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runAudit(t, "rust-canary", "--project-dir", proj, "--cargo-bin", silent, "--target-dir", filepath.Join(dir, "target"))
+		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+			t.Fatalf("rust silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group D frontend-canary stub", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		good := filepath.Join(dir, "biome-good")
+		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'lint/suspicious/noDebugger' >&2\nexit 1\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "frontend-canary", "--project-dir", dir, "--biome-bin", good)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (frontend)") {
+			t.Fatalf("frontend good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		silent := filepath.Join(dir, "biome-silent")
+		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runAudit(t, "frontend-canary", "--project-dir", dir, "--biome-bin", silent)
+		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+			t.Fatalf("frontend silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group E deno-canary stub", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		good := filepath.Join(dir, "deno-good")
+		if err := os.WriteFile(good, []byte("#!/bin/sh\necho '(no-debugger) debugger statement is not allowed' >&2\nexit 1\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "deno-canary", "--project-dir", dir, "--deno-bin", good)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (deno)") {
+			t.Fatalf("deno good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		silent := filepath.Join(dir, "deno-silent")
+		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runAudit(t, "deno-canary", "--project-dir", dir, "--deno-bin", silent)
+		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+			t.Fatalf("deno silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group F proto-canary stub", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		good := filepath.Join(dir, "buf-good")
+		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'canary.proto:5:6:Enum name \"bad_enum\" should be PascalCase' >&2\nexit 100\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr := runAudit(t, "proto-canary", "--buf-bin", good)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (proto)") {
+			t.Fatalf("proto good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		silent := filepath.Join(dir, "buf-silent")
+		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runAudit(t, "proto-canary", "--buf-bin", silent)
+		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+			t.Fatalf("proto silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group H real repository verify-ledger passes", func(t *testing.T) {
+		t.Parallel()
+		root, ok := findRepoRoot(".")
+		if !ok {
+			t.Fatal("repo root not found")
+		}
+		code, stdout, stderr := runAudit(t, "verify-ledger", "--repo-root", root)
+		if code != exitOK || !strings.Contains(stdout, "canary ledger verified:") {
+			t.Fatalf("real verify-ledger: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+	})
+
+	t.Run("Group I stageCommon requires no python scripts", func(t *testing.T) {
+		t.Parallel()
+		src := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(src, "scripts", "lint"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(src, "scripts", "lint", "run.sh"), []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		dst := t.TempDir()
+		if err := stageCommon(context.Background(), src, dst); err != nil {
+			t.Fatalf("stageCommon without .py scripts failed: %v", err)
+		}
+		if !isFile(filepath.Join(dst, "scripts", "lint", "run.sh")) {
+			t.Fatal("staged run.sh missing")
+		}
+	})
 }
 
 func runAudit(t *testing.T, args ...string) (int, string, string) {

@@ -2,7 +2,11 @@
 # Builds scripts/altharness/bin/alt-harness when sources change, then execs it.
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_dir="${BASH_SOURCE[0]%/*}"
+if [ "$script_dir" = "${BASH_SOURCE[0]}" ]; then
+  script_dir="."
+fi
+root="$(cd -P -- "$script_dir/../.." && pwd)"
 mod="$root/scripts/altharness"
 bin_dir="$mod/bin"
 orig_bin="$bin_dir/alt-harness"
@@ -73,6 +77,9 @@ is_fresh() {
 
 ensure_writable_go_env() {
   local default_gocache="${GOCACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/go-build}"
+  if [ -d "$default_gocache" ] && [ -w "$default_gocache" ]; then
+    return 0
+  fi
   if ! (mkdir -p "$default_gocache" && [ -w "$default_gocache" ]) 2>/dev/null; then
     local uid=""
     uid="$(id -u)"
@@ -115,6 +122,14 @@ do_build() {
   printf '%s\n' "$want" >"$stamp_tmp" || { rm -f "$stamp_tmp"; return 1; }
   mv -f "$stamp_tmp" "$stamp_file" || { rm -f "$stamp_tmp"; return 1; }
 }
+
+if [ -x "$bin" ] && [ -f "$stamp_file" ]; then
+  fast_newer="$(find "$mod" -maxdepth 4 -path "$bin_dir" -prune -o \( -type d -o -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -newer "$bin" -print -quit 2>/dev/null || printf 'fallback')"
+  if [ -z "$fast_newer" ]; then
+    ensure_writable_go_env || fail_exit "$@"
+    exec "$bin" "$@"
+  fi
+fi
 
 ensure_writable_go_env || fail_exit "$@"
 want_stamp="$(compute_stamp)"

@@ -12,6 +12,7 @@ import (
 )
 
 func TestRuffAndRequiresPython(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	clean := filepath.Join(tmp, "clean.pyproject.toml")
 	writeFile(t, clean, "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n\n[tool.ruff]\nline-length = 100\n")
@@ -56,6 +57,7 @@ func TestRuffAndRequiresPython(t *testing.T) {
 }
 
 func TestPEP758AndRuntime(t *testing.T) {
+	t.Parallel()
 	lines := findUnparenthesizedExceptLines("try:\n    pass\nexcept ValueError, KeyError:\n    pass\n")
 	if len(lines) != 1 || lines[0] != 3 {
 		t.Fatalf("lines: %#v", lines)
@@ -87,6 +89,7 @@ func TestPEP758AndRuntime(t *testing.T) {
 }
 
 func TestDockerfileFloor(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	svc := filepath.Join(tmp, "svc", "app")
 	if err := os.MkdirAll(svc, fsperm.Dir); err != nil {
@@ -113,6 +116,7 @@ func TestDockerfileFloor(t *testing.T) {
 }
 
 func TestCLICorpusAndFailClosed(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	ctx := context.Background()
 	beforePP := filepath.Join(root, "scripts/harness/corpus/C-05/before.pyproject.toml")
@@ -156,6 +160,7 @@ func TestCLICorpusAndFailClosed(t *testing.T) {
 }
 
 func TestCLIUsage(t *testing.T) {
+	t.Parallel()
 	code, _, errb := runCLI(context.Background(), "--pyproject", "a", "--project-dir", "b")
 	if code != 2 || !strings.Contains(errb, "--pyproject and --project-dir are mutually exclusive") {
 		t.Fatalf("exclusive rc=%d %s", code, errb)

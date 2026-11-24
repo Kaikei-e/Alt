@@ -763,7 +763,7 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "scripts", "lint", "behavior_screener.py")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "scripts", "altharness", "go.mod")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

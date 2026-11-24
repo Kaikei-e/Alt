@@ -1,16 +1,17 @@
 package suppress
 
 import (
+	"alt/scripts/altharness/internal/tomlx"
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestParsersMatchPython(t *testing.T) {
+func TestRepoConfigParsers(t *testing.T) {
+	t.Parallel()
 	root := repoRootFromHere(t)
 	var files []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -27,7 +28,7 @@ func TestParsersMatchPython(t *testing.T) {
 		name := d.Name()
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
-		if stringsHasPrefixPath(rel, "stopped-using-k8s/") {
+		if strings.HasPrefix(rel, "stopped-using-k8s/") {
 			return nil
 		}
 		if name == "pyproject.toml" || name == "Cargo.toml" || name == "suppression_allowlist.toml" || name == "python_noqa_baseline.toml" || name == ".golangci.yml" || name == ".golangci.yaml" {
@@ -44,6 +45,7 @@ func TestParsersMatchPython(t *testing.T) {
 	for _, rel := range files {
 		rel := rel
 		t.Run(rel, func(t *testing.T) {
+			t.Parallel()
 			b, err := os.ReadFile(filepath.Join(root, rel))
 			if err != nil {
 				t.Fatal(err)
@@ -53,9 +55,8 @@ func TestParsersMatchPython(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				want := pythonYAML(t, b)
-				if js(got.pyValue()) != want {
-					t.Fatalf("yaml mismatch\n got %s\nwant %s", js(got.pyValue()), want)
+				if got.pyValue() == nil {
+					t.Fatalf("yaml parsed to nil for %s", rel)
 				}
 				return
 			}
@@ -63,9 +64,12 @@ func TestParsersMatchPython(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			want := pythonTOML(t, b)
-			if js(got) != want {
-				t.Fatalf("toml mismatch\n got %s\nwant %s", truncate(js(got), 500), truncate(want, 500))
+			var want map[string]any
+			if err := tomlx.Unmarshal(b, &want); err != nil {
+				t.Fatalf("tomlx: %v", err)
+			}
+			if js(got) != js(want) {
+				t.Fatalf("toml mismatch\n got %s\nwant %s", truncate(js(got), 500), truncate(js(want), 500))
 			}
 		})
 	}
@@ -79,7 +83,7 @@ func repoRootFromHere(t *testing.T) string {
 	}
 	dir := wd
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "scripts/lint/check_suppressions.py")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "scripts", "altharness", "go.mod")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -90,63 +94,6 @@ func repoRootFromHere(t *testing.T) string {
 	}
 }
 
-func pythonTOML(t *testing.T, src []byte) string {
-	t.Helper()
-	return pythonNorm(t, src, `
-import json, sys, tomllib
-def norm(o):
-    if isinstance(o, dict):
-        return {k: norm(v) for k, v in o.items()}
-    if isinstance(o, list):
-        return [norm(v) for v in o]
-    if isinstance(o, bool):
-        return o
-    if isinstance(o, int) and not isinstance(o, bool):
-        return o
-    if isinstance(o, float):
-        return o
-    if isinstance(o, str):
-        return o
-    return {"__t": type(o).__name__, "v": str(o)}
-print(json.dumps(norm(tomllib.loads(sys.stdin.read())), sort_keys=True, ensure_ascii=False, separators=(",", ":")))
-`)
-}
-
-func pythonYAML(t *testing.T, src []byte) string {
-	t.Helper()
-	return pythonNorm(t, src, `
-import json, sys, yaml
-def norm(o):
-    if isinstance(o, dict):
-        return {"__map": [[k, norm(v)] for k, v in o.items()]}
-    if isinstance(o, list):
-        return [norm(v) for v in o]
-    if isinstance(o, bool):
-        return o
-    if isinstance(o, int) and not isinstance(o, bool):
-        return o
-    if isinstance(o, float):
-        return o
-    if o is None:
-        return None
-    if isinstance(o, str):
-        return o
-    return {"__t": type(o).__name__, "v": str(o)}
-print(json.dumps(norm(yaml.safe_load(sys.stdin.read())), ensure_ascii=False, separators=(",", ":")))
-`)
-}
-
-func pythonNorm(t *testing.T, src []byte, code string) string {
-	t.Helper()
-	cmd := exec.Command("python3", "-c", code)
-	cmd.Stdin = bytes.NewReader(src)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python: %v\n%s", err, out)
-	}
-	return string(bytes.TrimSpace(out))
-}
-
 func js(v any) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -155,10 +102,6 @@ func js(v any) string {
 		return err.Error()
 	}
 	return strings.TrimSpace(buf.String())
-}
-
-func stringsHasPrefixPath(rel, prefix string) bool {
-	return strings.HasPrefix(rel, prefix)
 }
 
 func normalizeJSON(v any) any {

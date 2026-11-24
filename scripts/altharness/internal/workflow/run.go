@@ -5,23 +5,44 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// Run checks .github/workflows in the working directory.
-// The Python checker takes no flags; extra arguments are ignored.
+// Run checks .github/workflows in --repo-root (default: current directory).
+// Extra positional arguments are ignored for parity with the legacy CLI.
 // An empty workflow set fails closed.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_ = args
+	repoRoot := "."
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--repo-root":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "::error::--repo-root requires a value")
+				return 1
+			}
+			i++
+			repoRoot = args[i]
+		case strings.HasPrefix(arg, "--repo-root="):
+			repoRoot = strings.TrimPrefix(arg, "--repo-root=")
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		fmt.Fprintf(stderr, "::error::%s\n", err.Error())
 		return 1
 	}
-	files, err := workflowFiles()
+	files, err := workflowFilesIn(repoRoot)
 	bad := 0
 	if err != nil {
 		fmt.Fprintf(stderr, "::error::cannot read .github/workflows: %s\n", err.Error())
@@ -31,28 +52,29 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "::error::no workflow files found under .github/workflows; refusing to pass vacuously.")
 		bad++
 	}
-	scripts := loadFrontendScripts()
+	scripts := loadFrontendScriptsIn(repoRoot)
 	var runners []string
-	for _, path := range files {
+	for _, relPath := range files {
 		if err := ctx.Err(); err != nil {
 			fmt.Fprintf(stderr, "::error::%s\n", err.Error())
 			return 1
 		}
-		raw, err := os.ReadFile(path)
+		fullPath := joinRepo(repoRoot, relPath)
+		raw, err := os.ReadFile(fullPath)
 		if err != nil {
-			fmt.Fprintf(stderr, "::error file=%s::failed to read workflow: %s\n", path, err.Error())
+			fmt.Fprintf(stderr, "::error file=%s::failed to read workflow: %s\n", relPath, err.Error())
 			bad++
 			continue
 		}
 		text := string(raw)
-		textErrors, textBad := checkWorkflowTextDetails(path, text, false)
+		textErrors, textBad := checkWorkflowTextDetails(relPath, text, false)
 		for _, msg := range textErrors {
 			fmt.Fprintln(stderr, msg)
 		}
 		bad += textBad
 		doc, err := parseYAML(text)
 		if err != nil {
-			fmt.Fprintf(stderr, "::error file=%s::failed to parse YAML: %s\n", path, err.Error())
+			fmt.Fprintf(stderr, "::error file=%s::failed to parse YAML: %s\n", relPath, err.Error())
 			bad++
 			continue
 		}
@@ -70,11 +92,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 				}
 				resolved := expandRunScripts(step.command, scripts, 0)
 				if collectsClientProject(resolved, step.env) {
-					runners = append(runners, path+"::"+step.job)
+					runners = append(runners, relPath+"::"+step.job)
 				}
 			}
 		}
-		errors, fileBad := checkWorkflowDocDetails(path, m)
+		errors, fileBad := checkWorkflowDocDetailsIn(relPath, m, repoRoot)
 		for _, msg := range errors {
 			fmt.Fprintln(stderr, msg)
 		}
@@ -96,8 +118,20 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func joinRepo(repoRoot, rel string) string {
+	if repoRoot == "" || repoRoot == "." {
+		return filepath.FromSlash(rel)
+	}
+	return filepath.Join(repoRoot, filepath.FromSlash(rel))
+}
+
 func workflowFiles() ([]string, error) {
-	dir := ".github/workflows"
+	return workflowFilesIn(".")
+}
+
+func workflowFilesIn(repoRoot string) ([]string, error) {
+	dirRel := ".github/workflows"
+	dir := joinRepo(repoRoot, dirRel)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -111,12 +145,12 @@ func workflowFiles() ([]string, error) {
 		if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
 			continue
 		}
-		path := dir + "/" + name
-		info, err := os.Stat(path)
+		full := filepath.Join(dir, name)
+		info, err := os.Stat(full)
 		if err != nil || info.IsDir() {
 			continue
 		}
-		files = append(files, path)
+		files = append(files, dirRel+"/"+name)
 	}
 	sort.Strings(files)
 	return files, nil

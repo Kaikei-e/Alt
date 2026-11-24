@@ -34,7 +34,7 @@ var (
 	vitestRE       = regexp.MustCompile(`\bvitest\b`)
 	playwrightRE   = regexp.MustCompile(`\bplaywright\b`)
 	lintJobNameRE  = regexp.MustCompile(`(?i)(?:^|[-_])(?:lint|quality-gates?|static-checks)(?:$|[-_])|^quality$`)
-	lintRunCmdRE   = regexp.MustCompile(`(?:^|[;&|(\s"'/])(?:\./)?scripts/lint/run\.sh\b|\bmake\s+(?:[^\n;|&]*\s+)?lint\b`)
+	lintRunCmdRE   = regexp.MustCompile(`(?:^|[;&|(\s"'/])(?:\./)?(?:scripts/lint/run\.sh|scripts/altharness/alt-harness)\b|\bmake\s+(?:[^\n;|&]*\s+)?lint\b`)
 	lintStepIfRE   = regexp.MustCompile(`(?i)\bjob-type\s*==\s*['"]lint['"]`)
 	swallowOKLine  = regexp.MustCompile(`^#\s*swallow-ok:(.*)$`)
 	swallowOKSame  = regexp.MustCompile(`(?:^|\s)#\s*swallow-ok:(.*)$`)
@@ -65,7 +65,12 @@ var forbiddenLintImages = map[string]struct{}{
 }
 
 func checkWorkflowDoc(path string, doc any) []string {
-	errors, _ := checkWorkflowDocDetails(path, doc)
+	errors, _ := checkWorkflowDocDetailsIn(path, doc, ".")
+	return errors
+}
+
+func checkWorkflowDocIn(path string, doc any, repoRoot string) []string {
+	errors, _ := checkWorkflowDocDetailsIn(path, doc, repoRoot)
 	return errors
 }
 
@@ -119,6 +124,10 @@ func mustGet(m ymap, key string) any {
 }
 
 func checkWorkflowDocDetails(path string, doc any) ([]string, int) {
+	return checkWorkflowDocDetailsIn(path, doc, ".")
+}
+
+func checkWorkflowDocDetailsIn(path string, doc any, repoRoot string) ([]string, int) {
 	m, ok := doc.(ymap)
 	if !ok {
 		return nil, 0
@@ -164,7 +173,7 @@ func checkWorkflowDocDetails(path string, doc any) ([]string, int) {
 						bad++
 					}
 					target := resolvePathFilterTarget(entry)
-					if _, err := os.Stat(target); err != nil {
+					if _, err := os.Stat(joinRepo(repoRoot, target)); err != nil {
 						errors = append(errors, fmt.Sprintf("::error file=%s::on.%s.paths entry %s resolves to missing path %s.", path, trigName, pyReprString(entry), pyReprString(target)))
 						bad++
 					}
@@ -667,7 +676,11 @@ func isDisabled(node ymap) bool {
 }
 
 func loadFrontendScripts() map[string]string {
-	raw, err := os.ReadFile(frontendPkgJSON)
+	return loadFrontendScriptsIn(".")
+}
+
+func loadFrontendScriptsIn(repoRoot string) map[string]string {
+	raw, err := os.ReadFile(joinRepo(repoRoot, frontendPkgJSON))
 	if err != nil {
 		return nil
 	}

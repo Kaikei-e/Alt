@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,14 +52,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "VALIDATION ERROR: %s\n", err)
 	}
 	timeout := time.Duration(SubprocessTimeoutSecond) * time.Second
-	var evaluations []CaseEvaluation
-	for _, c := range cases {
-		if ctx.Err() != nil {
-			fmt.Fprintf(stderr, "VALIDATION ERROR: context canceled: %v\n", ctx.Err())
-			return ExitFail
-		}
-		ev := EvaluateCase(ctx, c, repoRoot, nil, timeout)
-		evaluations = append(evaluations, ev)
+	evaluations := evaluateCasesParallel(ctx, cases, repoRoot, timeout)
+	if ctx.Err() != nil {
+		fmt.Fprintf(stderr, "VALIDATION ERROR: context canceled: %v\n", ctx.Err())
+		return ExitFail
+	}
+	for _, ev := range evaluations {
 		fmt.Fprintf(stdout, "  %-13s  %s  [%s]  %s\n", strings.ToUpper(ev.Status), ev.CaseID, ev.Detail, ev.Title)
 	}
 	fmt.Fprintln(stdout, FormatCaptureRateLine(evaluations, len(validationErrors)))
@@ -70,6 +70,45 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	return ExitOK
+}
+
+const maxCorpusWorkers = 8
+
+func evaluateCasesParallel(ctx context.Context, cases []Case, repoRoot string, timeout time.Duration) []CaseEvaluation {
+	if len(cases) == 0 {
+		return nil
+	}
+	workers := runtime.NumCPU()
+	if workers > maxCorpusWorkers {
+		workers = maxCorpusWorkers
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(cases) {
+		workers = len(cases)
+	}
+	evaluations := make([]CaseEvaluation, len(cases))
+	jobs := make(chan int, len(cases))
+	for i := range cases {
+		jobs <- i
+	}
+	close(jobs)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				evaluations[idx] = EvaluateCase(ctx, cases[idx], repoRoot, nil, timeout)
+			}
+		}()
+	}
+	wg.Wait()
+	return evaluations
 }
 
 type cliOpts struct {

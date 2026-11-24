@@ -12,6 +12,7 @@ import (
 )
 
 func TestCheckCurrentRepo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	code, out, errb := runCLI(context.Background(), "--repo-root", root, "--check")
 	if code != 0 {
@@ -22,7 +23,39 @@ func TestCheckCurrentRepo(t *testing.T) {
 	}
 }
 
+func TestEveryGeneratedFileStartsWithHeader(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	wantHeader := strings.TrimSuffix(generatedHeader, "\n")
+	for _, spec := range services {
+		dir := filepath.Join(root, filepath.FromSlash(spec.pkiDir))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("read %s: %v", spec.pkiDir, err)
+		}
+		count := 0
+		for _, ent := range entries {
+			if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".py") {
+				continue
+			}
+			count++
+			data, err := os.ReadFile(filepath.Join(dir, ent.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, _, _ := strings.Cut(string(data), "\n")
+			if first != wantHeader {
+				t.Fatalf("%s/%s header=%q want %q", spec.pkiDir, ent.Name(), first, wantHeader)
+			}
+		}
+		if count == 0 {
+			t.Fatalf("no generated .py files in %s", spec.pkiDir)
+		}
+	}
+}
+
 func TestDriftMessagesIncludePath(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	code, _, errb := runCLI(context.Background(), "--repo-root", tmp)

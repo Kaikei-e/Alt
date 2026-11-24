@@ -17,8 +17,6 @@ const subprocessTimeout = 120 * time.Second
 // call stack (canonMemo), never in a package-level cache.
 type checker struct {
 	lookPath func(string) (string, error)
-	// forcePython skips the in-process codegen checker and shells out once.
-	forcePython bool
 }
 
 func (c *checker) which(name string) (string, error) {

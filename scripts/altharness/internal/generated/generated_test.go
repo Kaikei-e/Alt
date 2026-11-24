@@ -530,51 +530,52 @@ func TestMissingBufFailClosed(t *testing.T) {
 	}
 }
 
-func TestGoCanonicalInProcessAndPythonMemo(t *testing.T) {
+func TestGoCanonicalAndPythonPKIInProcess(t *testing.T) {
 	t.Parallel()
+	root := altRepoRoot(t)
 	repo := t.TempDir()
-	script := "scripts/codegen/sync_go_canonical.py"
-	mustWrite(t, repo, script, "#!/usr/bin/env python3\nimport sys\nsys.exit(3)\n")
 
-	marker := filepath.Join(t.TempDir(), "marker")
-	fake := filepath.Join(t.TempDir(), "python3")
-	body := "#!/bin/sh\necho x >> " + shellQuote(marker) + "\nexit 3\n"
-	if err := os.WriteFile(fake, []byte(body), fsperm.Dir); err != nil {
-		t.Fatal(err)
-	}
-	look := func(name string) (string, error) {
+	// Copy canonical dirs WITHOUT any .py scripts: checkRegeneration must still detect drift in-process.
+	copyTreeForTest(t, filepath.Join(root, "scripts/codegen/go_canonical"), filepath.Join(repo, "scripts/codegen/go_canonical"))
+	copyTreeForTest(t, filepath.Join(root, "scripts/codegen/pki_py/templates"), filepath.Join(repo, "scripts/codegen/pki_py/templates"))
+
+	c := &checker{lookPath: func(name string) (string, error) {
 		if name == "python3" || name == "python" {
-			return fake, nil
+			t.Fatalf("unexpected lookup for %s", name)
 		}
 		return exec.LookPath(name)
-	}
-
-	c := &checker{lookPath: look}
+	}}
 	vs, err := c.checkRegeneration(context.Background(), repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatal("in-process codegen.Sync path shelled out to python")
+	if len(vs) != 2 {
+		t.Fatalf("want 2 drift violations (go-canonical + python-pki), got %+v", vs)
 	}
-	if len(vs) != 1 || vs[0].Rule != "codegen.drift.go-canonical" {
-		t.Fatalf("violations=%+v", vs)
+	if vs[0].Rule != ruleDriftGoCanonical || vs[1].Rule != ruleDriftPythonPKI {
+		t.Fatalf("deterministic order mismatch: %+v", vs)
 	}
+}
 
-	c.forcePython = true
-	memo := &canonMemo{}
-	if _, err := c.checkGoCanonical(context.Background(), repo, script, "codegen.drift.go-canonical", memo); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.checkGoCanonical(context.Background(), repo, script, "codegen.drift.go-canonical", memo); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(marker)
+func copyTreeForTest(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.WalkDir(src, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, fsperm.Dir)
+		}
+		copyFile(t, path, target)
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if strings.Count(string(got), "x") != 1 {
-		t.Fatalf("python invocations=%q want 1", got)
 	}
 }
 
@@ -589,6 +590,7 @@ func TestCancelKillsSubprocess(t *testing.T) {
 }
 
 func TestOpenAPIDriftDoesNotMutate(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Fatal(err)
 	}
@@ -617,6 +619,7 @@ func TestOpenAPIDriftDoesNotMutate(t *testing.T) {
 }
 
 func TestRealRepositoryFullCheck(t *testing.T) {
+	t.Parallel()
 	root := altRepoRoot(t)
 	code, stdout, stderr := runCLI(t, "--repo-root", root)
 	_, bufErr := exec.LookPath("buf")
@@ -632,6 +635,7 @@ func TestRealRepositoryFullCheck(t *testing.T) {
 }
 
 func TestRealRepositoryListAndPins(t *testing.T) {
+	t.Parallel()
 	root := altRepoRoot(t)
 	code, stdout, stderr := runCLI(t, "--repo-root", root, "--list-generated")
 	listed := splitLines(stdout)
@@ -647,8 +651,8 @@ func TestRealRepositoryListAndPins(t *testing.T) {
 			t.Fatalf("missing %s", rel)
 		}
 	}
-	if strings.Contains(joined, "\nscripts/codegen/sync_go_canonical.py\n") {
-		t.Fatal("generator script listed as generated")
+	if strings.Contains(joined, "\nscripts/altharness/internal/codegen/sync.go\n") {
+		t.Fatal("generator source listed as generated")
 	}
 
 	code, stdout, stderr = runCLI(t, "--repo-root", root, "--check-pins")
@@ -789,8 +793,4 @@ func altRepoRoot(t *testing.T) string {
 		t.Fatal("repo root not found from " + cwd)
 	}
 	return root
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

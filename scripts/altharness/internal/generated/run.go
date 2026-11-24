@@ -213,6 +213,11 @@ func isRegularFile(path string) bool {
 	return err == nil && st.Mode().IsRegular()
 }
 
+func isDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
+}
+
 func resolveRepoRoot(override *string) (string, error) {
 	if override != nil {
 		return resolvePath(*override)
@@ -246,8 +251,8 @@ func findRepoRoot(start string) (string, bool) {
 		return "", false
 	}
 	for {
-		marker := filepath.Join(dir, "scripts", "lint", "check_generated_code.py")
-		if st, err := os.Stat(marker); err == nil && st.Mode().IsRegular() {
+		if isRegularFile(filepath.Join(dir, "scripts", "altharness", "go.mod")) ||
+			isRegularFile(filepath.Join(dir, "scripts", "lint", "run.sh")) {
 			return dir, true
 		}
 		parent := filepath.Dir(dir)

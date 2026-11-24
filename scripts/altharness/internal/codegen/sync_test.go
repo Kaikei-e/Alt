@@ -98,10 +98,36 @@ func TestGitLsFilesIgnoresNodeModules(t *testing.T) {
 	}
 }
 
-func TestRealRepoInSync(t *testing.T) {
-	if os.Getenv("ALT_HARNESS_SLOW") == "" {
-		t.Skip("set ALT_HARNESS_SLOW=1 to scan the real repo")
+func TestSyncDetectsTamperedFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	src := filepath.Join(mustRepo(t), "scripts", "codegen", "go_canonical")
+	dst := filepath.Join(root, "scripts", "codegen", "go_canonical")
+	if err := os.MkdirAll(filepath.Dir(dst), fsperm.Dir); err != nil {
+		t.Fatal(err)
 	}
+	if out, err := exec.Command("cp", "-a", src, dst).CombinedOutput(); err != nil {
+		t.Fatalf("cp: %v %s", err, out)
+	}
+	if code := Sync(context.Background(), root, false, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("initial sync code=%d", code)
+	}
+	target := filepath.Join(root, "search-indexer", "app", "internal", "connectguard", "connectguard_gen.go")
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, append(body, []byte("\n// tampered\n")...), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	var errb bytes.Buffer
+	if code := Sync(context.Background(), root, true, &bytes.Buffer{}, &errb); code != 1 || !strings.Contains(errb.String(), "DRIFT:") {
+		t.Fatalf("tampered code=%d err=%s", code, errb.String())
+	}
+}
+
+func TestRealRepoInSync(t *testing.T) {
+	t.Parallel()
 	var out, errb bytes.Buffer
 	code := Sync(context.Background(), mustRepo(t), true, &out, &errb)
 	if code != 0 {
