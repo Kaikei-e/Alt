@@ -80,12 +80,32 @@ for bad_target in run go python rust deno frontend check-link-vs-url-naming; do
     bash "$RUN_SH" "$bad_target"
 done
 
-# LINT_BASE resolution tests for harness.sh and adr.sh
+# Helper to stage scripts/altharness into a fixture repo (symlinking prebuilt bin/alt-harness when available)
+stage_altharness() {
+  local dst_repo="$1"
+  local src_mod="$REPO_ROOT/scripts/altharness"
+  local dst_mod="$dst_repo/scripts/altharness"
+  mkdir -p "$dst_mod"
+  cp -p "$src_mod/alt-harness" "$dst_mod/alt-harness"
+  cp -p "$src_mod/go.mod" "$dst_mod/go.mod"
+  cp -a "$src_mod/cmd" "$dst_mod/cmd"
+  cp -a "$src_mod/internal" "$dst_mod/internal"
+  if [ -x "$src_mod/bin/alt-harness" ]; then
+    mkdir -p "$dst_mod/bin"
+    ln -sf "$src_mod/bin/alt-harness" "$dst_mod/bin/alt-harness"
+    if [ -f "$src_mod/bin/.alt-harness.stamp" ]; then
+      cp -p "$src_mod/bin/.alt-harness.stamp" "$dst_mod/bin/.alt-harness.stamp"
+    fi
+  fi
+}
+
+# LINT_BASE resolution tests for harness.sh (Go alt-harness wrapper) and adr.sh
 tmp_git="$tmp_repo/git-repo"
 tmp_bin="$tmp_repo/stub-bin"
 mkdir -p "$tmp_git/scripts/lint" "$tmp_bin"
 cp "$REPO_ROOT/scripts/lint/harness.sh" "$tmp_git/scripts/lint/harness.sh"
 cp "$REPO_ROOT/scripts/lint/adr.sh" "$tmp_git/scripts/lint/adr.sh"
+stage_altharness "$tmp_git"
 
 git -C "$tmp_git" init -b main >/dev/null
 git -C "$tmp_git" config user.name "Test"
@@ -126,46 +146,9 @@ exit 1
 EOF
 chmod +x "$tmp_bin/python3" "$tmp_bin/docdag" "$tmp_bin/go"
 
-assert_exit_and_err 0 "base=${c2}" "harness.sh unset LINT_BASE falls back to HEAD~1 when HEAD==origin/main" \
-  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "stub-python3:scripts/tests/test-corpus.py" "harness.sh runs test-corpus.py" \
-  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "stub-python3:scripts/lint/check_generated_code.py --base ${c2}" \
-  "harness.sh passes --base to check_generated_code.py" \
-  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "stub-python3:scripts/lint/entrypoint_canary.py" \
-  "harness.sh invokes entrypoint_canary.py" \
-  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "base=${c2}" \
-  "harness.sh force-push unreachable 40-hex LINT_BASE falls back to HEAD~1" \
-  env LINT_BASE="1111111111111111111111111111111111111111" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "base=${c2}" \
-  "harness.sh LINT_BASE equal to HEAD falls back to HEAD~1" \
-  env LINT_BASE="$c3" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-
-# Verify harness.sh surfaces CORPUS CAPTURE RATE in summary and fails when test-corpus.py fails
-tmp_corpus_bin="$tmp_repo/stub-corpus-bin"
-mkdir -p "$tmp_corpus_bin"
-cat <<'EOF' >"$tmp_corpus_bin/python3"
-#!/usr/bin/env bash
-if [ "${1:-}" = "scripts/tests/test-corpus.py" ]; then
-  echo "CORPUS CAPTURE RATE: 3/22 (13.6%) [caught=3: C-09,C-21,C-22 | expected-miss=19 | failures=0]"
-  exit "${STUB_CORPUS_RC:-0}"
-fi
-echo "stub-python3:$*"
-EOF
-chmod +x "$tmp_corpus_bin/python3"
-
-assert_exit_and_err 0 "CORPUS CAPTURE RATE: 3/22 (13.6%)" "harness.sh surfaces CORPUS CAPTURE RATE in summary" \
-  env -u LINT_BASE PATH="$tmp_corpus_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 1 "corpus                           fail" "harness.sh exits 1 when test-corpus.py fails" \
-  env -u LINT_BASE STUB_CORPUS_RC=1 PATH="$tmp_corpus_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "base=${c2}" "harness.sh all-zero LINT_BASE treated as unset" \
-  env LINT_BASE="0000000000000000000000000000000000000000" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 0 "base=${c1}" "harness.sh valid LINT_BASE overrides computed base" \
-  env LINT_BASE="$c1" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
-assert_exit_and_err 1 "cannot be resolved" "harness.sh unresolvable LINT_BASE exits non-zero" \
-  env LINT_BASE="does-not-exist-rev" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+# Verify harness.sh delegates to scripts/altharness/alt-harness lint harness
+assert_exit_and_err 2 "cannot be resolved" "harness.sh (Go alt-harness) unresolvable LINT_BASE exits 2" \
+  env -C "$tmp_git" LINT_BASE="does-not-exist-rev" bash "$tmp_git/scripts/lint/harness.sh"
 
 assert_exit_and_err 0 "base=${c2}" "adr.sh unset LINT_BASE falls back to HEAD~1 when HEAD==origin/main" \
   env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/adr.sh"
@@ -183,8 +166,6 @@ git -C "$tmp_git" add pr.txt
 git -C "$tmp_git" commit -m "p1" >/dev/null
 git -C "$tmp_git" update-ref refs/remotes/origin/release "$c3"
 
-assert_exit_and_err 0 "base=${c2}" "harness.sh LINT_BASE=origin/release resolves merge-base fork point c2 when base advanced to c3" \
-  env LINT_BASE="origin/release" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
 assert_exit_and_err 0 "base=${c2}" "adr.sh LINT_BASE=origin/release resolves merge-base fork point c2 when base advanced to c3" \
   env LINT_BASE="origin/release" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/adr.sh"
 
@@ -197,8 +178,8 @@ git -C "$tmp_git" commit -m "orphan" >/dev/null
 orphan_sha="$(git -C "$tmp_git" rev-parse HEAD)"
 git -C "$tmp_git" checkout pr-branch >/dev/null 2>&1
 
-assert_exit_and_err 1 "cannot compute merge-base" "harness.sh unrelated LINT_BASE exits non-zero" \
-  env LINT_BASE="$orphan_sha" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 2 "cannot compute merge-base" "harness.sh (Go alt-harness) unrelated LINT_BASE exits 2" \
+  env -C "$tmp_git" LINT_BASE="$orphan_sha" bash "$tmp_git/scripts/lint/harness.sh"
 assert_exit_and_err 1 "cannot compute merge-base" "adr.sh unrelated LINT_BASE exits non-zero" \
   env LINT_BASE="$orphan_sha" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/adr.sh"
 
@@ -561,6 +542,7 @@ mkdir -p \
 cp "$RUN_SH" "$tmp_dirty_git/scripts/lint/run.sh"
 cp "$REPO_ROOT/scripts/lint/proto.sh" "$tmp_dirty_git/scripts/lint/proto.sh"
 cp "$REPO_ROOT/scripts/lint/canary_audit.py" "$tmp_dirty_git/scripts/lint/canary_audit.py"
+stage_altharness "$tmp_dirty_git"
 cp "$REPO_ROOT/alt-frontend-sv/biome.json" "$tmp_dirty_git/alt-frontend-sv/biome.json"
 printf 'alt-frontend-sv/test-results/\n' >"$tmp_dirty_git/.gitignore"
 printf 'module svc-go\n' >"$tmp_dirty_git/svc-go/go.mod"
@@ -659,6 +641,9 @@ exit 0
 EOF
 chmod +x "$tmp_proto_bin/buf" "$tmp_proto_bin/go"
 
+assert_exit_and_err 0 "PASS: allowlist-drift" \
+  "run.sh proto (Go alt-harness) passes in dirty git worktree with unrelated uncommitted files" \
+  env -C "$tmp_dirty_git" PATH="$tmp_proto_bin:$PATH" bash "$tmp_dirty_git/scripts/lint/run.sh" proto
 assert_exit_and_err 0 "PASS: allowlist-drift" \
   "proto.sh passes in dirty git worktree with unrelated uncommitted files" \
   env PATH="$tmp_proto_bin:$PATH" bash "$tmp_dirty_git/scripts/lint/proto.sh" proto

@@ -56,7 +56,7 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if rc := requireCommands(stderr, "go", "jq", "python3"); rc != 0 {
 		return rc
 	}
-	goVerOut, _, verCode, verErr := capture(ctx, project, nil, "go", "env", "GOVERSION")
+	goVerOut, _, verCode, verErr := capture(ctx, root, nil, "go", "env", "GOVERSION")
 	if verErr != nil {
 		commandMissing(stderr, "go")
 		return 1

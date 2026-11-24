@@ -54,6 +54,9 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Run Go altharness race tests
+        run: go -C scripts/altharness test -race -count=1 ./...
+
       - name: Run agent harness tests
         run: python3 scripts/tests/test-agent-harness.py
 

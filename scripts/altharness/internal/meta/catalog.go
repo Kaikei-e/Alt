@@ -26,13 +26,13 @@ func Catalog(ctx context.Context, repo, name string) ([]Step, error) {
 	case "repo":
 		return repoSteps(repo, base)
 	case "harness":
-		return harnessSteps(base), nil
+		return harnessSteps(repo, base), nil
 	case "both":
-		repoSteps, err := repoSteps(repo, base)
+		rSteps, err := repoSteps(repo, base)
 		if err != nil {
 			return nil, err
 		}
-		return unionSteps(repoSteps, harnessSteps(base)), nil
+		return unionSteps(rSteps, harnessSteps(repo, base)), nil
 	default:
 		return nil, fmt.Errorf("unknown gate %q", name)
 	}
@@ -47,7 +47,7 @@ func repoSteps(repo, base string) ([]Step, error) {
 		{Name: "workflow-forbidden-triggers-grep", Parallel: true, Cache: true, Run: func(ctx context.Context) (string, int, error) {
 			return ForbiddenTriggers(ctx, repo)
 		}},
-		py("workflow-safety-check", ".github/workflows/scripts/workflow-safety-check.py"),
+		bin("workflow-safety-check", "workflow"),
 		{Name: "lint-run-tests", Parallel: true, Cache: true, Args: []string{"bash", "scripts/tests/test-lint-run.sh"}},
 		py("lint-canary-tests", "scripts/tests/test-lint-canary.py"),
 		py("suppression-check-tests", "scripts/tests/test-check-suppressions.py"),
@@ -57,16 +57,21 @@ func repoSteps(repo, base string) ([]Step, error) {
 		py("suppression-diff-tests", "scripts/tests/test-suppression-diff-report.py"),
 	}
 	if summary := os.Getenv("GITHUB_STEP_SUMMARY"); summary != "" {
-		steps = append(steps, bin("suppression-diff-summary", "suppression-diff", "--base", base, "--summary-file", summary))
+		steps = append(steps, Step{
+			Name:     "suppression-diff-summary",
+			Parallel: true,
+			Cache:    false,
+			Args:     []string{"scripts/altharness/alt-harness", "suppression-diff", "--base", base, "--summary-file", summary},
+		})
 	} else {
 		steps = append(steps, Step{Name: "suppression-diff-summary", Parallel: true, Cache: false, Args: []string{"python3", "-c", "print('OK: GITHUB_STEP_SUMMARY unset; skipping PR summary write.')"}})
 	}
 	steps = append(steps,
-		astStep("ast-grep-rule-tests", "test", "-c", "scripts/lint/ast-grep/sgconfig.yml", "--skip-snapshot-tests"),
-		astStep("ast-grep-scan", "scan", "-c", "scripts/lint/ast-grep/sgconfig.yml"),
+		astStep(repo, "ast-grep-rule-tests", "test", "-c", "scripts/lint/ast-grep/sgconfig.yml", "--skip-snapshot-tests"),
+		astStep(repo, "ast-grep-scan", "scan", "-c", "scripts/lint/ast-grep/sgconfig.yml"),
 		bin("go-canonical-sync", "sync-go", "--check"),
-		py("python-pki-sync", "scripts/codegen/pki_py/sync_python_pki.py", "--check"),
-		py("python-version-parity", "scripts/lint/check_python_versions.py"),
+		bin("python-pki-sync", "pki", "--check"),
+		bin("python-version-parity", "pyver"),
 		py("generated-code-tests", "scripts/tests/test-check-generated-code.py"),
 		bin("generated-code-governance", "generated", "--base", base),
 		py("worktree-hygiene-tests", "scripts/tests/test-worktree-hygiene.py"),
@@ -75,8 +80,8 @@ func repoSteps(repo, base string) ([]Step, error) {
 	return steps, nil
 }
 
-func harnessSteps(base string) []Step {
-	steps := []Step{
+func harnessSteps(repo, base string) []Step {
+	return []Step{
 		bin("harness_selfcheck", "selfcheck"),
 		bin("postmortem_ledger", "postmortem", "--check", "--base", base),
 		bin("migration_destructive_gate", "migration-gate", "--base", base),
@@ -86,7 +91,7 @@ func harnessSteps(base string) []Step {
 		py("task_packet_tests", "scripts/tests/test-task-packet.py"),
 		bin("go_canonical_sync", "sync-go", "--check"),
 		py("go_canonical_tests", "scripts/tests/test-sync-go-canonical.py"),
-		py("python_pki_sync", "scripts/codegen/pki_py/sync_python_pki.py", "--check"),
+		bin("python_pki_sync", "pki", "--check"),
 		py("python_pki_tests", "scripts/tests/test-sync-python-pki.py"),
 		py("python_version_tests", "scripts/tests/test-check-python-versions.py"),
 		py("pytest_randomized_tests", "scripts/tests/test-pytest-randomized.py"),
@@ -100,13 +105,13 @@ func harnessSteps(base string) []Step {
 		bin("worktree_hygiene", "hygiene"),
 		py("worktree_hygiene_tests", "scripts/tests/test-worktree-hygiene.py"),
 		bin("canary_ledger", "canary", "verify-ledger", "--repo-root", "."),
-		py("entrypoint_canary", "scripts/lint/entrypoint_canary.py", "--languages", "proto", "--skip-baseline"),
+		bin("entrypoint_canary", "entrypoint-canary", "--languages", "proto", "--skip-baseline"),
+		py("exec_guards_and_runs_tests", "scripts/tests/test-exec-guards-and-runs.py"),
+		gofmtStep(repo, "altharness_gofmt", "scripts/altharness"),
+		{Name: "altharness_govet", Parallel: true, Cache: true, Args: []string{"go", "-C", "scripts/altharness", "vet", "./..."}},
+		{Name: "altharness_go_test_race", Parallel: true, Cache: true, Args: []string{"go", "-C", "scripts/altharness", "test", "-race", "-count=1", "./..."}},
+		py("corpus", "scripts/tests/test-corpus.py"),
 	}
-	if _, err := os.Stat("scripts/tests/test-exec-guards-and-runs.py"); err == nil {
-		steps = append(steps, py("exec_guards_and_runs_tests", "scripts/tests/test-exec-guards-and-runs.py"))
-	}
-	steps = append(steps, py("corpus", "scripts/tests/test-corpus.py"))
-	return steps
 }
 
 func py(name string, args ...string) Step {
@@ -122,13 +127,15 @@ func unionSteps(groups ...[]Step) []Step {
 	var out []Step
 	for _, group := range groups {
 		for _, step := range group {
-			key := step.Name + "\x00" + strings.Join(step.Args, "\x00")
+			envPart := strings.Join(step.Env, "\x00")
+			argPart := strings.Join(step.Args, "\x00")
+			key := step.Name + "\x00" + step.Dir + "\x00" + envPart + "\x00" + argPart
 			if _, ok := seen[key]; ok {
 				continue
 			}
-			// Same argv under a different label is the repo/harness duplicate.
-			argKey := strings.Join(step.Args, "\x00")
-			if argKey != "" {
+			// Same argv/dir/env under a different label is the repo/harness duplicate.
+			if argPart != "" {
+				argKey := step.Dir + "\x00" + envPart + "\x00" + argPart
 				if _, ok := seen[argKey]; ok {
 					continue
 				}

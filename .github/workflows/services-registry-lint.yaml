@@ -25,6 +25,7 @@ on:
       - '.github/generated/alt-deploy-service-paths.js'
       - 'compose/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
   push:
     branches: [main]
     paths:
@@ -40,6 +41,7 @@ on:
       - '.github/generated/alt-deploy-service-paths.js'
       - 'compose/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
 
 permissions:
   contents: read

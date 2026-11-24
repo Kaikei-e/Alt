@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 from dataclasses import dataclass
@@ -267,4 +268,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    _launcher = DEFAULT_REPO_ROOT / "scripts" / "altharness" / "alt-harness"
+    if _launcher.is_file():
+        os.execv(_launcher, [str(_launcher), "pki", *sys.argv[1:]])  # noqa: S606 -- delegates CLI execution to the Go harness
     raise SystemExit(main())

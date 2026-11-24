@@ -71,15 +71,16 @@ func ForbiddenTriggers(ctx context.Context, repo string) (string, int, error) {
 	return b.String(), 0, nil
 }
 
-func astStep(name string, args ...string) Step {
+func astStep(repo, name string, args ...string) Step {
 	return Step{
-		Name: name, Parallel: true, Cache: true,
+		Name: name, Parallel: true, Cache: true, Dir: repo,
 		Run: func(ctx context.Context) (string, int, error) {
 			bin, err := lookAstGrep()
 			if err != nil {
 				return "ERROR: ast-grep not found in PATH or ~/.local/bin/ast-grep\n", 1, nil
 			}
 			cmd := exec.CommandContext(ctx, bin, args...)
+			cmd.Dir = repo
 			out, err := cmd.CombinedOutput()
 			if err == nil {
 				return string(out), 0, nil
@@ -88,6 +89,33 @@ func astStep(name string, args ...string) Step {
 				return string(out), ee.ExitCode(), nil
 			}
 			return string(out), 1, err
+		},
+	}
+}
+
+func gofmtStep(repo, name string, paths ...string) Step {
+	return Step{
+		Name: name, Parallel: true, Cache: true, Dir: repo,
+		Run: func(ctx context.Context) (string, int, error) {
+			gofmtBin, err := exec.LookPath("gofmt")
+			if err != nil {
+				return "ERROR: gofmt not found in PATH\n", 1, nil
+			}
+			args := append([]string{"-s", "-l"}, paths...)
+			cmd := exec.CommandContext(ctx, gofmtBin, args...)
+			cmd.Dir = repo
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				if ee, ok := err.(*exec.ExitError); ok {
+					return string(out), ee.ExitCode(), nil
+				}
+				return string(out), 1, err
+			}
+			unformatted := strings.TrimSpace(string(out))
+			if unformatted != "" {
+				return "ERROR: unformatted Go files (run gofmt -s -w):\n" + unformatted + "\n", 1, nil
+			}
+			return "OK: gofmt -s clean.\n", 0, nil
 		},
 	}
 }

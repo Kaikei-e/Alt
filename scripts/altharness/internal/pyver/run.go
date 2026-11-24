@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 const reexecEnv = "CHECK_PYTHON_VERSIONS_REEXEC"
@@ -190,7 +190,7 @@ func extractFloorQuiet(path string) *[2]int {
 		return nil
 	}
 	var data map[string]any
-	if err := toml.Unmarshal(raw, &data); err != nil {
+	if err := tomlx.Unmarshal(raw, &data); err != nil {
 		return nil
 	}
 	project, _ := asMap(data["project"])

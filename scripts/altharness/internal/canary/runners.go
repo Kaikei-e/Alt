@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 type goCanaryConfig struct {
@@ -287,7 +287,7 @@ func pyprojectHasPyrefly(path string) bool {
 		return false
 	}
 	var root map[string]any
-	if err := toml.Unmarshal(data, &root); err != nil {
+	if err := tomlx.Unmarshal(data, &root); err != nil {
 		return false
 	}
 	tool, ok := root["tool"].(map[string]any)

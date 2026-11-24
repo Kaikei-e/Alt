@@ -119,6 +119,34 @@ def snapshot_tree(directory: pathlib.Path) -> set[str]:
     return entries
 
 
+def stage_altharness(repo: pathlib.Path) -> None:
+    """Stage scripts/altharness into a fixture repo, symlinking prebuilt bin/alt-harness when present."""
+    src_mod = ROOT / "scripts" / "altharness"
+    if not src_mod.is_dir():
+        return
+    dst_mod = repo / "scripts" / "altharness"
+    dst_mod.mkdir(parents=True, exist_ok=True)
+    for rel in ("alt-harness", "go.mod"):
+        src = src_mod / rel
+        if src.is_file():
+            shutil.copy2(src, dst_mod / rel)
+    for sub in ("cmd", "internal"):
+        src_sub = src_mod / sub
+        dst_sub = dst_mod / sub
+        if src_sub.is_dir() and not dst_sub.exists():
+            shutil.copytree(src_sub, dst_sub)
+    prebuilt = src_mod / "bin" / "alt-harness"
+    if prebuilt.is_file():
+        dst_bin = dst_mod / "bin"
+        dst_bin.mkdir(parents=True, exist_ok=True)
+        link = dst_bin / "alt-harness"
+        if not link.exists():
+            link.symlink_to(prebuilt)
+        stamp = src_mod / "bin" / ".alt-harness.stamp"
+        if stamp.is_file():
+            shutil.copy2(stamp, dst_bin / ".alt-harness.stamp")
+
+
 def build_go_test_repo(
     tmp: pathlib.Path,
     *,
@@ -2072,6 +2100,7 @@ with tempfile.TemporaryDirectory() as td:
     ep_repo, ep_svc, ep_env = build_go_test_repo(td_path)
     shutil.copy2(RUN_SH, ep_repo / "scripts" / "lint" / "run.sh")
     shutil.copy2(ENTRYPOINT_CANARY_PY, ep_repo / "scripts" / "lint" / "entrypoint_canary.py")
+    stage_altharness(ep_repo)
     # entrypoint_canary.py targets docker/otel-relay for Go; stage a minimal copy there
     otel_dir = ep_repo / "docker" / "otel-relay"
     otel_dir.mkdir(parents=True)
@@ -2131,6 +2160,7 @@ with tempfile.TemporaryDirectory() as td:
         path_bun_fail_on_run=True,
     )
     shutil.copy2(ENTRYPOINT_CANARY_PY, fe_repo / "scripts" / "lint" / "entrypoint_canary.py")
+    stage_altharness(fe_repo)
     fe_target = fe_repo / "alt-frontend-sv"
     shutil.move(str(fe_svc), str(fe_target))
     (fe_target / "src" / "lib").mkdir(parents=True)

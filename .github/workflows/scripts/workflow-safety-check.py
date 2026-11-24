@@ -70,6 +70,7 @@ from collections.abc import Mapping
 import glob
 import json
 import os
+import pathlib
 import re
 import sys
 from typing import Any
@@ -1317,4 +1318,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    _launcher = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "scripts"
+        / "altharness"
+        / "alt-harness"
+    )
+    if _launcher.is_file():
+        os.execv(_launcher, [str(_launcher), "workflow", *sys.argv[1:]])  # noqa: S606 -- delegates CLI execution to the Go harness
     sys.exit(main())

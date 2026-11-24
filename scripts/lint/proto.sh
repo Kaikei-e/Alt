@@ -87,8 +87,31 @@ check_allowlist_drift() {
   fi
 }
 
+resolve_proto_breaking_against() {
+  if [ -n "${ALT_PROTO_BREAKING_AGAINST:-}" ]; then
+    printf '%s\n' "$ALT_PROTO_BREAKING_AGAINST"
+    return 0
+  fi
+  local git_dir=""
+  if git_dir="$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null)" && [ -n "$git_dir" ]; then
+    if [[ "$git_dir" != /* ]]; then
+      git_dir="$repo_root/$git_dir"
+    fi
+    if git -C "$repo_root" rev-parse --verify --quiet 'origin/main^{commit}' >/dev/null 2>&1; then
+      printf '%s#branch=origin/main,subdir=%s\n' "$git_dir" "$target"
+      return 0
+    fi
+    if git -C "$repo_root" rev-parse --verify --quiet 'HEAD^{commit}' >/dev/null 2>&1; then
+      printf '%s#ref=HEAD,subdir=%s\n' "$git_dir" "$target"
+      return 0
+    fi
+  fi
+  printf '%s/%s\n' "$repo_root" "$target"
+}
+
+breaking_against="$(resolve_proto_breaking_against)"
 run_step "buf-lint" env -C "$repo_root/$target" buf lint
-run_step "buf-breaking" env -C "$repo_root/$target" buf breaking --against 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
+run_step "buf-breaking" env -C "$repo_root/$target" buf breaking --against "$breaking_against"
 run_step "allowlist-drift" check_allowlist_drift
 
 printf '%s\n' "${summary[@]}"

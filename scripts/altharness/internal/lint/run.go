@@ -66,7 +66,12 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if rest[0] == "--list" {
-		for _, t := range listTargets(repo) {
+		targets, err := listTargets(repo)
+		if err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+		for _, t := range targets {
 			fmt.Fprintln(stdout, t)
 		}
 		return 0
@@ -188,7 +193,11 @@ func runKind(ctx context.Context, kind, target string, stdout, stderr io.Writer)
 }
 
 func runAll(ctx context.Context, repo string, stdout, stderr io.Writer) int {
-	targets := listTargets(repo)
+	targets, err := listTargets(repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
 	if len(targets) == 0 {
 		fmt.Fprintln(stderr, "no lint targets found")
 		return 1
@@ -249,7 +258,7 @@ func checkDisk(repo string, stderr io.Writer) int {
 	return 0
 }
 
-func listTargets(repo string) []string {
+func listTargets(repo string) ([]string, error) {
 	seen := map[string]struct{}{}
 	var out []string
 	add := func(rel string) {
@@ -262,7 +271,11 @@ func listTargets(repo string) []string {
 		seen[rel] = struct{}{}
 		out = append(out, rel)
 	}
-	for _, rel := range markerFiles(repo) {
+	markers, err := markerFiles(repo)
+	if err != nil {
+		return nil, err
+	}
+	for _, rel := range markers {
 		dir := filepath.Dir(rel)
 		if dir == "." {
 			continue
@@ -308,10 +321,10 @@ func listTargets(repo string) []string {
 		add(name)
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
-func markerFiles(repo string) []string {
+func markerFiles(repo string) ([]string, error) {
 	if _, err := os.Stat(filepath.Join(repo, ".git")); err == nil {
 		cmd := exec.Command("git", "-C", repo, "ls-files", "--cached", "--others", "--exclude-standard")
 		out, err := cmd.Output()
@@ -326,13 +339,16 @@ func markerFiles(repo string) []string {
 					files = append(files, line)
 				}
 			}
-			return files
+			return files, nil
 		}
 	}
 	var files []string
 	skip := map[string]struct{}{".git": {}, "node_modules": {}, ".venv": {}, "target": {}, "__pycache__": {}, ".cache": {}, "vendor": {}, "_reports": {}}
-	_ = filepath.WalkDir(repo, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
+	err := filepath.WalkDir(repo, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if path == repo || !os.IsNotExist(walkErr) {
+				return walkErr
+			}
 			return nil
 		}
 		if d.IsDir() {
@@ -348,7 +364,10 @@ func markerFiles(repo string) []string {
 		}
 		return nil
 	})
-	return files
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 func markerKind(dir string) string {
@@ -380,8 +399,11 @@ func generatedGoStub(repo, rel string) bool {
 	}
 	dir := filepath.Join(repo, rel)
 	anyGo, nonGen := false, false
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
 			return nil
 		}
 		if strings.HasSuffix(d.Name(), ".go") {
@@ -392,5 +414,8 @@ func generatedGoStub(repo, rel string) bool {
 		}
 		return nil
 	})
+	if err != nil {
+		return false
+	}
 	return anyGo && !nonGen
 }

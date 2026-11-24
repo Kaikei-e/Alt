@@ -65,7 +65,7 @@ func RunProto(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	labels := []string{"buf-lint", "buf-breaking", "allowlist-drift"}
 	codes := []int{
 		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, "buf", "lint"),
-		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, bufBreakingArgs(root)...),
+		stepCode(ctx, stdout, stderr, filepath.Join(root, target), nil, bufBreakingArgs(root, target)...),
 		allowlistDrift(ctx, root, target, tmp, stdout, stderr),
 	}
 	fail := 0
@@ -80,15 +80,40 @@ func RunProto(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	return fail
 }
 
-func bufBreakingArgs(root string) []string {
-	against := "https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto"
+func bufBreakingArgs(root, target string) []string {
+	if explicit := strings.TrimSpace(os.Getenv("ALT_PROTO_BREAKING_AGAINST")); explicit != "" {
+		return []string{"buf", "breaking", "--against", explicit}
+	}
+	if target == "" {
+		target = "proto"
+	}
+	against := filepath.Join(root, target)
 	if root != "" {
-		cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "origin/main^{commit}")
-		if cmd.Run() == nil {
-			against = filepath.Join(root, ".git") + "#branch=origin/main,subdir=proto"
+		gitDir := resolveGitCommonDir(root)
+		if gitDir != "" {
+			if exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "origin/main^{commit}").Run() == nil {
+				against = gitDir + "#branch=origin/main,subdir=" + target
+			} else if exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").Run() == nil {
+				against = gitDir + "#ref=HEAD,subdir=" + target
+			}
 		}
 	}
 	return []string{"buf", "breaking", "--against", against}
+}
+
+func resolveGitCommonDir(root string) string {
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--git-common-dir").Output()
+	if err != nil {
+		return ""
+	}
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return ""
+	}
+	if filepath.IsAbs(raw) {
+		return raw
+	}
+	return filepath.Clean(filepath.Join(root, raw))
 }
 
 func stepCode(ctx context.Context, stdout, stderr io.Writer, dir string, env []string, args ...string) int {

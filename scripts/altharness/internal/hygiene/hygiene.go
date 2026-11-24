@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 const (
@@ -174,7 +174,7 @@ func loadAllowlist(repoRoot, explicit string) ([]*regexp.Regexp, error) {
 			return nil, fmt.Errorf("failed to parse allowlist %s: %w", path, err)
 		}
 		var doc map[string]any
-		if err := toml.Unmarshal(raw, &doc); err != nil {
+		if err := tomlx.Unmarshal(raw, &doc); err != nil {
 			return nil, fmt.Errorf("failed to parse allowlist %s: %w", path, err)
 		}
 		section, _ := doc["untracked_empty"].(map[string]any)

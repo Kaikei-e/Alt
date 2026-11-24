@@ -40,7 +40,7 @@ func TestProtoBreakingRef(t *testing.T) {
 		ref  string
 	}{
 		{"constant", ProtoBreakingAgainst},
-		{"argv", strings.Join(bufBreakingArgs(findRepo(t)), " ")},
+		{"argv", strings.Join(bufBreakingArgs(findRepo(t), "proto"), " ")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -54,6 +54,18 @@ func TestProtoBreakingRef(t *testing.T) {
 				t.Fatalf("%s missing subdir=proto: %s", tc.name, tc.ref)
 			}
 		})
+	}
+	// Non-git directory must fall back locally, never to github.com.
+	nonGit := t.TempDir()
+	offline := strings.Join(bufBreakingArgs(nonGit, "proto"), " ")
+	if strings.Contains(offline, "github.com") || strings.Contains(offline, "https://") {
+		t.Fatalf("non-git fallback hit remote URL: %s", offline)
+	}
+	// Explicit ALT_PROTO_BREAKING_AGAINST override takes precedence.
+	t.Setenv("ALT_PROTO_BREAKING_AGAINST", "/custom/proto")
+	override := bufBreakingArgs(nonGit, "proto")
+	if len(override) != 4 || override[3] != "/custom/proto" {
+		t.Fatalf("override=%v, want --against /custom/proto", override)
 	}
 }
 

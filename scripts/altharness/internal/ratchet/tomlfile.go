@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 var bareKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -204,7 +204,7 @@ func loadTOML(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var doc map[string]any
-	if err := toml.Unmarshal([]byte(text), &doc); err != nil {
+	if err := tomlx.Unmarshal([]byte(text), &doc); err != nil {
 		return nil, err
 	}
 	if doc == nil {

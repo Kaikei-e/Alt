@@ -6,6 +6,7 @@ on:
     paths:
       - "auth-token-manager/**"
       - "scripts/lint/**"
+      - "scripts/altharness/**"
       - ".github/workflows/auth-token-manager.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
       - "!**/CLAUDE.md"
@@ -16,6 +17,7 @@ on:
     paths:
       - "auth-token-manager/**"
       - "scripts/lint/**"
+      - "scripts/altharness/**"
       - ".github/workflows/auth-token-manager.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
       - "!**/CLAUDE.md"

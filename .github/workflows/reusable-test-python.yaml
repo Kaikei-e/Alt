@@ -57,6 +57,7 @@ jobs:
           sparse-checkout: |
             ${{ inputs.sparse-checkout }}
             scripts/lint
+            scripts/altharness
           sparse-checkout-cone-mode: true
 
       - name: Install uv (Rust-based tool)

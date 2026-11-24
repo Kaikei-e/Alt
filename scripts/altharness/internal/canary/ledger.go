@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 var (
@@ -60,7 +60,7 @@ func readPythonDevDeps(pyprojectPath string) (map[string]struct{}, error) {
 		return nil, fmt.Errorf("read %s: %w", pyprojectPath, err)
 	}
 	var root map[string]any
-	if err := toml.Unmarshal(data, &root); err != nil {
+	if err := tomlx.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("invalid TOML in %s: %w", pyprojectPath, err)
 	}
 	names := map[string]struct{}{}
@@ -346,7 +346,7 @@ func loadLedgerTargets(ledgerPath string) (map[string]ledgerTarget, string) {
 		return nil, fmt.Sprintf("invalid TOML in %s: %s", ledgerPath, err.Error())
 	}
 	var doc ledgerDoc
-	if err := toml.Unmarshal(data, &doc); err != nil {
+	if err := tomlx.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Sprintf("invalid TOML in %s: %s", ledgerPath, err.Error())
 	}
 	if doc.Targets == nil {

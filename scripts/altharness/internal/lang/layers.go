@@ -287,7 +287,12 @@ type layerReport struct {
 
 func scanLayers(ctx context.Context, service, repo, filterAbs, display string, ledger *knownLedger) layerReport {
 	var rep layerReport
-	files := walkSource(service)
+	files, walkErr := walkSource(service)
+	if walkErr != nil {
+		rep.violations = append(rep.violations, fmt.Sprintf("ERROR: failed to scan %s: %v", service, walkErr))
+		rep.count++
+		return rep
+	}
 	hasGo := false
 	hasPy := false
 	for _, f := range files {
@@ -380,10 +385,13 @@ type sourceFile struct {
 	rel string
 }
 
-func walkSource(service string) []sourceFile {
+func walkSource(service string) ([]sourceFile, error) {
 	var files []sourceFile
-	_ = filepath.WalkDir(service, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	err := filepath.WalkDir(service, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
 			return nil
 		}
 		ext := filepath.Ext(path)
@@ -392,12 +400,12 @@ func walkSource(service string) []sourceFile {
 		}
 		rel, err := filepath.Rel(service, path)
 		if err != nil {
-			return nil
+			return err
 		}
 		files = append(files, sourceFile{abs: path, rel: filepath.ToSlash(rel)})
 		return nil
 	})
-	return files
+	return files, err
 }
 
 func applyRule(ctx context.Context, rep *layerReport, files []sourceFile, service, repo, filterAbs, display string, ledger *knownLedger, rule layerRule) {

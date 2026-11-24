@@ -6,6 +6,7 @@ on:
     paths:
       - 'rask-log-aggregator/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/rask-log-aggregator.yaml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'rask-log-aggregator/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/rask-log-aggregator.yaml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'

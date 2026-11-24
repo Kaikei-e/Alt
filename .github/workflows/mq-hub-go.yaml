@@ -3,10 +3,10 @@ name: MQ Hub Tests
 on:
   push:
     branches: [main]
-    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', 'scripts/altharness/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', 'scripts/altharness/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:

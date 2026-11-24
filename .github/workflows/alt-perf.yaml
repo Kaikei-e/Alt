@@ -6,6 +6,7 @@ on:
     paths:
       - "alt-perf/**"
       - "scripts/lint/**"
+      - "scripts/altharness/**"
       - ".golangci.yml"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "alt-perf/**"
       - "scripts/lint/**"
+      - "scripts/altharness/**"
       - ".golangci.yml"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"

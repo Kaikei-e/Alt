@@ -57,6 +57,7 @@ on:
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/observability-validate.yaml'
   pull_request:
     branches: [main]
@@ -84,6 +85,7 @@ on:
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/observability-validate.yaml'
   workflow_dispatch:
 

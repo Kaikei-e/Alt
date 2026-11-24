@@ -304,9 +304,9 @@ func gitGoFiles(ctx context.Context, repoRoot string) ([]string, error) {
 
 func prunedGoFiles(root string) ([]string, error) {
 	var paths []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if d.IsDir() {
 			if _, skip := skipScanDirs[d.Name()]; skip && path != root {

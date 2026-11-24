@@ -20,7 +20,11 @@ func RunLinkNaming(ctx context.Context, args []string, stdout, stderr io.Writer)
 	if rc != 0 {
 		return rc
 	}
-	files := collectKnowledgeFiles(root)
+	files, walkErr := collectKnowledgeFiles(root)
+	if walkErr != nil {
+		fmt.Fprintf(stderr, "error: scan Knowledge-layer files: %s\n", walkErr.Error())
+		return 1
+	}
 	if len(files) == 0 {
 		fmt.Fprintln(stderr, "OK: no Knowledge-layer files matched the scan.")
 		return 0
@@ -88,7 +92,7 @@ linter.
 	return 0
 }
 
-func collectKnowledgeFiles(root string) []string {
+func collectKnowledgeFiles(root string) ([]string, error) {
 	type spec struct {
 		dir   string
 		depth int
@@ -119,13 +123,16 @@ func collectKnowledgeFiles(root string) []string {
 	}
 	var files []string
 	for _, spec := range specs {
-		_ = filepath.WalkDir(spec.dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
+		if _, err := os.Stat(spec.dir); os.IsNotExist(err) {
+			continue
+		}
+		if err := filepath.WalkDir(spec.dir, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
 			rel, relErr := filepath.Rel(spec.dir, path)
 			if relErr != nil {
-				return nil
+				return relErr
 			}
 			depth := 0
 			if rel != "." {
@@ -152,7 +159,9 @@ func collectKnowledgeFiles(root string) []string {
 				files = append(files, path)
 			}
 			return nil
-		})
+		}); err != nil {
+			return nil, err
+		}
 	}
-	return files
+	return files, nil
 }

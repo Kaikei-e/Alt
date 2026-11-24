@@ -6,6 +6,7 @@ on:
     paths:
       - 'alt-frontend-sv/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/alt-frontend-sv-unit-test.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'alt-frontend-sv/**'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/alt-frontend-sv-unit-test.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'

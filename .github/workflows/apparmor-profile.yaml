@@ -15,6 +15,7 @@ on:
       - 'tests/scripts/test_apparmor_profile.py'
       - 'tests/scripts/test_kratos_migrate_env.py'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/apparmor-profile.yaml'
   pull_request:
     branches: [main]
@@ -30,6 +31,7 @@ on:
       - 'tests/scripts/test_apparmor_profile.py'
       - 'tests/scripts/test_kratos_migrate_env.py'
       - 'scripts/lint/**'
+      - 'scripts/altharness/**'
       - '.github/workflows/apparmor-profile.yaml'
 
 permissions:

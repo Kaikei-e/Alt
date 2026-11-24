@@ -20,8 +20,9 @@ func repoRoot() (string, error) {
 	for _, start := range starts {
 		dir := start
 		for {
-			marker := filepath.Join(dir, "scripts", "lint", "go.sh")
-			if st, err := os.Stat(marker); err == nil && !st.IsDir() {
+			hasRun := isRegFile(filepath.Join(dir, "scripts", "lint", "run.sh"))
+			hasGo := isRegFile(filepath.Join(dir, "scripts", "lint", "go.sh"))
+			if hasRun || hasGo {
 				if resolved, err := filepath.EvalSymlinks(dir); err == nil {
 					return resolved, nil
 				}
@@ -48,4 +49,9 @@ func mustRepo(stderr io.Writer) (string, int) {
 		return "", 1
 	}
 	return root, 0
+}
+
+func isRegFile(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir()
 }

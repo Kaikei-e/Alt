@@ -576,8 +576,11 @@ func runProtoCase(ctx context.Context, repoRoot string, verifyBaseline bool) cas
 			return fail(err.Error())
 		}
 	}
+	extra := map[string]string{
+		"ALT_PROTO_BREAKING_AGAINST": filepath.Join(repoRoot, target),
+	}
 	if verifyBaseline {
-		base := runStagedLint(ctx, staged.root, target, nil)
+		base := runStagedLint(ctx, staged.root, target, extra)
 		if base.err != nil || base.code != 0 {
 			return fail(fmt.Sprintf("baseline failed (rc=%d): %s", base.code, snippetTail(base.combined())))
 		}
@@ -587,7 +590,7 @@ func runProtoCase(ctx context.Context, repoRoot string, verifyBaseline bool) cas
 	if err := os.WriteFile(violation, []byte(body), fsperm.File); err != nil {
 		return fail(err.Error())
 	}
-	mut := runStagedLint(ctx, staged.root, target, nil)
+	mut := runStagedLint(ctx, staged.root, target, extra)
 	if mut.err != nil {
 		return fail("lint execution error: " + mut.err.Error())
 	}
@@ -630,10 +633,57 @@ func stageCommon(ctx context.Context, repoRoot, stagedRoot string) error {
 	if err := copyTree(ctx, filepath.Join(repoRoot, "scripts", "lint"), filepath.Join(stagedRoot, "scripts", "lint")); err != nil {
 		return err
 	}
+	if err := stageAltharness(ctx, repoRoot, stagedRoot); err != nil {
+		return err
+	}
 	golangci := filepath.Join(repoRoot, ".golangci.yml")
 	if isFile(golangci) {
 		if err := copyFile(ctx, golangci, filepath.Join(stagedRoot, ".golangci.yml")); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func stageAltharness(ctx context.Context, repoRoot, stagedRoot string) error {
+	srcMod := filepath.Join(repoRoot, "scripts", "altharness")
+	if !isDir(srcMod) {
+		return nil
+	}
+	dstMod := filepath.Join(stagedRoot, "scripts", "altharness")
+	if err := os.MkdirAll(dstMod, fsperm.Dir); err != nil {
+		return err
+	}
+	for _, rel := range []string{"alt-harness", "go.mod"} {
+		src := filepath.Join(srcMod, rel)
+		if isFile(src) {
+			if err := copyFile(ctx, src, filepath.Join(dstMod, rel)); err != nil {
+				return err
+			}
+		}
+	}
+	for _, sub := range []string{"cmd", "internal"} {
+		srcSub := filepath.Join(srcMod, sub)
+		if isDir(srcSub) {
+			if err := copyTree(ctx, srcSub, filepath.Join(dstMod, sub)); err != nil {
+				return err
+			}
+		}
+	}
+	prebuilt := filepath.Join(srcMod, "bin", "alt-harness")
+	if isFile(prebuilt) {
+		dstBinDir := filepath.Join(dstMod, "bin")
+		if err := os.MkdirAll(dstBinDir, fsperm.Dir); err != nil {
+			return err
+		}
+		if err := os.Symlink(prebuilt, filepath.Join(dstBinDir, "alt-harness")); err != nil {
+			return err
+		}
+		stamp := filepath.Join(srcMod, "bin", ".alt-harness.stamp")
+		if isFile(stamp) {
+			if err := copyFile(ctx, stamp, filepath.Join(dstBinDir, ".alt-harness.stamp")); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -710,7 +760,11 @@ func copyFile(ctx context.Context, src, dst string) error {
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return err
+	}
+	_ = os.Chtimes(dst, info.ModTime(), info.ModTime())
+	return nil
 }
 
 func runStagedLint(ctx context.Context, stagedRoot, target string, extra map[string]string) cmdResult {

@@ -28,7 +28,7 @@ def delegated(script: pathlib.Path, packages: list[str], cli: list[str]) -> int 
         return 1
     for pkg in packages:
         proc = subprocess.run(  # noqa: S603 -- fixed go test argv from shutil.which
-            [go, "test", "-count=1", pkg],
+            [go, "test", "-race", "-count=1", pkg],
             cwd=str(mod),
             env=env,
             check=False,

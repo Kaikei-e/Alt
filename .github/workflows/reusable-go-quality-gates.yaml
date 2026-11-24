@@ -41,6 +41,7 @@ jobs:
           sparse-checkout: |
             ${{ inputs.working-directory }}
             scripts/lint
+            scripts/altharness
           sparse-checkout-cone-mode: true
           fetch-depth: 2 # 変更差分だけで十分 (workflow_dispatch での HEAD~1 参照にも対応)
 

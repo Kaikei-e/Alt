@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/pelletier/go-toml/v2"
+	"alt/scripts/altharness/internal/tomlx"
 )
 
 const (
@@ -188,7 +188,7 @@ func parsePyproject(path, repoRoot string) (map[string]any, []Violation) {
 		return nil, []Violation{{Path: rel, Line: 1, Rule: "config.python.pyproject-parse-error", Message: "failed to parse pyproject.toml: invalid utf-8"}}
 	}
 	var data map[string]any
-	if err := toml.Unmarshal(raw, &data); err != nil {
+	if err := tomlx.Unmarshal(raw, &data); err != nil {
 		return nil, []Violation{{Path: rel, Line: 1, Rule: "config.python.pyproject-parse-error", Message: fmt.Sprintf("failed to parse pyproject.toml: %s", err.Error())}}
 	}
 	if data == nil {
