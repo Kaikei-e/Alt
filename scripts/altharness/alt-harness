@@ -80,6 +80,7 @@ do_build() {
   mv -f "$stamp_tmp" "$stamp_file"
 }
 
+ensure_writable_go_env
 want_stamp="$(compute_stamp)"
 if ! is_fresh "$want_stamp"; then
   mkdir -p "$bin_dir"
