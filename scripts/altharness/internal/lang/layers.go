@@ -303,6 +303,9 @@ func resolveLayerRoot(ref string) string {
 			return s
 		}
 	}
+	if root, err := repoRoot(); err == nil && root != "" {
+		return root
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ref

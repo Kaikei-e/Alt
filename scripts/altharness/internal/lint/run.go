@@ -46,6 +46,30 @@ func RegisterGateRunner(fn GateRunner) {
 	regMu.Unlock()
 }
 
+type policyCtxKey struct{}
+
+// WithPolicy attaches a validated lint policy to ctx without mutating process env.
+func WithPolicy(ctx context.Context, policy string) context.Context {
+	return context.WithValue(ctx, policyCtxKey{}, policy)
+}
+
+// PolicyFromContext returns the lint policy attached via WithPolicy, or "".
+func PolicyFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if p, ok := ctx.Value(policyCtxKey{}).(string); ok {
+		return p
+	}
+	return ""
+}
+
+// ListTargets returns the sorted, deduplicated list of lint targets for repo
+// without mutating process state or environment variables.
+func ListTargets(repo string) ([]string, error) {
+	return listTargets(repo)
+}
+
 // Run matches scripts/lint/run.sh.
 func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writer) int {
 	if stdout == nil {
@@ -54,7 +78,10 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	policy := os.Getenv("LINT_POLICY")
+	policy := PolicyFromContext(ctx)
+	if policy == "" {
+		policy = os.Getenv("LINT_POLICY")
+	}
 	if policy == "" {
 		policy = "fix-existing"
 	}
@@ -81,16 +108,12 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 		fmt.Fprintf(stderr, "invalid lint policy '%s': expected 'fix-existing' or 'block-new'\n", policy)
 		return 2
 	}
-	if err := os.Setenv("LINT_POLICY", policy); err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
 	if len(rest) != 1 || rest[0] == "" {
 		fmt.Fprintln(stderr, "usage: run.sh [--policy <fix-existing|block-new>] <target|--list|all>")
 		return 2
 	}
 	if rest[0] == "--list" {
-		targets, err := listTargets(repo)
+		targets, err := ListTargets(repo)
 		if err != nil {
 			fmt.Fprintf(stderr, "ERROR: %v\n", err)
 			return 1
@@ -100,6 +123,7 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 		}
 		return 0
 	}
+	ctx = WithPolicy(ctx, policy)
 	if code := checkDisk(repo, stderr); code != 0 {
 		return code
 	}
@@ -170,7 +194,7 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 	cmd.Dir = repo
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.Env = os.Environ()
+	cmd.Env = setEnvKey(os.Environ(), "LINT_POLICY", policy)
 	if err := cmd.Run(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return ee.ExitCode()
@@ -179,6 +203,26 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 		return 1
 	}
 	return 0
+}
+
+func setEnvKey(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	replaced := false
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			if !replaced {
+				out = append(out, prefix+value)
+				replaced = true
+			}
+			continue
+		}
+		out = append(out, entry)
+	}
+	if !replaced {
+		out = append(out, prefix+value)
+	}
+	return out
 }
 
 func runKind(ctx context.Context, kind, target string, stdout, stderr io.Writer) (int, bool) {

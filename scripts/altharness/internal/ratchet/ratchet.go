@@ -494,7 +494,7 @@ func runSuppressions(ctx context.Context, stdout, stderr io.Writer, repo, sup st
 		return exitClean
 	}
 	if !isRegularFile(sup) {
-		fmt.Fprintf(stderr, "ERROR: ratchet baseline not found: %s (run `python3 scripts/lint/check_ratchet.py --update` to create it)\n", sup)
+		fmt.Fprintf(stderr, "ERROR: ratchet baseline not found: %s (run `./scripts/altharness/alt-harness ratchet --update` to create it)\n", sup)
 		return exitUsage
 	}
 	recorded, _, err := loadSuppressions(sup)
@@ -507,7 +507,7 @@ func runSuppressions(ctx context.Context, stdout, stderr io.Writer, repo, sup st
 		fmt.Fprintf(stderr, "%s: [ratchet.increase] %s increased from %d to %d (+%d)\n", d.target, d.kind, d.recorded, d.actual, d.actual-d.recorded)
 	}
 	for _, d := range dec {
-		fmt.Fprintf(stderr, "%s: [ratchet.decrease-update-required] %s decreased from %d to %d (-%d); run `python3 scripts/lint/check_ratchet.py --update` in the same commit\n", d.target, d.kind, d.recorded, d.actual, d.recorded-d.actual)
+		fmt.Fprintf(stderr, "%s: [ratchet.decrease-update-required] %s decreased from %d to %d (-%d); run `./scripts/altharness/alt-harness ratchet --update` in the same commit\n", d.target, d.kind, d.recorded, d.actual, d.recorded-d.actual)
 	}
 	if len(inc)+len(dec) > 0 {
 		fmt.Fprintf(stderr, "\nFAIL: suppression ratchet mismatch (%d increase(s), %d decrease(s)).\n", len(inc), len(dec))

@@ -2,12 +2,10 @@ package ratchet
 
 import (
 	"alt/scripts/altharness/internal/lint"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -93,19 +91,21 @@ func cmdFail(argv []string, err error) error {
 }
 
 func discoverDirectoryTargets(ctx context.Context, repoRoot string, tracked []string) ([]string, error) {
+	_ = ctx
 	runSh := filepath.Join(repoRoot, "scripts", "lint", "run.sh")
 	if isRegularFile(runSh) {
-		var out bytes.Buffer
-		if code := lint.Run(ctx, repoRoot, []string{"--list"}, &out, io.Discard); code != 0 {
-			return nil, fmt.Errorf("in-process lint target discovery failed with exit status %d", code)
+		targets, err := lint.ListTargets(repoRoot)
+		if err != nil {
+			return nil, fmt.Errorf("in-process lint target discovery failed: %w", err)
 		}
 		set := map[string]struct{}{}
-		for _, t := range strings.Split(out.String(), "\n") {
-			if strings.TrimSpace(t) == "" {
+		for _, t := range targets {
+			trimmed := strings.TrimSpace(t)
+			if trimmed == "" {
 				continue
 			}
-			name := strings.TrimRight(strings.TrimSpace(t), "/")
-			if isDir(filepath.Join(repoRoot, strings.TrimSpace(t))) {
+			name := strings.TrimRight(trimmed, "/")
+			if isDir(filepath.Join(repoRoot, trimmed)) {
 				set[name] = struct{}{}
 			}
 		}

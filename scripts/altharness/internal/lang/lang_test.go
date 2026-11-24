@@ -266,6 +266,24 @@ func TestLayersKnownSuppressesClean(t *testing.T) {
 	}
 }
 
+func TestLayersChangedFromNonRepoCwd(t *testing.T) {
+	repo := findRepo(t)
+	checkLayers := filepath.Join(repo, ".claude", "skills", "clean-architecture", "scripts", "check_layers.sh")
+	nonGit := t.TempDir()
+	cmd := exec.Command("bash", checkLayers, "--changed")
+	cmd.Dir = nonGit
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Exit 1 is allowed only if the repo actually has a clean-arch VIOLATION; exit 2 ("not a git repository") is the bug.
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 2 {
+			t.Fatalf("check_layers.sh --changed from non-git CWD failed with exit 2:\n%s", string(out))
+		}
+	}
+	if strings.Contains(string(out), "not a git repository") {
+		t.Fatalf("expected repoRoot fallback from non-git CWD, got:\n%s", string(out))
+	}
+}
+
 func TestAdrRunsWithoutPython3(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, "scripts", "lint"), fsperm.Dir); err != nil {

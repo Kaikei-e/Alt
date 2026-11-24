@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -282,6 +283,9 @@ func checkWorkflowDocDetailsIn(path string, doc any, repoRoot string) ([]string,
 						}
 					}
 					for _, tool := range findDirectLintInvocations(run) {
+						if isExemptDirectLint(path, tool) {
+							continue
+						}
 						errors = append(errors, fmt.Sprintf("::error file=%s::job %s invokes %s directly in a `run:` block; invoke ./scripts/lint/run.sh instead so CI and local development run the same command.", path, pyReprString(jobName), pyReprString(tool)))
 						bad++
 					}
@@ -294,6 +298,11 @@ func checkWorkflowDocDetailsIn(path string, doc any, repoRoot string) ([]string,
 	errors = append(errors, lintErrors...)
 	bad += lintBad
 	return errors, bad
+}
+
+func isExemptDirectLint(wfPath, tool string) bool {
+	base := filepath.Base(wfPath)
+	return base == "adr-graph.yml" && tool == "alt-harness adr-gate"
 }
 
 func triggerValue(doc ymap) (any, bool) {

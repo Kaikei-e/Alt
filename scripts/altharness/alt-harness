@@ -119,19 +119,16 @@ do_build() {
   fi
   chmod 0755 "$tmp" || { rm -f "$tmp" "$stamp_tmp"; return 1; }
   mv -f "$tmp" "$bin" || { rm -f "$tmp" "$stamp_tmp"; return 1; }
-  printf '%s\n' "$want" >"$stamp_tmp" || { rm -f "$stamp_tmp"; return 1; }
-  mv -f "$stamp_tmp" "$stamp_file" || { rm -f "$stamp_tmp"; return 1; }
+  local post_stamp=""
+  post_stamp="$(compute_stamp)"
+  if [ "$post_stamp" = "$want" ]; then
+    printf '%s\n' "$want" >"$stamp_tmp" || { rm -f "$stamp_tmp"; return 1; }
+    mv -f "$stamp_tmp" "$stamp_file" || { rm -f "$stamp_tmp"; return 1; }
+  else
+    rm -f "$stamp_file" "$stamp_tmp"
+  fi
 }
 
-if [ -x "$bin" ] && [ -f "$stamp_file" ]; then
-  fast_newer="$(find "$mod" -maxdepth 4 -path "$bin_dir" -prune -o \( -type d -o -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -newer "$bin" -print -quit 2>/dev/null || printf 'fallback')"
-  if [ -z "$fast_newer" ]; then
-    ensure_writable_go_env || fail_exit "$@"
-    exec "$bin" "$@"
-  fi
-fi
-
-ensure_writable_go_env || fail_exit "$@"
 want_stamp="$(compute_stamp)"
 if ! is_fresh "$want_stamp"; then
   if ! (mkdir -p "$bin_dir" && [ -w "$bin_dir" ]) 2>/dev/null; then

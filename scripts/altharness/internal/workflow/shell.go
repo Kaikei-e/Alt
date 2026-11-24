@@ -31,6 +31,12 @@ var wrappedStaticScripts = map[string]struct{}{
 	"workflow-safety-check.py": {},
 }
 
+var altHarnessStaticSubcommands = map[string]struct{}{
+	"selfcheck": {}, "postmortem": {}, "migration-gate": {}, "adr-gate": {},
+	"workflow": {}, "ratchet": {}, "suppressions": {}, "generated": {},
+	"hygiene": {}, "pyver": {}, "sync-go": {}, "pki": {}, "lang": {},
+}
+
 var goRunLintPackages = map[string]struct{}{
 	"actionlint": {}, "golangci-lint": {}, "gosec": {}, "govulncheck": {},
 }
@@ -272,6 +278,14 @@ func detectDirectLintCommand(tokens []string) string {
 		return cmd
 	}
 	switch cmd {
+	case "alt-harness":
+		sub, _, ok := firstPositional(args, nil)
+		if ok {
+			if _, hit := altHarnessStaticSubcommands[sub]; hit {
+				return "alt-harness " + sub
+			}
+		}
+		return ""
 	case "go":
 		sub, rest, ok := firstPositional(args, nil)
 		if !ok {

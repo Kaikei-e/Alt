@@ -1,5 +1,5 @@
 # block-new rule violation fingerprint baseline ledger (CHECK-02).
-# Managed by `python3 scripts/lint/check_ratchet.py --findings-json <file> --update-fingerprints`.
+# Managed by `./scripts/altharness/alt-harness ratchet --findings-json <file> --update-fingerprints`.
 # Existing fingerprinted violations pass; new fingerprints fail. Never use `ruff --add-noqa`.
 
 version = 1

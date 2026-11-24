@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-import importlib.util
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -70,77 +71,102 @@ class TestWave3ESecurity(unittest.TestCase):
             if "buf breaking" in line:
                 assert "|| true" not in line, line
 
-        loaded_mods = []
-        for rel_path in [
-            REPO_ROOT / "scripts" / "workflow-safety-check.py",
-            REPO_ROOT / ".github" / "workflows" / "scripts" / "workflow-safety-check.py",
-        ]:
-            assert rel_path.is_file(), f"Missing {rel_path}"
-            spec = importlib.util.spec_from_file_location("workflow_safety_check", rel_path)
-            assert spec is not None, f"Failed to load spec for {rel_path}"
-            assert spec.loader is not None, f"Missing loader for {rel_path}"
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            loaded_mods.append((rel_path, mod))
-            regex = getattr(mod, "_DANGEROUS_CONTEXT_RE", None)
-            assert regex is not None, f"_DANGEROUS_CONTEXT_RE missing in {rel_path}"
-            for sample in [
+        alt_harness = REPO_ROOT / "scripts" / "altharness" / "alt-harness"
+        assert alt_harness.is_file(), f"Missing {alt_harness}"
+
+        def run_workflow_check(repo_root: Path) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(  # noqa: S603 - fixed repo-local alt-harness binary and arguments
+                [str(alt_harness), "workflow", "--repo-root", str(repo_root)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        # Real repo workflows must pass alt-harness workflow cleanly.
+        real_res = run_workflow_check(REPO_ROOT)
+        assert real_res.returncode == 0, (
+            f"alt-harness workflow failed on real repo:\nSTDOUT:\n{real_res.stdout}\nSTDERR:\n{real_res.stderr}"
+        )
+
+        # Fixture 1: dangerous attacker-controlled github.event.* expressions in run: bodies.
+        with tempfile.TemporaryDirectory(prefix="alt-wave3e-wf-") as tmp_str:
+            tmp_root = Path(tmp_str)
+            wf_dir = tmp_root / ".github" / "workflows"
+            wf_dir.mkdir(parents=True, exist_ok=True)
+            dangerous_samples = [
                 "github.event.workflow_run.head_sha",
                 "github.event.discussion.title",
                 "github.event.pages[0].page_name",
                 "github.event.commits[0].message",
-            ]:
-                assert regex.search(sample) is not None, f"Failed to detect {sample}"
-
-        # Zero twin drift: scripts/workflow-safety-check.py must expose Rules 12 & 13
-        # identically to .github/workflows/scripts/workflow-safety-check.py.
-        swallow_wf_text = (
-            "on: [push]\n"
-            "permissions:\n"
-            "  contents: read\n"
-            "jobs:\n"
-            "  lint:\n"
-            "    runs-on: ubuntu-latest\n"
-            "    timeout-minutes: 10\n"
-            "    steps:\n"
-            "      - run: ./scripts/lint/run.sh repo || true\n"
-        )
-        direct_lint_doc = {
-            "on": ["push"],
-            "permissions": {"contents": "read"},
-            "jobs": {
-                "check": {
-                    "runs-on": "ubuntu-latest",
-                    "timeout-minutes": 10,
-                    "steps": [{"run": "ruff check ."}],
-                }
-            },
-        }
-        rule12_outputs = []
-        rule13_outputs = []
-        for rel_path, mod in loaded_mods:
-            check_text = getattr(mod, "check_workflow_text", None)
-            assert callable(check_text), f"Rule 12 check_workflow_text missing in {rel_path}"
-            r12 = check_text(".github/workflows/fake.yaml", swallow_wf_text)
-            assert r12, f"Rule 12 failed to flag lint swallow in {rel_path}"
-            rule12_outputs.append(r12)
-
-            check_doc = getattr(mod, "check_workflow_doc", None)
-            assert callable(check_doc), f"check_workflow_doc missing in {rel_path}"
-            r13 = check_doc(".github/workflows/fake.yaml", direct_lint_doc)
-            assert any("ruff" in err or "lint" in err.lower() for err in r13), (
-                f"Rule 13 failed to flag direct linter invocation in {rel_path}: {r13!r}"
+            ]
+            steps_yaml = "".join(
+                f"      - run: echo ${{{{ {sample} }}}}\n" for sample in dangerous_samples
             )
-            rule13_outputs.append(r13)
+            (wf_dir / "dangerous.yaml").write_text(
+                "on: [push]\n"
+                "permissions:\n"
+                "  contents: read\n"
+                "jobs:\n"
+                "  check:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    timeout-minutes: 10\n"
+                "    steps:\n" + steps_yaml,
+                encoding="utf-8",
+            )
+            res_danger = run_workflow_check(tmp_root)
+            combined_danger = res_danger.stdout + res_danger.stderr
+            assert res_danger.returncode != 0, (
+                f"Expected failure on dangerous contexts: {combined_danger}"
+            )
+            for sample in dangerous_samples:
+                assert sample in combined_danger, (
+                    f"Failed to detect dangerous context {sample!r} in:\n{combined_danger}"
+                )
 
-            assert callable(getattr(mod, "main", None)), f"main missing in {rel_path}"
+            # Fixture 2: Rule 12 lint swallow (./scripts/lint/run.sh repo || true).
+            (wf_dir / "dangerous.yaml").unlink()
+            (wf_dir / "swallow.yaml").write_text(
+                "on: [push]\n"
+                "permissions:\n"
+                "  contents: read\n"
+                "jobs:\n"
+                "  lint:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: ./scripts/lint/run.sh repo || true\n",
+                encoding="utf-8",
+            )
+            res_r12 = run_workflow_check(tmp_root)
+            combined_r12 = res_r12.stdout + res_r12.stderr
+            assert res_r12.returncode != 0, f"Rule 12 failed to flag lint swallow: {combined_r12}"
+            assert "swallow" in combined_r12.lower(), (
+                f"Rule 12 output missing swallow diagnostic:\n{combined_r12}"
+            )
 
-        assert rule12_outputs[0] == rule12_outputs[1], (
-            f"Rule 12 drift between wrapper and canonical: {rule12_outputs[0]!r} != {rule12_outputs[1]!r}"
-        )
-        assert rule13_outputs[0] == rule13_outputs[1], (
-            f"Rule 13 drift between wrapper and canonical: {rule13_outputs[0]!r} != {rule13_outputs[1]!r}"
-        )
+            # Fixture 3: Rule 13 direct linter invocation (ruff check .).
+            (wf_dir / "swallow.yaml").unlink()
+            (wf_dir / "direct-lint.yaml").write_text(
+                "on: [push]\n"
+                "permissions:\n"
+                "  contents: read\n"
+                "jobs:\n"
+                "  check:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    timeout-minutes: 10\n"
+                "    steps:\n"
+                "      - run: ruff check .\n",
+                encoding="utf-8",
+            )
+            res_r13 = run_workflow_check(tmp_root)
+            combined_r13 = res_r13.stdout + res_r13.stderr
+            assert res_r13.returncode != 0, f"Rule 13 failed to flag direct linter: {combined_r13}"
+            assert "ruff" in combined_r13, (
+                f"Rule 13 output missing ruff diagnostic:\n{combined_r13}"
+            )
+            assert "scripts/lint/run.sh" in combined_r13, (
+                f"Rule 13 output missing scripts/lint/run.sh diagnostic:\n{combined_r13}"
+            )
 
     def test_sec07_sec09_sec10_scripts_hardening(self) -> None:
         """Scripts enforce loopback vLLM bind, mktemp unit file, umask 077, curl stdin auth, and localhost OLLAMA_ORIGINS."""

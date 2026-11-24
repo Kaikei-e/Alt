@@ -551,11 +551,25 @@ def workflow_invokes_lint_target(cfg: dict, target: str) -> bool:
 def compose_lint_invokes(script_rel: str) -> bool:
     if not COMPOSE_LINT_SH.is_file():
         return False
+    delegates_to_go = False
     for line in COMPOSE_LINT_SH.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         if script_rel in stripped:
+            return True
+        if "alt-harness" in stripped and "lang compose" in stripped:
+            delegates_to_go = True
+    if not delegates_to_go:
+        return False
+    compose_go = ROOT / "scripts" / "altharness" / "internal" / "lang" / "compose.go"
+    if not compose_go.is_file():
+        return False
+    for line in compose_go.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        if f'"{script_rel}"' in stripped:
             return True
     return False
 

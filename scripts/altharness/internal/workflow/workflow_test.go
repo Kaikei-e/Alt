@@ -195,6 +195,19 @@ func TestDirectLintAndAllowed(t *testing.T) {
 		"python3 scripts/agent-harness/adr_supersede_gate.py --base origin/main",
 		"bash e2e/playwright/_lib/check-suites.sh",
 		"python3 .github/workflows/scripts/workflow-safety-check.py",
+		"./scripts/altharness/alt-harness selfcheck",
+		"./scripts/altharness/alt-harness postmortem --check --base origin/main",
+		"./scripts/altharness/alt-harness migration-gate --base origin/main",
+		"./scripts/altharness/alt-harness adr-gate --base origin/main",
+		"./scripts/altharness/alt-harness workflow",
+		"./scripts/altharness/alt-harness ratchet",
+		"./scripts/altharness/alt-harness suppressions --base origin/main",
+		"./scripts/altharness/alt-harness generated --base origin/main",
+		"./scripts/altharness/alt-harness hygiene",
+		"./scripts/altharness/alt-harness pyver",
+		"./scripts/altharness/alt-harness sync-go --check",
+		"./scripts/altharness/alt-harness pki --check",
+		"./scripts/altharness/alt-harness lang go alt-backend/app",
 	}
 	for _, cmd := range forbidden {
 		text := baseWorkflowYAML("      - run: " + yamlQuote(cmd) + "\n")
@@ -207,9 +220,17 @@ func TestDirectLintAndAllowed(t *testing.T) {
 			t.Fatalf("expected direct-lint error for %q, got %#v", cmd, errs)
 		}
 	}
+	// adr-graph.yml is explicitly exempted for `alt-harness adr-gate`.
+	adrGraphDoc, err := parseYAML(baseWorkflowYAML("      - run: ./scripts/altharness/alt-harness adr-gate --base origin/main\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := checkWorkflowDoc(".github/workflows/adr-graph.yml", adrGraphDoc); len(errs) != 0 {
+		t.Fatalf("expected adr-graph.yml exemption for alt-harness adr-gate, got %#v", errs)
+	}
 	allowed := baseWorkflowYAML(`      - run: ./scripts/lint/run.sh "$TARGET"
-      - run: ./scripts/altharness/alt-harness adr-gate --base origin/main
-      - run: ./scripts/altharness/alt-harness workflow
+      - run: ./scripts/altharness/alt-harness lint "$TARGET"
+      - run: ./scripts/altharness/alt-harness --help
       - run: |
           # comment: golangci-lint gofmt ruff
           echo "Run gofmt -w or ruff check or golangci-lint"

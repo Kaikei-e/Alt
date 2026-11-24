@@ -192,7 +192,7 @@ func Sync(ctx context.Context, repoRoot string, check bool, stdout, stderr io.Wr
 			for _, item := range drifted {
 				fmt.Fprintln(stderr, item)
 			}
-			fmt.Fprintf(stderr, "ERROR: %d canonical Go file(s) out of sync. Run `python3 scripts/codegen/sync_go_canonical.py`.\n", len(drifted))
+			fmt.Fprintf(stderr, "ERROR: %d canonical Go file(s) out of sync. Run `./scripts/altharness/alt-harness sync-go`.\n", len(drifted))
 			return 1
 		}
 		fmt.Fprintf(stdout, "OK: %d canonical Go files are in sync.\n", len(outputs))

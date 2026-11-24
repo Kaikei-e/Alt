@@ -2381,6 +2381,21 @@ def _check_provisioning_and_ci_gates() -> None:
         for line in compose_lint_sh.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     )
+    compose_lint_go = ROOT / "scripts" / "altharness" / "internal" / "lang" / "compose.go"
+    compose_lint_go_code = (
+        "\n".join(
+            line
+            for line in compose_lint_go.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("//")
+        )
+        if compose_lint_go.is_file()
+        else ""
+    )
+    compose_sh_delegates_to_go = (
+        "alt-harness" in compose_lint_code and "lang compose" in compose_lint_code
+    )
+    lkal_idx = compose_lint_go_code.find('"lkal", "check", "--json", "deploy/desired-env.lkal"')
+    verify_idx = compose_lint_go_code.find('"scripts/kisage-env.py", "verify"')
     wf_jobs = wf_parsed.get("jobs") or {} if isinstance(wf_parsed, dict) else {}
     wf_invokes_compose_lint = any(
         isinstance(step, dict)
@@ -2402,15 +2417,15 @@ def _check_provisioning_and_ci_gates() -> None:
         repr({p: wf_text.count(p) for p in required_wf_paths}),
     )
     check(
-        "compose-audit.yaml runs ./scripts/lint/run.sh compose with setup-go and scripts/lint/compose.sh runs lkal check, verify, test-kisage-env.py, and clean-checkout regression",
+        "compose-audit.yaml runs ./scripts/lint/run.sh compose with setup-go and scripts/lint/compose.sh delegates to alt-harness compose runner with lkal check, verify, test-kisage-env.py, and clean-checkout regression",
         wf_invokes_compose_lint
         and "actions/setup-go@" in wf_text
-        and "lkal check --json deploy/desired-env.lkal" in compose_lint_code
-        and "python3 scripts/kisage-env.py verify" in compose_lint_code
-        and compose_lint_code.find("lkal check --json deploy/desired-env.lkal")
-        < compose_lint_code.find("python3 scripts/kisage-env.py verify")
-        and "python3 scripts/tests/test-kisage-env.py" in compose_lint_code
-        and "test_kisage_clean_checkout.py" in compose_lint_code,
+        and compose_sh_delegates_to_go
+        and lkal_idx >= 0
+        and verify_idx >= 0
+        and lkal_idx < verify_idx
+        and '"scripts/tests/test-kisage-env.py"' in compose_lint_go_code
+        and '"test_kisage_clean_checkout.py"' in compose_lint_go_code,
     )
 
 
