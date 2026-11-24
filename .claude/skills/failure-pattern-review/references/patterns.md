@@ -114,7 +114,7 @@ rg -n 'time\.(Now|Since|Until)\(|GetLatest[A-Z]' knowledge-sovereign/app/usecase
 rg -n 'CREATE TABLE|CREATE INDEX' <migration-dir>/ | rg '<table>'
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/guard_event_time.py`（projector への壁時計と
+**機械的に見ているもの.** `scripts/altharness/alt-harness guard-event-time`（`scripts/altharness/internal/guards/eventtime.go` — projector への壁時計と
 `GetLatest*` の追加を編集時に拒否）。merge SQL のゼロ値上書きと DB の所有は見ていない。
 詳細な監査は `immutable-design-guard` スキル。
 
@@ -259,7 +259,7 @@ rg -n 'continue-on-error' .github/workflows/
 rg -n 'route\(|page\.route|mock|stub' <test-dir>/ | rg '<path>'
 ```
 
-**機械的に見ているもの.** `.github/workflows/scripts/workflow-safety-check.py`（握りつぶしには
+**機械的に見ているもの.** `scripts/altharness/alt-harness workflow`（`scripts/altharness/internal/workflow/rules.go` — 握りつぶしには
 `# swallow-ok: <理由>` が必須、ほか構造検査）。Pact のヘッダ assert とスタブ route の実在は見ていない。
 
 ---
@@ -344,12 +344,12 @@ ID の意味の取り違えは見ていない。
 
 **確認コマンド.**
 ```bash
-python3 scripts/agent-harness/adr_supersede_gate.py --base origin/main
+./scripts/altharness/alt-harness adr-gate --base origin/main
 docdag query --binding --fields id,title
 docdag validate --immutable-since origin/main
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/adr_supersede_gate.py`（新しい `supersedes` 辺は、
+**機械的に見ているもの.** `scripts/altharness/alt-harness adr-gate`（`scripts/altharness/internal/ledgers/adr.go` — 新しい `supersedes` 辺は、
 本文に `[[ID]]` が無ければ CI で失敗）。本文に名前があっても置換が妥当かどうかは、レビューで判断する。
 
 ---
@@ -372,11 +372,11 @@ docdag validate --immutable-since origin/main
 ```bash
 rg -n '<規約の数値や名前>' <service>/ scripts/ .github/workflows/
 python3 scripts/kisage-env.py verify
-python3 scripts/agent-harness/harness_selfcheck.py
+./scripts/altharness/alt-harness selfcheck
 ```
 
 **機械的に見ているもの.** `python3 scripts/kisage-env.py verify`（外部 API 間隔）、
-`scripts/agent-harness/harness_selfcheck.py`（エージェント向けハーネス自身の床: フックの入力、
+`scripts/altharness/alt-harness selfcheck`（`scripts/altharness/internal/selfcheck/selfcheck.go` — エージェント向けハーネス自身の床: フックの入力、
 ガード対象パスの実在、CLAUDE.md と AGENTS.md の共有ブロック一致）。
 
 ---
@@ -486,7 +486,7 @@ rg -n 'backfill|rebuild' scripts/ rag-orchestrator/ alt-backend/
 git diff --name-only <base>...HEAD -- '**/migrations/**'
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/migration_destructive_gate.py`（破壊的文を含む新規追加 migration に理由付きの `-- destructive-ok:` コメントを要求する。理由の中身は読まず、復旧手順が実在するかは判定しない）。絞り込みフィルタ追加と手動バックフィルの組や、バックフィル CLI の本番接続経路までは見ていない。
+**機械的に見ているもの.** `scripts/altharness/alt-harness migration-gate`（`scripts/altharness/internal/ledgers/migration.go` — 破壊的文を含む新規追加 migration に理由付きの `-- destructive-ok:` コメントを要求する。理由の中身は読まず、復旧手順が実在するかは判定しない）。絞り込みフィルタ追加と手動バックフィルの組や、バックフィル CLI の本番接続経路までは見ていない。
 
 ---
 
@@ -568,7 +568,7 @@ rg -n 'prune|network rm|docker rm|compose down' scripts/ e2e/ deploy/
 rg -n 'writeFile|WriteFile|rename|fsync' auth-token-manager/ scripts/
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/guard_ops_commands.py`（コーディングエージェントが発行するシェルコマンドだけを対象とし、Codex では `.codex/hooks.json` に登録されて該当コマンドを拒否し、Claude Code では利用者のローカル設定に登録されている場合にのみ確認を求める。スクリプト内のコマンドや人間が直接入力するコマンドは見ない）。掃除スクリプト内部の広すぎる prefix 条件や、一回きり移行スクリプトの鮮度・権限検証までは見ていない。
+**機械的に見ているもの.** `scripts/altharness/alt-harness guard-ops`（`scripts/altharness/internal/guards/ops.go` — コーディングエージェントが発行するシェルコマンドだけを対象とし、Codex では `.codex/hooks.json` に登録されて該当コマンドを拒否し、Claude Code では利用者のローカル設定に登録されている場合にのみ確認を求める。スクリプト内のコマンドや人間が直接入力するコマンドは見ない）。掃除スクリプト内部の広すぎる prefix 条件や、一回きり移行スクリプトの鮮度・権限検証までは見ていない。
 
 ---
 
@@ -592,8 +592,8 @@ rg -n 'writeFile|WriteFile|rename|fsync' auth-token-manager/ scripts/
 
 **確認コマンド.**
 ```bash
-python3 scripts/agent-harness/postmortem_ledger.py --open
+./scripts/altharness/alt-harness postmortem --open
 rg -n 'TODO|未着手|OPEN|unknown' docs/postmortems/
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/postmortem_ledger.py`（新規ポストモーテムの検査と記録済みアクションアイテムの照会）。ADR の `Cons` にだけ書かれた警告や、「完了」とした項目の E2E 実動作までは見ていない。
+**機械的に見ているもの.** `scripts/altharness/alt-harness postmortem`（`scripts/altharness/internal/ledgers/postmortem.go` — 新規ポストモーテムの検査と記録済みアクションアイテムの照会）。ADR の `Cons` にだけ書かれた警告や、「完了」とした項目の E2E 実動作までは見ていない。

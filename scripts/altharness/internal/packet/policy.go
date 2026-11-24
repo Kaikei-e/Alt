@@ -534,7 +534,7 @@ func validateMeasuredExecution(policy map[string]any, verifyCmd any, issues *[]I
 		*issues = append(filtered, Issue{
 			Code:    "UNMEASURED_VERIFICATION_COMMAND",
 			Path:    "$.execution_policy.measured",
-			Message: "LOOP-02: execution_policy.measured is required; run 'python3 scripts/agent-harness/task_packet.py measure <packet>' before dispatch",
+			Message: "LOOP-02: execution_policy.measured is required; run './scripts/altharness/alt-harness packet measure <packet>' before dispatch",
 		})
 		return
 	}
@@ -554,7 +554,7 @@ func validateMeasuredExecution(policy map[string]any, verifyCmd any, issues *[]I
 		*issues = append(*issues, Issue{
 			Code:    "PLACEHOLDER_MEASURED_COMMIT",
 			Path:    "$.execution_policy.measured.at_commit",
-			Message: "measured.at_commit must be a real non-zero git commit SHA; run 'task_packet.py measure'",
+			Message: "measured.at_commit must be a real non-zero git commit SHA; run './scripts/altharness/alt-harness packet measure'",
 		})
 	}
 	cmdSHA, shaOK := asString(measured["command_sha256"])
@@ -565,7 +565,7 @@ func validateMeasuredExecution(policy map[string]any, verifyCmd any, issues *[]I
 			*issues = append(*issues, Issue{
 				Code:    "STALE_MEASURED_COMMAND",
 				Path:    "$.execution_policy.measured.command_sha256",
-				Message: fmt.Sprintf("measured command_sha256=%s does not match verification_command (%s); re-run 'task_packet.py measure'", cmdSHA, expected),
+				Message: fmt.Sprintf("measured command_sha256=%s does not match verification_command (%s); re-run './scripts/altharness/alt-harness packet measure'", cmdSHA, expected),
 			})
 		}
 	}

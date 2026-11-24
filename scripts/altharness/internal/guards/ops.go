@@ -319,7 +319,7 @@ func opsJSON(decision, reason string) string {
 	return pythonJSON(payload) + "\n"
 }
 
-const opsUsageLine = "usage: guard_ops_commands.py [-h] [--on-match {ask,deny}]"
+const opsUsageLine = "usage: alt-harness guard-ops [-h] [--on-match {ask,deny}]"
 
 // RunOps is the docker/compose PreToolUse guard. It exits 0 and writes a JSON decision on match.
 func RunOps(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {

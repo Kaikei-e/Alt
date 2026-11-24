@@ -698,20 +698,32 @@ func defaultAgyRunSelfcheck(ctx context.Context, repoRoot string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// PreflightRunner optionally wires `alt-harness preflight` in-process so agy-hook
+// can invoke ADR preflight without spawning a subprocess.
+var PreflightRunner func(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int
+
 func defaultAgyRunPreflight(ctx context.Context, repoRoot string, payload map[string]any) (string, string, int) {
-	script := filepath.Join(repoRoot, ".claude", "skills", "adr-preflight", "scripts", "adr_preflight.py")
-	if info, err := os.Stat(script); err != nil || info.IsDir() {
-		return "", "", 0
-	}
-	py, err := exec.LookPath("python3")
-	if err != nil {
-		return "", "", 0
-	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", "", 0
 	}
-	cmd := exec.CommandContext(ctx, py, script, "--hook")
+	if PreflightRunner != nil {
+		var outBuf, errBuf bytes.Buffer
+		code := PreflightRunner(ctx, []string{"--hook"}, bytes.NewReader(encoded), &outBuf, &errBuf)
+		return outBuf.String(), errBuf.String(), code
+	}
+	var cmd *exec.Cmd
+	if exe, err := os.Executable(); err == nil && filepath.Base(exe) == "alt-harness" {
+		cmd = exec.CommandContext(ctx, exe, "preflight", "--hook")
+	} else {
+		launcher := filepath.Join(repoRoot, "scripts", "altharness", "alt-harness")
+		if info, err := os.Stat(launcher); err == nil && !info.IsDir() {
+			cmd = exec.CommandContext(ctx, launcher, "preflight", "--hook")
+		}
+	}
+	if cmd == nil {
+		return "", "", 0
+	}
 	cmd.Dir = repoRoot
 	cmd.Stdin = bytes.NewReader(encoded)
 	var outBuf, errBuf bytes.Buffer

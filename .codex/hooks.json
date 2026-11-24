@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/skills/adr-preflight/scripts/adr_preflight.py\" --hook",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" preflight --hook",
             "timeout": 30,
             "statusMessage": "Validating the ADR graph"
           }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/harness_selfcheck.py\" --hook",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" selfcheck --hook",
             "timeout": 30,
             "statusMessage": "Running agent harness self-check"
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/skills/adr-preflight/scripts/adr_preflight.py\" --hook",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" preflight --hook",
             "timeout": 30,
             "statusMessage": "Running ADR preflight"
           }
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_protected_paths.py\"",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-protected",
             "timeout": 10,
             "statusMessage": "Checking protected paths"
           }
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_event_time.py\"",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-event-time",
             "timeout": 10,
             "statusMessage": "Checking projector event-time invariants"
           }
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_packet_scope.py\"",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-scope",
             "timeout": 10,
             "statusMessage": "Checking generated-code and packet-scope boundaries"
           }
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py\" --on-match deny",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-ops --on-match deny",
             "timeout": 10,
             "statusMessage": "Checking container and compose commands"
           }
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_exec_commands.py\"",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-exec",
             "timeout": 10,
             "statusMessage": "Checking unsafe autofix and worker execution commands"
           }

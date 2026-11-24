@@ -66,12 +66,13 @@ func TestStdlibGovernanceTOMLParser(t *testing.T) {
 }
 
 func TestCheckAgyHookFileSchema(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	script := filepath.Join(root, "scripts", "agent-harness", "agy_hook.py")
+	script := filepath.Join(root, "scripts", "altharness", "alt-harness")
 	if err := os.MkdirAll(filepath.Dir(script), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(script, []byte("#!/usr/bin/env python3\n"), fsperm.File); err != nil {
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,7 +146,7 @@ func findRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "scripts", "agent-harness", "harness_selfcheck.py")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "scripts", "altharness", "alt-harness")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

@@ -83,11 +83,10 @@ func isParseErr(err error) bool {
 }
 
 type harnessPaths struct {
-	root         string
-	schema       string
-	packetTmpl   string
-	handoffTmpl  string
-	screenerPath string
+	root        string
+	schema      string
+	packetTmpl  string
+	handoffTmpl string
 }
 
 func locateHarness() (harnessPaths, error) {
@@ -97,11 +96,10 @@ func locateHarness() (harnessPaths, error) {
 	}
 	base := filepath.Join(root, "scripts", "agent-harness")
 	return harnessPaths{
-		root:         root,
-		schema:       filepath.Join(base, "task_packet.schema.json"),
-		packetTmpl:   filepath.Join(base, "templates", "task-packet.md.tmpl"),
-		handoffTmpl:  filepath.Join(base, "templates", "task-handoff.md.tmpl"),
-		screenerPath: filepath.Join(root, "scripts", "lint", "behavior_screener.py"),
+		root:        root,
+		schema:      filepath.Join(base, "task_packet.schema.json"),
+		packetTmpl:  filepath.Join(base, "templates", "task-packet.md.tmpl"),
+		handoffTmpl: filepath.Join(base, "templates", "task-handoff.md.tmpl"),
 	}, nil
 }
 

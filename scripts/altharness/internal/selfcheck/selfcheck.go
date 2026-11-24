@@ -20,12 +20,50 @@ import (
 const (
 	maxClaudeMDLines = 200
 	maxAgentsMDBytes = 32768
+	altHarnessRel    = "scripts/altharness/alt-harness"
+	eventTimeGoRel   = "scripts/altharness/internal/guards/eventtime.go"
 	failurePatterns  = ".claude/skills/failure-pattern-review/references/patterns.md"
 	failureSkill     = ".claude/skills/failure-pattern-review/SKILL.md"
 	ruleLedgerRel    = ".agents/rules/rule-ledger.md"
 	ratchetRel       = "scripts/lint/ratchet/suppressions.toml"
 	astGrepRulesRel  = "scripts/lint/ast-grep/rules"
 )
+
+var validAltHarnessSubcommands = map[string]struct{}{
+	"lint":              {},
+	"lang":              {},
+	"layers":            {},
+	"host-final":        {},
+	"link-naming":       {},
+	"sync-go":           {},
+	"pki":               {},
+	"pyver":             {},
+	"workflow":          {},
+	"hygiene":           {},
+	"ratchet":           {},
+	"suppressions":      {},
+	"suppression-diff":  {},
+	"generated":         {},
+	"screener":          {},
+	"packet":            {},
+	"corpus":            {},
+	"selfcheck":         {},
+	"canary":            {},
+	"entrypoint-canary": {},
+	"postmortem":        {},
+	"migration-gate":    {},
+	"adr-gate":          {},
+	"guard-exec":        {},
+	"guard-scope":       {},
+	"guard-ops":         {},
+	"guard-protected":   {},
+	"guard-event-time":  {},
+	"harness-run":       {},
+	"agy-hook":          {},
+	"gate":              {},
+	"preflight":         {},
+	"pytest-rand":       {},
+}
 
 var requiredLeadins = []string{
 	"**機構.**", "**先例.**", "**問い.**", "**確認コマンド.**", "**機械的に見ているもの.**",
@@ -45,7 +83,8 @@ var (
 	sepRowRE        = regexp.MustCompile(`^\|\s*:?-{2,}`)
 	yamlItemRE      = regexp.MustCompile(`^\s*-\s+(.*)$`)
 	pathsKeyRE      = regexp.MustCompile(`^paths\s*:`)
-	fileLikeExts    = []string{".py", ".sh", ".yml", ".yaml", ".toml", ".md"}
+	fileLikeExts    = []string{".go", ".py", ".sh", ".yml", ".yaml", ".toml", ".md"}
+	altHarnessCmdRE = regexp.MustCompile(`(?:^|[\s` + "`" + `'"(\[])(?:\./)?scripts/altharness/alt-harness(?:[\s"']+([A-Za-z0-9_-]+))?`)
 	ledgerHeaders   = []string{"ID", "規則", "強制手段", "由来"}
 )
 
@@ -99,7 +138,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			for i, f := range findings {
 				ids[i] = f.ID
 			}
-			fmt.Fprintf(stdout, "agent_harness_selfcheck_FAILED: %d finding(s): %s run python3 scripts/agent-harness/harness_selfcheck.py\n", len(findings), strings.Join(ids, ", "))
+			fmt.Fprintf(stdout, "agent_harness_selfcheck_FAILED: %d finding(s): %s run ./scripts/altharness/alt-harness selfcheck\n", len(findings), strings.Join(ids, ", "))
 		} else {
 			fmt.Fprintf(stdout, "agent_harness_selfcheck: OK (codex_hooks=%v, claude_hooks=%v, agy_hooks=%v, guarded_globs=%v, shared_blocks=%v)\n", meta["codex_hooks"], meta["claude_hooks"], meta["agy_hooks"], meta["guarded_globs"], meta["shared_blocks"])
 		}
@@ -154,7 +193,7 @@ func runSelfcheck(ctx context.Context, root string) ([]Finding, map[string]any) 
 			}
 		}
 		if !hit {
-			findings = append(findings, Finding{"H5", "scripts/agent-harness/guard_event_time.py", fmt.Sprintf("GUARDED_GLOBS entry '%s' matches no tracked non-test file", pat)})
+			findings = append(findings, Finding{"H5", eventTimeGoRel, fmt.Sprintf("GUARDED_GLOBS entry '%s' matches no tracked non-test file", pat)})
 		}
 	}
 	rulesDir := filepath.Join(root, ".claude", "rules")
@@ -300,11 +339,13 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 					}
 					total++
 					checkHookCommandRefs(root, label, cmd, findings)
-					if event == "SessionStart" && strings.Contains(cmd, "agy_hook.py") && strings.Contains(cmd, "session-start") {
-						hasSessionStart = true
-					}
-					if event == "Stop" && strings.Contains(cmd, "agy_hook.py") && strings.Contains(cmd, "stop") {
-						hasStop = true
+					if sub, subArgs, ok := extractAltHarnessCall(cmd); ok && sub == "agy-hook" && len(subArgs) > 0 {
+						if event == "SessionStart" && subArgs[0] == "session-start" {
+							hasSessionStart = true
+						}
+						if event == "Stop" && subArgs[0] == "stop" {
+							hasStop = true
+						}
 					}
 				}
 				continue
@@ -343,17 +384,19 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 						}
 						total++
 						checkHookCommandRefs(root, label, cmd, findings)
-						if event == "PreToolUse" && strings.Contains(cmd, "agy_hook.py") {
-							if strings.Contains(cmd, "pre-shell") && matcherMatches(matcher, "run_command") {
-								hasPreShell = true
+						if sub, subArgs, ok := extractAltHarnessCall(cmd); ok && sub == "agy-hook" && len(subArgs) > 0 {
+							if event == "PreToolUse" {
+								if subArgs[0] == "pre-shell" && matcherMatches(matcher, "run_command") {
+									hasPreShell = true
+								}
+								if subArgs[0] == "pre-edit" && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
+									hasPreEdit = true
+								}
 							}
-							if strings.Contains(cmd, "pre-edit") && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
-								hasPreEdit = true
-							}
-						}
-						if event == "PostToolUse" && strings.Contains(cmd, "agy_hook.py") {
-							if strings.Contains(cmd, "post-edit") && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
-								hasPostEdit = true
+							if event == "PostToolUse" {
+								if subArgs[0] == "post-edit" && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
+									hasPostEdit = true
+								}
 							}
 						}
 					}
@@ -365,21 +408,47 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 	}
 
 	if !hasSessionStart {
-		*findings = append(*findings, Finding{"H4", label, `SessionStart hooks do not reference agy_hook.py session-start`})
+		*findings = append(*findings, Finding{"H4", label, `SessionStart hooks do not reference alt-harness agy-hook session-start`})
 	}
 	if !hasPreShell {
-		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference agy_hook.py pre-shell with a matcher matching "run_command"`})
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness agy-hook pre-shell with a matcher matching "run_command"`})
 	}
 	if !hasPreEdit {
-		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference agy_hook.py pre-edit with a matcher matching "write_file" and "edit_file"`})
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness agy-hook pre-edit with a matcher matching "write_file" and "edit_file"`})
 	}
 	if !hasPostEdit {
-		*findings = append(*findings, Finding{"H4", label, `PostToolUse hooks do not reference agy_hook.py post-edit with a matcher matching "write_file" and "edit_file"`})
+		*findings = append(*findings, Finding{"H4", label, `PostToolUse hooks do not reference alt-harness agy-hook post-edit with a matcher matching "write_file" and "edit_file"`})
 	}
 	if !hasStop {
-		*findings = append(*findings, Finding{"H4", label, `Stop hooks do not reference agy_hook.py stop`})
+		*findings = append(*findings, Finding{"H4", label, `Stop hooks do not reference alt-harness agy-hook stop`})
 	}
 	return total
+}
+
+func extractAltHarnessCall(cmd string) (string, []string, bool) {
+	idx := strings.Index(cmd, altHarnessRel)
+	if idx < 0 {
+		return "", nil, false
+	}
+	rest := cmd[idx+len(altHarnessRel):]
+	for len(rest) > 0 && (rest[0] == '"' || rest[0] == '\'') {
+		rest = rest[1:]
+	}
+	if len(rest) > 0 && rest[0] != ' ' && rest[0] != '\t' {
+		return "", nil, false
+	}
+	fields := strings.Fields(rest)
+	var clean []string
+	for _, f := range fields {
+		if f == "&&" || f == "||" || f == ";" || f == "|" {
+			break
+		}
+		clean = append(clean, f)
+	}
+	if len(clean) == 0 {
+		return "", nil, true
+	}
+	return clean[0], clean[1:], true
 }
 
 func checkHookCommandRefs(root, label, cmd string, findings *[]Finding) {
@@ -392,8 +461,17 @@ func checkHookCommandRefs(root, label, cmd string, findings *[]Finding) {
 		if len(m) < 2 {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(root, m[1])); err != nil {
-			*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command references missing repo script '%s'", m[1])})
+		ref := m[1]
+		if _, err := os.Stat(filepath.Join(root, ref)); err != nil {
+			*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command references missing repo script '%s'", ref)})
+		}
+		if ref == altHarnessRel {
+			sub, _, ok := extractAltHarnessCall(cmd)
+			if !ok || sub == "" {
+				*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command invokes '%s' without a subcommand", altHarnessRel)})
+			} else if !hasKey(validAltHarnessSubcommands, sub) {
+				*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command invokes unknown alt-harness subcommand '%s'", sub)})
+			}
 		}
 	}
 }
@@ -423,7 +501,7 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 		return 0
 	}
 	total := 0
-	var pre []string
+	foundSub := map[string]bool{}
 	bashOps, bashExec := false, false
 	for event, entries := range hooksMap {
 		for _, pair := range iterHooks(entries) {
@@ -434,59 +512,55 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 			total++
 			cmd, _ := hook["command"].(string)
 			if event == "PreToolUse" {
-				pre = append(pre, cmd)
 				if isClaude && hook["onFailure"] != "block" {
 					*findings = append(*findings, Finding{"H3", label, `PreToolUse command hook lacks "onFailure": "block"`})
 				}
 				if strings.Contains(cmd, "|| exit 0") || strings.Contains(cmd, "|| true") {
 					*findings = append(*findings, Finding{"H3", label, `PreToolUse command hook swallows failure with "|| exit 0" or "|| true" (fail-open)`})
 				}
-				if strings.Contains(cmd, "guard_ops_commands.py") {
-					if !isClaude && !strings.Contains(cmd, "--on-match deny") {
-						*findings = append(*findings, Finding{"H4", label, `PreToolUse guard_ops_commands.py entry must pass "--on-match deny" because Codex does not support the ask decision and the call would go through`})
+				sub, subArgs, isAlt := extractAltHarnessCall(cmd)
+				if isAlt && sub != "" {
+					foundSub[sub] = true
+				}
+				if isAlt && sub == "guard-ops" {
+					if !isClaude && !hasOnMatchDeny(subArgs) {
+						*findings = append(*findings, Finding{"H4", label, `PreToolUse guard-ops entry must pass "--on-match deny" because Codex does not support the ask decision and the call would go through`})
 					}
 					if matcherMatches(pair.matcher, "Bash") {
 						bashOps = true
 					}
 				}
-				if strings.Contains(cmd, "guard_exec_commands.py") && matcherMatches(pair.matcher, "Bash") {
+				if ((isAlt && sub == "guard-exec") || (isClaude && strings.Contains(cmd, "deny-unsafe-commands.sh"))) && matcherMatches(pair.matcher, "Bash") {
 					bashExec = true
 				}
 			}
-			for _, env := range badEnvVars {
-				if strings.Contains(cmd, env) {
-					*findings = append(*findings, Finding{"H1", label, fmt.Sprintf("hook command references non-existent %s; read JSON from stdin instead", env)})
-				}
-			}
-			for _, m := range repoScriptRefRE.FindAllStringSubmatch(cmd, -1) {
-				if len(m) < 2 {
-					continue
-				}
-				if _, err := os.Stat(filepath.Join(root, m[1])); err != nil {
-					*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command references missing repo script '%s'", m[1])})
-				}
-			}
+			checkHookCommandRefs(root, label, cmd, findings)
 		}
 	}
-	for _, required := range []string{"guard_protected_paths.py", "guard_event_time.py", "guard_packet_scope.py"} {
-		found := false
-		for _, cmd := range pre {
-			if strings.Contains(cmd, required) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			*findings = append(*findings, Finding{"H4", label, "PreToolUse hooks do not reference " + required})
+	for _, required := range []string{"preflight", "guard-protected", "guard-event-time", "guard-scope"} {
+		if !foundSub[required] {
+			*findings = append(*findings, Finding{"H4", label, "PreToolUse hooks do not reference alt-harness " + required})
 		}
 	}
 	if !bashOps {
-		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference guard_ops_commands.py with a matcher matching "Bash"`})
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness guard-ops with a matcher matching "Bash"`})
 	}
 	if !bashExec {
-		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference guard_exec_commands.py with a matcher matching "Bash"`})
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness guard-exec with a matcher matching "Bash"`})
 	}
 	return total
+}
+
+func hasOnMatchDeny(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--on-match=deny" {
+			return true
+		}
+		if args[i] == "--on-match" && i+1 < len(args) && args[i+1] == "deny" {
+			return true
+		}
+	}
+	return false
 }
 
 type hookPair struct {
@@ -946,6 +1020,29 @@ func checkPrecedents(root, text string, findings *[]Finding) {
 			*findings = append(*findings, Finding{"H10", failurePatterns, fmt.Sprintf("referenced path '%s' does not exist", candidate)})
 		}
 	}
+	seenSub := map[string]struct{}{}
+	for _, m := range altHarnessCmdRE.FindAllStringSubmatch(text, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		if _, ok := seenPath[altHarnessRel]; !ok {
+			seenPath[altHarnessRel] = struct{}{}
+			if _, err := os.Stat(filepath.Join(root, altHarnessRel)); err != nil {
+				*findings = append(*findings, Finding{"H10", failurePatterns, fmt.Sprintf("referenced path '%s' does not exist", altHarnessRel)})
+			}
+		}
+		sub := strings.TrimSpace(m[1])
+		if sub == "" || strings.HasPrefix(sub, "-") {
+			continue
+		}
+		if _, ok := seenSub[sub]; ok {
+			continue
+		}
+		seenSub[sub] = struct{}{}
+		if !hasKey(validAltHarnessSubcommands, sub) {
+			*findings = append(*findings, Finding{"H10", failurePatterns, fmt.Sprintf("referenced alt-harness subcommand '%s' does not exist", sub)})
+		}
+	}
 }
 
 func checkRouting(skillPath string, sections []fpSection, findings *[]Finding) {
@@ -1230,10 +1327,24 @@ func checkEnforcement(root, id, enforcement string, astIDs map[string]struct{}, 
 			continue
 		}
 		candidate := token
-		if i := strings.IndexAny(candidate, " \t"); i >= 0 {
-			candidate = candidate[:i]
+		var restFields []string
+		if fields := strings.Fields(token); len(fields) > 0 {
+			candidate = fields[0]
+			restFields = fields[1:]
 		}
-		candidate = strings.TrimRight(candidate, ".,;:")
+		candidate = strings.TrimPrefix(strings.TrimRight(candidate, ".,;:"), "./")
+		if candidate == altHarnessRel {
+			concrete++
+			if st, err := os.Stat(filepath.Join(root, altHarnessRel)); err != nil || !st.Mode().IsRegular() {
+				*findings = append(*findings, Finding{"H11", ruleLedgerRel, fmt.Sprintf("row '%s' references missing or non-file repo path '%s'", id, altHarnessRel)})
+			}
+			if len(restFields) == 0 {
+				*findings = append(*findings, Finding{"H11", ruleLedgerRel, fmt.Sprintf("row '%s' references '%s' without a subcommand", id, altHarnessRel)})
+			} else if sub := strings.TrimRight(restFields[0], ".,;:"); !hasKey(validAltHarnessSubcommands, sub) {
+				*findings = append(*findings, Finding{"H11", ruleLedgerRel, fmt.Sprintf("row '%s' references unknown alt-harness subcommand '%s'", id, sub)})
+			}
+			continue
+		}
 		if strings.Contains(candidate, "/") {
 			concrete++
 			if st, err := os.Stat(filepath.Join(root, candidate)); err != nil || !st.Mode().IsRegular() {

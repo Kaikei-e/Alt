@@ -1283,7 +1283,10 @@ func defaultRepoRoot() string {
 	}
 	dir := cwd
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "scripts", "agent-harness", "postmortem_ledger.py")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "scripts", "altharness", "alt-harness")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "docs", "postmortems")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

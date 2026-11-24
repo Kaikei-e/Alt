@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" session-start",
+        "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook session-start",
         "timeout": 30
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" pre-shell",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook pre-shell",
             "timeout": 15
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" pre-edit",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook pre-edit",
             "timeout": 15
           }
         ]
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" post-edit",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook post-edit",
             "timeout": 15
           }
         ]
@@ -44,7 +44,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" stop",
+        "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook stop",
         "timeout": 30
       }
     ]

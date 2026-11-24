@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-exec python3 "${repo_root}/scripts/agent-harness/guard_exec_commands.py" "$@"
+exec "${repo_root}/scripts/altharness/alt-harness" guard-exec "$@"

@@ -270,7 +270,7 @@ func TestNonexistentCandidateTest(t *testing.T) {
     ]
   },
   "rationale": "the change is covered by the named test",
-  "verification": {"command": "python3 -c 'raise SystemExit(0)'", "exit_code": 0}
+  "verification": {"command": "./scripts/lint/run.sh scripts", "exit_code": 0}
 }`
 	if err := os.WriteFile(ho, []byte(body), fsperm.File); err != nil {
 		t.Fatal(err)

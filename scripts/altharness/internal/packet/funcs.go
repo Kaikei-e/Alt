@@ -1,13 +1,9 @@
 package packet
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 )
 
 func normalizeGoReceiver(raw string) string {
@@ -417,85 +413,11 @@ func pyHeader(line logicalLine) (kind, name string, ok bool) {
 	return "", "", false
 }
 
-const pyFuncASTScript = `import ast, collections, hashlib, json, sys
-
-source = sys.stdin.read()
-if not source.strip():
-    json.dump({}, sys.stdout)
-    raise SystemExit(0)
-try:
-    tree = ast.parse(source)
-except SyntaxError as exc:
-    sys.stderr.write(f"{exc}\n")
-    raise SystemExit(1)
-
-def fp(fn):
-    filtered_body = [
-        stmt for stmt in fn.body
-        if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    ]
-    parts = [
-        type(fn).__name__,
-        fn.name,
-        ast.dump(fn.args, include_attributes=False),
-        ast.dump(fn.returns, include_attributes=False) if fn.returns is not None else "",
-        *(ast.dump(dec, include_attributes=False) for dec in fn.decorator_list),
-        *(ast.dump(stmt, include_attributes=False) for stmt in filtered_body),
-    ]
-    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
-
-funcs = {}
-counts = collections.Counter()
-
-def walk(stmts, prefix):
-    for stmt in stmts:
-        if isinstance(stmt, ast.ClassDef):
-            cls_prefix = f"{prefix}.{stmt.name}" if prefix else stmt.name
-            walk(stmt.body, cls_prefix)
-        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            base = f"{prefix}.{stmt.name}" if prefix else stmt.name
-            counts[base] += 1
-            key = f"{base}#{counts[base]}" if counts[base] > 1 else base
-            funcs[key] = fp(stmt)
-            walk(stmt.body, base)
-
-walk(tree.body, "")
-json.dump(funcs, sys.stdout)
-`
-
 func extractPythonFuncBodies(source string) (map[string]string, error) {
 	if strings.TrimSpace(source) == "" {
 		return map[string]string{}, nil
 	}
-	if py, err := exec.LookPath("python3"); err == nil {
-		return extractPythonFuncBodiesAST(py, source)
-	}
 	return extractPythonFuncBodiesPureGo(source)
-}
-
-func extractPythonFuncBodiesAST(py, source string) (map[string]string, error) {
-	res := runProcessWithStdin(context.Background(), []string{py, "-c", pyFuncASTScript}, "", []byte(source), subprocessTimeoutSeconds*time.Second)
-	if res.Timeout {
-		return nil, pErr("python3 AST parser timed out after %ds", subprocessTimeoutSeconds)
-	}
-	if res.Err != nil {
-		return nil, res.Err
-	}
-	if res.Code != 0 {
-		msg := strings.TrimSpace(validUTF8(res.Stderr))
-		if msg == "" {
-			msg = fmt.Sprintf("python3 AST parser exited with code %d", res.Code)
-		}
-		return nil, pErr("%s", msg)
-	}
-	var funcs map[string]string
-	if err := json.Unmarshal(res.Stdout, &funcs); err != nil {
-		return nil, pErr("invalid AST digest output: %s", err.Error())
-	}
-	if funcs == nil {
-		funcs = map[string]string{}
-	}
-	return funcs, nil
 }
 
 func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
@@ -504,13 +426,16 @@ func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
 	var buf strings.Builder
 	baseIndent := 0
 	started := false
-	depth := 0
+	var stack []byte
 	var quote byte
 	triple := false
 	escaped := false
 	for lineNo, line := range phys {
-		if !started && quote == 0 && strings.TrimSpace(line) == "" {
-			continue
+		if !started && quote == 0 && len(stack) == 0 {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
 		}
 		if !started {
 			baseIndent = countIndent(line)
@@ -520,15 +445,15 @@ func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
 			buf.WriteByte('\n')
 		}
 		buf.WriteString(line)
-		var underflow bool
-		depth, quote, triple, escaped, underflow = scanPyLineStateStrict(line, depth, quote, triple, escaped)
-		if underflow {
-			return nil, pErr("unmatched closing bracket at line %d", lineNo+1)
+		var scanErr error
+		stack, quote, triple, escaped, scanErr = scanPyLineStateStrict(line, lineNo+1, stack, quote, triple, escaped)
+		if scanErr != nil {
+			return nil, scanErr
 		}
 		if quote != 0 && !triple && !strings.HasSuffix(strings.TrimRight(line, " \t"), `\`) {
 			return nil, pErr("unterminated string literal at line %d", lineNo+1)
 		}
-		cont := depth > 0 || quote != 0 || strings.HasSuffix(strings.TrimRight(line, " \t"), `\`)
+		cont := len(stack) > 0 || quote != 0 || strings.HasSuffix(strings.TrimRight(line, " \t"), `\`)
 		if cont {
 			continue
 		}
@@ -540,8 +465,8 @@ func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
 	if quote != 0 {
 		return nil, pErr("unterminated string literal at EOF")
 	}
-	if depth != 0 {
-		return nil, pErr("unclosed bracket/parenthesis at EOF")
+	if len(stack) != 0 {
+		return nil, pErr("unclosed bracket/parenthesis %q at EOF", string(stack[len(stack)-1]))
 	}
 	if buf.Len() > 0 {
 		out = append(out, logicalLine{indent: baseIndent, text: strings.TrimRight(buf.String(), "\n")})
@@ -549,7 +474,20 @@ func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
 	return out, nil
 }
 
-func scanPyLineStateStrict(line string, depth int, quote byte, triple, escaped bool) (int, byte, bool, bool, bool) {
+func matchingCloseBracket(open byte) byte {
+	switch open {
+	case '(':
+		return ')'
+	case '[':
+		return ']'
+	case '{':
+		return '}'
+	default:
+		return 0
+	}
+}
+
+func scanPyLineStateStrict(line string, lineNo int, stack []byte, quote byte, triple, escaped bool) ([]byte, byte, bool, bool, error) {
 	i := 0
 	for i < len(line) {
 		ch := line[i]
@@ -598,16 +536,297 @@ func scanPyLineStateStrict(line string, depth int, quote byte, triple, escaped b
 		}
 		switch ch {
 		case '(', '[', '{':
-			depth++
+			stack = append(stack, ch)
 		case ')', ']', '}':
-			if depth == 0 {
-				return 0, quote, triple, escaped, true
+			if len(stack) == 0 {
+				return nil, quote, triple, escaped, pErr("unmatched closing bracket %q at line %d", string(ch), lineNo)
 			}
-			depth--
+			open := stack[len(stack)-1]
+			if matchingCloseBracket(open) != ch {
+				return nil, quote, triple, escaped, pErr("mismatched bracket %q closed by %q at line %d", string(open), string(ch), lineNo)
+			}
+			stack = stack[:len(stack)-1]
 		}
 		i++
 	}
-	return depth, quote, triple, escaped, false
+	return stack, quote, triple, escaped, nil
+}
+
+type pyTokKind int
+
+const (
+	pyTokIdent pyTokKind = iota
+	pyTokNumber
+	pyTokString
+	pyTokOp
+)
+
+type pyToken struct {
+	kind   pyTokKind
+	text   string
+	prefix string
+}
+
+var pyNonCallKeywords = map[string]struct{}{
+	"return": {}, "yield": {}, "assert": {}, "raise": {},
+	"if": {}, "elif": {}, "while": {}, "for": {}, "in": {},
+	"not": {}, "and": {}, "or": {}, "is": {}, "del": {},
+	"await": {}, "lambda": {}, "as": {}, "from": {}, "import": {},
+	"except": {}, "with": {}, "case": {}, "match": {},
+}
+
+var pyAssignOps = map[string]struct{}{
+	"=": {}, "+=": {}, "-=": {}, "*=": {}, "/=": {}, "//=": {},
+	"%=": {}, "**=": {}, "&=": {}, "|=": {}, "^=": {}, ">>=": {},
+	"<<=": {}, "@=": {},
+}
+
+var pyPrefixExprKeywords = map[string]struct{}{
+	"return": {}, "yield": {}, "raise": {}, "assert": {}, "del": {}, "await": {},
+}
+
+var pyCondKeywords = map[string]struct{}{
+	"if": {}, "elif": {}, "while": {},
+}
+
+var pyCompoundHeadRe = regexp.MustCompile(`^(?:(?:async\s+)?(?:for|with)|if|elif|else|while|try|except|finally)\b`)
+
+func normalizePyPrefix(raw string) string {
+	low := strings.ToLower(raw)
+	hasR, hasB, hasF := false, false, false
+	for i := 0; i < len(low); i++ {
+		switch low[i] {
+		case 'r':
+			hasR = true
+		case 'b':
+			hasB = true
+		case 'f':
+			hasF = true
+		}
+	}
+	var b strings.Builder
+	if hasF {
+		b.WriteByte('f')
+	}
+	if hasB {
+		b.WriteByte('b')
+	}
+	if hasR {
+		b.WriteByte('r')
+	}
+	return b.String()
+}
+
+func normalizePyStringToken(prefix, seg string) string {
+	normPrefix := normalizePyPrefix(prefix)
+	if len(seg) < 2 {
+		return normPrefix + seg
+	}
+	q := seg[0]
+	if q != '\'' && q != '"' {
+		return normPrefix + seg
+	}
+	isTriple := len(seg) >= 6 && seg[1] == q && seg[2] == q && seg[len(seg)-1] == q && seg[len(seg)-2] == q && seg[len(seg)-3] == q
+	if isTriple {
+		if q == '\'' && !strings.Contains(normPrefix, "r") && !strings.Contains(normPrefix, "f") {
+			inner := seg[3 : len(seg)-3]
+			if !strings.Contains(inner, `"""`) && !strings.HasSuffix(inner, `"`) {
+				return normPrefix + `"""` + inner + `"""`
+			}
+		}
+		return normPrefix + seg
+	}
+	if strings.Contains(normPrefix, "r") {
+		if q == '\'' {
+			inner := seg[1 : len(seg)-1]
+			if !strings.Contains(inner, `"`) && !strings.Contains(inner, `\'`) {
+				return normPrefix + `"` + inner + `"`
+			}
+		}
+		return normPrefix + seg
+	}
+	if strings.Contains(normPrefix, "f") {
+		if q == '\'' {
+			inner := seg[1 : len(seg)-1]
+			if !strings.Contains(inner, `"`) && !strings.Contains(inner, `\'`) {
+				return normPrefix + `"` + inner + `"`
+			}
+		}
+		return normPrefix + seg
+	}
+	return normPrefix + normalizePyQuotedString(seg)
+}
+
+func isPyStringPrefixChars(s string) bool {
+	if len(s) == 0 || len(s) > 2 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case 'r', 'R', 'b', 'B', 'u', 'U', 'f', 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func tokenizePy(text string) []pyToken {
+	var toks []pyToken
+	n := len(text)
+	i := 0
+	for i < n {
+		ch := text[i]
+		if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' {
+			i++
+			continue
+		}
+		if ch == '\\' {
+			i++
+			if i < n && text[i] == '\r' {
+				i++
+			}
+			if i < n && text[i] == '\n' {
+				i++
+			}
+			continue
+		}
+		if ch == '#' {
+			for i < n && text[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		// Check prefixed string literal (e.g. r"...", f'...', rb"...")
+		if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch >= 0x80 {
+			start := i
+			for i < n && isIdentByte(text[i]) {
+				i++
+			}
+			word := text[start:i]
+			if i < n && (text[i] == '"' || text[i] == '\'') && isPyStringPrefixChars(word) {
+				q := text[i]
+				segStart := i
+				end := scanPyStringEnd(text, i, q)
+				i = end
+				normPrefix := normalizePyPrefix(word)
+				toks = append(toks, pyToken{
+					kind:   pyTokString,
+					text:   normalizePyStringToken(word, text[segStart:end]),
+					prefix: normPrefix,
+				})
+				continue
+			}
+			toks = append(toks, pyToken{kind: pyTokIdent, text: word})
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			end := scanPyStringEnd(text, i, ch)
+			toks = append(toks, pyToken{
+				kind:   pyTokString,
+				text:   normalizePyStringToken("", text[i:end]),
+				prefix: "",
+			})
+			i = end
+			continue
+		}
+		if ch >= '0' && ch <= '9' {
+			start := i
+			for i < n && (isIdentByte(text[i]) || text[i] == '.') {
+				i++
+			}
+			toks = append(toks, pyToken{kind: pyTokNumber, text: text[start:i]})
+			continue
+		}
+		// Multi-character operators
+		if i+2 < n {
+			tri := text[i : i+3]
+			switch tri {
+			case "...", "//=", "**=", ">>=", "<<=":
+				toks = append(toks, pyToken{kind: pyTokOp, text: tri})
+				i += 3
+				continue
+			}
+		}
+		if i+1 < n {
+			duo := text[i : i+2]
+			switch duo {
+			case "==", "!=", "<=", ">=", "**", "//", "<<", ">>", "->", ":=",
+				"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "@=":
+				toks = append(toks, pyToken{kind: pyTokOp, text: duo})
+				i += 2
+				continue
+			}
+		}
+		toks = append(toks, pyToken{kind: pyTokOp, text: text[i : i+1]})
+		i++
+	}
+	return mergeAdjacentPyStrings(toks)
+}
+
+func scanPyStringEnd(text string, start int, q byte) int {
+	n := len(text)
+	if start+2 < n && text[start+1] == q && text[start+2] == q {
+		i := start + 3
+		for i < n {
+			if text[i] == '\\' && i+1 < n {
+				i += 2
+				continue
+			}
+			if i+2 < n && text[i] == q && text[i+1] == q && text[i+2] == q {
+				return i + 3
+			}
+			i++
+		}
+		return n
+	}
+	i := start + 1
+	for i < n {
+		if text[i] == '\\' && i+1 < n {
+			i += 2
+			continue
+		}
+		if text[i] == q {
+			return i + 1
+		}
+		i++
+	}
+	return n
+}
+
+func mergeAdjacentPyStrings(toks []pyToken) []pyToken {
+	if len(toks) < 2 {
+		return toks
+	}
+	out := make([]pyToken, 0, len(toks))
+	for _, tok := range toks {
+		if len(out) > 0 && tok.kind == pyTokString && out[len(out)-1].kind == pyTokString &&
+			tok.prefix == out[len(out)-1].prefix && !strings.Contains(tok.prefix, "r") && !strings.Contains(tok.prefix, "f") {
+			prev := out[len(out)-1]
+			if isSimpleDoubleQuoted(prev.text, prev.prefix) && isSimpleDoubleQuoted(tok.text, tok.prefix) {
+				pBody := prev.text[len(prev.prefix)+1 : len(prev.text)-1]
+				tBody := tok.text[len(tok.prefix)+1 : len(tok.text)-1]
+				out[len(out)-1].text = prev.prefix + `"` + pBody + tBody + `"`
+				continue
+			}
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+func isSimpleDoubleQuoted(s, prefix string) bool {
+	if !strings.HasPrefix(s, prefix+`"`) || !strings.HasSuffix(s, `"`) {
+		return false
+	}
+	body := s[len(prefix):]
+	if len(body) < 2 {
+		return false
+	}
+	if len(body) >= 6 && strings.HasPrefix(body, `"""`) && strings.HasSuffix(body, `"""`) {
+		return false
+	}
+	return true
 }
 
 func normalizePyQuotedString(seg string) string {
@@ -653,130 +872,232 @@ func normalizePyQuotedString(seg string) string {
 	return out.String()
 }
 
-func collapseCode(text string) string {
-	var b strings.Builder
-	n := len(text)
-	for i := 0; i < n; {
-		ch := text[i]
-		if ch == '#' {
-			for i < n && text[i] != '\n' {
-				i++
+func matchingPyClose(toks []pyToken, openIdx int) int {
+	open := toks[openIdx].text
+	closeTok := ")"
+	switch open {
+	case "[":
+		closeTok = "]"
+	case "{":
+		closeTok = "}"
+	}
+	depth := 0
+	for i := openIdx; i < len(toks); i++ {
+		switch toks[i].text {
+		case open:
+			depth++
+		case closeTok:
+			depth--
+			if depth == 0 {
+				return i
 			}
-			if i < n {
-				b.WriteByte(' ')
-				i++
-			}
-			continue
 		}
-		if ch == '"' || ch == '\'' {
-			// Check for string prefix (r, b, u, f, etc.) immediately before quote.
-			rawOrFmt := false
+	}
+	return -1
+}
+
+func stripTrailingPyCommas(toks []pyToken) []pyToken {
+	type frame struct {
+		open       string
+		isCallLike bool
+		commaCount int
+	}
+	var stack []frame
+	drop := make([]bool, len(toks))
+	for i, tok := range toks {
+		switch tok.text {
+		case "(":
+			callLike := false
 			if i > 0 {
-				prev := text[i-1]
-				if prev == 'r' || prev == 'R' || prev == 'f' || prev == 'F' || prev == 'b' || prev == 'B' {
-					rawOrFmt = true
+				prev := toks[i-1]
+				if prev.kind == pyTokIdent {
+					if _, kw := pyNonCallKeywords[prev.text]; !kw {
+						callLike = true
+					}
+				} else if prev.text == ")" || prev.text == "]" || prev.text == "}" {
+					callLike = true
 				}
 			}
-			triple := i+2 < n && text[i+1] == ch && text[i+2] == ch
-			start := i
-			if triple {
-				i += 3
-				for i < n {
-					if text[i] == '\\' && i+1 < n {
-						i += 2
-						continue
-					}
-					if i+2 < n && text[i] == ch && text[i+1] == ch && text[i+2] == ch {
-						i += 3
-						break
-					}
-					i++
-				}
-				b.WriteString(text[start:i])
-			} else {
-				i++
-				for i < n {
-					if text[i] == '\\' && i+1 < n {
-						i += 2
-						continue
-					}
-					if text[i] == ch {
-						i++
-						break
-					}
-					i++
-				}
-				seg := text[start:i]
-				if !rawOrFmt {
-					seg = normalizePyQuotedString(seg)
-				}
-				b.WriteString(seg)
+			stack = append(stack, frame{open: "(", isCallLike: callLike})
+		case "[", "{":
+			stack = append(stack, frame{open: tok.text, isCallLike: true})
+		case ",":
+			if len(stack) > 0 {
+				stack[len(stack)-1].commaCount++
 			}
-			continue
+		case ")", "]", "}":
+			if len(stack) > 0 {
+				top := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				if i > 0 && toks[i-1].text == "," {
+					if tok.text != ")" || top.isCallLike || top.commaCount > 1 {
+						drop[i-1] = true
+					}
+				}
+			}
 		}
-		if ch == '\n' || ch == '\r' || ch == '\t' {
-			b.WriteByte(' ')
-			i++
-			continue
-		}
-		b.WriteByte(ch)
-		i++
 	}
-	collapsed := strings.Join(strings.Fields(b.String()), " ")
-	// Normalize spaces adjacent to delimiters and strip trailing commas before ), ], }.
-	var out strings.Builder
-	inQuote := byte(0)
-	esc := false
-	for i := 0; i < len(collapsed); i++ {
-		ch := collapsed[i]
-		if esc {
-			out.WriteByte(ch)
-			esc = false
+	out := make([]pyToken, 0, len(toks))
+	for i, tok := range toks {
+		if !drop[i] {
+			out = append(out, tok)
+		}
+	}
+	return out
+}
+
+func stripOuterGroupingParens(toks []pyToken) []pyToken {
+	for len(toks) >= 2 && toks[0].text == "(" && matchingPyClose(toks, 0) == len(toks)-1 {
+		inner := toks[1 : len(toks)-1]
+		if len(inner) == 0 {
+			break
+		}
+		depth := 0
+		keep := false
+		for _, tok := range inner {
+			switch tok.text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			default:
+				if depth == 0 && (tok.text == "," || tok.text == ":=" ||
+					(tok.kind == pyTokIdent && (tok.text == "for" || tok.text == "async" || tok.text == "yield"))) {
+					keep = true
+				}
+			}
+			if keep {
+				break
+			}
+		}
+		if keep {
+			break
+		}
+		toks = inner
+	}
+	return toks
+}
+
+func normalizePyStmtTokens(toks []pyToken) []pyToken {
+	if len(toks) == 0 {
+		return toks
+	}
+	toks = stripTrailingPyCommas(toks)
+	toks = mergeAdjacentPyStrings(toks)
+	if len(toks) == 0 {
+		return toks
+	}
+	// Leading expression keyword: return (expr), yield (expr), assert (expr), etc.
+	if toks[0].kind == pyTokIdent {
+		if _, ok := pyPrefixExprKeywords[toks[0].text]; ok && len(toks) > 1 {
+			rhs := stripOuterGroupingParens(toks[1:])
+			out := make([]pyToken, 0, 1+len(rhs))
+			out = append(out, toks[0])
+			out = append(out, rhs...)
+			return out
+		}
+		if _, ok := pyCondKeywords[toks[0].text]; ok && len(toks) > 2 && toks[len(toks)-1].text == ":" {
+			cond := stripOuterGroupingParens(toks[1 : len(toks)-1])
+			out := make([]pyToken, 0, 2+len(cond))
+			out = append(out, toks[0])
+			out = append(out, cond...)
+			out = append(out, toks[len(toks)-1])
+			return out
+		}
+	}
+	// Top-level assignment: lhs = (expr), lhs: T = (expr), lhs += (expr)
+	depth := 0
+	for i, tok := range toks {
+		switch tok.text {
+		case "(", "[", "{":
+			depth++
+		case ")", "]", "}":
+			depth--
+		default:
+			if depth == 0 && tok.kind == pyTokOp {
+				if _, ok := pyAssignOps[tok.text]; ok && i+1 < len(toks) {
+					rhs := stripOuterGroupingParens(toks[i+1:])
+					out := make([]pyToken, 0, i+1+len(rhs))
+					out = append(out, toks[:i+1]...)
+					out = append(out, rhs...)
+					return out
+				}
+			}
+		}
+	}
+	return stripOuterGroupingParens(toks)
+}
+
+func collapseCode(text string) string {
+	toks := normalizePyStmtTokens(tokenizePy(text))
+	if len(toks) == 0 {
+		return ""
+	}
+	parts := make([]string, len(toks))
+	for i, tok := range toks {
+		parts[i] = tok.text
+	}
+	return strings.Join(parts, " ")
+}
+
+func findTopLevelColon(text string) int {
+	depth := 0
+	var quote byte
+	triple := false
+	escaped := false
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		if escaped {
+			escaped = false
 			continue
 		}
-		if inQuote != 0 {
-			out.WriteByte(ch)
-			switch ch {
-			case '\\':
-				esc = true
-			case inQuote:
-				inQuote = 0
+		if quote != 0 {
+			if ch == '\\' {
+				escaped = true
+				continue
 			}
+			if triple && i+2 < len(text) && text[i] == quote && text[i+1] == quote && text[i+2] == quote {
+				quote = 0
+				triple = false
+				i += 2
+				continue
+			}
+			if !triple && ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '#' {
+			for i < len(text) && text[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if (ch == '"' || ch == '\'') && i+2 < len(text) && text[i+1] == ch && text[i+2] == ch {
+			quote = ch
+			triple = true
+			i += 2
 			continue
 		}
 		if ch == '"' || ch == '\'' {
-			inQuote = ch
-			out.WriteByte(ch)
+			quote = ch
+			triple = false
 			continue
 		}
-		if ch == ',' {
-			// Skip trailing comma before closing delimiter.
-			j := i + 1
-			for j < len(collapsed) && collapsed[j] == ' ' {
-				j++
+		switch ch {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
 			}
-			if j < len(collapsed) && (collapsed[j] == ')' || collapsed[j] == ']' || collapsed[j] == '}') {
-				i = j - 1
-				continue
-			}
-		}
-		if ch == ' ' {
-			prev := byte(0)
-			if out.Len() > 0 {
-				s := out.String()
-				prev = s[len(s)-1]
-			}
-			next := byte(0)
-			if i+1 < len(collapsed) {
-				next = collapsed[i+1]
-			}
-			if prev == '(' || prev == '[' || prev == '{' || next == ')' || next == ']' || next == '}' || next == ',' || next == ':' {
-				continue
+		case ':':
+			if depth == 0 {
+				return i
 			}
 		}
-		out.WriteByte(ch)
 	}
-	return out.String()
+	return -1
 }
 
 var (
@@ -788,36 +1109,60 @@ func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
 	if strings.TrimSpace(source) == "" {
 		return map[string]string{}, nil
 	}
-	lines, err := pythonLogicalLinesStrict(source)
+	rawLines, err := pythonLogicalLinesStrict(source)
 	if err != nil {
 		return nil, err
 	}
-	for _, line := range lines {
+	lines := make([]logicalLine, 0, len(rawLines))
+	for _, line := range rawLines {
 		head := firstContent(line)
-		if pyDefLikeRe.MatchString(head) {
+		switch {
+		case pyDefLikeRe.MatchString(head):
 			if _, _, ok := pyHeader(line); !ok {
 				return nil, pErr("invalid def header: %q", head)
 			}
-			norm := collapseCode(line.text)
-			if !strings.Contains(norm, ":") {
+			colon := findTopLevelColon(line.text)
+			if colon < 0 {
 				return nil, pErr("def header missing ':': %q", head)
 			}
-		} else if pyClassLikeRe.MatchString(head) {
+			tail := strings.TrimSpace(collapseCode(line.text[colon+1:]))
+			if tail != "" {
+				lines = append(lines,
+					logicalLine{indent: line.indent, text: line.text[:colon+1]},
+					logicalLine{indent: line.indent + 4, text: line.text[colon+1:]},
+				)
+				continue
+			}
+		case pyClassLikeRe.MatchString(head):
 			if _, _, ok := pyHeader(line); !ok {
 				return nil, pErr("invalid class header: %q", head)
 			}
-			norm := collapseCode(line.text)
-			if !strings.Contains(norm, ":") {
+			colon := findTopLevelColon(line.text)
+			if colon < 0 {
 				return nil, pErr("class header missing ':': %q", head)
 			}
+			tail := strings.TrimSpace(collapseCode(line.text[colon+1:]))
+			if tail != "" {
+				lines = append(lines,
+					logicalLine{indent: line.indent, text: line.text[:colon+1]},
+					logicalLine{indent: line.indent + 4, text: line.text[colon+1:]},
+				)
+				continue
+			}
+		case pyCompoundHeadRe.MatchString(head):
+			if findTopLevelColon(line.text) < 0 {
+				return nil, pErr("compound statement missing ':': %q", head)
+			}
 		}
+		lines = append(lines, line)
 	}
 	funcs := map[string]string{}
 	counts := map[string]int{}
+	var walkErr error
 	var walk func(start, end, minIndent int, prefix string) int
 	walk = func(start, end, minIndent int, prefix string) int {
 		i := start
-		for i < end {
+		for i < end && walkErr == nil {
 			if strings.TrimSpace(lines[i].text) == "" {
 				i++
 				continue
@@ -851,6 +1196,10 @@ func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
 				}
 				j++
 			}
+			if j == bodyStart {
+				walkErr = pErr("empty body for %s %q", kind, name)
+				return end
+			}
 			if kind == "class" {
 				cls := name
 				if prefix != "" {
@@ -876,6 +1225,9 @@ func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
 		return end
 	}
 	walk(0, len(lines), 0, "")
+	if walkErr != nil {
+		return nil, walkErr
+	}
 	return funcs, nil
 }
 
@@ -886,8 +1238,10 @@ func fingerprintPython(kind, name string, header, body []logicalLine, headerInde
 	b.WriteString(name)
 	b.WriteByte('\n')
 	for _, h := range header {
-		b.WriteString(collapseCode(h.text))
-		b.WriteByte('\n')
+		if norm := collapseCode(h.text); norm != "" {
+			b.WriteString(norm)
+			b.WriteByte('\n')
+		}
 	}
 	skipAt := -1
 	for idx := 0; idx < len(body); idx++ {
@@ -920,9 +1274,10 @@ func fingerprintPython(kind, name string, header, body []logicalLine, headerInde
 				continue
 			}
 		}
-		b.WriteString(collapseCode(line.text))
-		b.WriteByte('\n')
+		if norm := collapseCode(line.text); norm != "" {
+			b.WriteString(norm)
+			b.WriteByte('\n')
+		}
 	}
-	sum := hashNormalized(b.String())
-	return sum
+	return hashNormalized(b.String())
 }
