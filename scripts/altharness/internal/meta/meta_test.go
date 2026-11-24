@@ -2,6 +2,7 @@ package meta
 
 import (
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/lint"
 	"bytes"
 	"context"
 	"fmt"
@@ -354,10 +355,32 @@ func TestCacheKeyDistinguishesStepKey(t *testing.T) {
 	t.Parallel()
 	s1 := Step{Name: "inproc", Key: "base=abc", Run: func(context.Context) (string, int, error) { return "", 0, nil }}
 	s2 := Step{Name: "inproc", Key: "base=def", Run: func(context.Context) (string, int, error) { return "", 0, nil }}
-	k1 := cacheKey("fp", s1)
-	k2 := cacheKey("fp", s2)
+	k1 := cacheKey(context.Background(), "fp", s1)
+	k2 := cacheKey(context.Background(), "fp", s2)
 	if k1 == k2 {
 		t.Fatalf("expected distinct cache keys for different Step.Key values, both=%s", k1)
+	}
+}
+
+func TestContextPolicyHonoredInCacheKeyAndSubprocessEnv(t *testing.T) {
+	t.Parallel()
+	s := Step{Name: "pol", Key: "k", Args: []string{"sh", "-c", "printf 'POL=%s\n' \"$LINT_POLICY\""}}
+	kBlock := cacheKey(lint.WithPolicy(context.Background(), "block-new"), "fp", s)
+	kFix := cacheKey(lint.WithPolicy(context.Background(), "fix-existing"), "fp", s)
+	if kBlock == kFix {
+		t.Fatalf("expected cacheKey to distinguish context LINT_POLICY values, both=%s", kBlock)
+	}
+
+	repo := initTestRepo(t)
+	var out bytes.Buffer
+	code, err := Run(lint.WithPolicy(context.Background(), "block-new"), []Step{s}, Options{
+		Repo: repo, Stdout: &out, Stderr: &out, NoCache: true,
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("code=%d err=%v out=%s", code, err, out.String())
+	}
+	if !strings.Contains(out.String(), "POL=block-new") {
+		t.Fatalf("expected subprocess to receive LINT_POLICY=block-new from context, got:\n%s", out.String())
 	}
 }
 

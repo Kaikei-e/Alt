@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/lint"
 	"bytes"
 	"context"
 	"errors"
@@ -127,6 +128,16 @@ func requireCommands(stderr io.Writer, names ...string) int {
 		}
 	}
 	return 0
+}
+
+func effectivePolicy(ctx context.Context) string {
+	if p := lint.PolicyFromContext(ctx); p != "" {
+		return p
+	}
+	if p := os.Getenv("LINT_POLICY"); p != "" {
+		return p
+	}
+	return "fix-existing"
 }
 
 func cacheHome() (string, error) {

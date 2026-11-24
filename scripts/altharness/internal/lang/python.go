@@ -104,10 +104,7 @@ func RunPython(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		record("python versions", fmt.Sprintf("fail (exit %d)", pvCode), true)
 	}
 
-	policy := os.Getenv("LINT_POLICY")
-	if policy == "" {
-		policy = "fix-existing"
-	}
+	policy := effectivePolicy(ctx)
 	if policy == "block-new" {
 		ruffJSON := filepath.Join(work, "ruff.json")
 		fmt.Fprintln(stdout, "==> ruff check (policy=block-new)")

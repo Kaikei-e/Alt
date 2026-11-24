@@ -2,6 +2,7 @@ package lang
 
 import (
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/lint"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -372,6 +373,70 @@ func TestNoPythonHarnessCallsInLangRunners(t *testing.T) {
 				t.Errorf("%s still references retired Python script %q", f, tok)
 			}
 		}
+	}
+}
+
+func TestPolicyFlagPropagatesInProcessThroughRunKind(t *testing.T) {
+	t.Parallel()
+	if got := effectivePolicy(lint.WithPolicy(context.Background(), "block-new")); got != "block-new" {
+		t.Fatalf("effectivePolicy(ctx=block-new)=%q, want block-new", got)
+	}
+	if got := effectivePolicy(lint.WithPolicy(context.Background(), "fix-existing")); got != "fix-existing" {
+		t.Fatalf("effectivePolicy(ctx=fix-existing)=%q, want fix-existing", got)
+	}
+}
+
+func TestLintRunPolicyFlagReachesInProcessRustRunner(t *testing.T) {
+	repo := t.TempDir()
+	crateDir := filepath.Join(repo, "svc-rust")
+	if err := os.MkdirAll(filepath.Join(repo, "scripts", "lint"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(crateDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(crateDir, "Cargo.toml"), []byte("[package]\nname = \"svc-rust\"\nversion = \"0.1.0\"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(crateDir, "rust-toolchain.toml"), []byte("[toolchain]\nchannel = \"1.99.1\"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+
+	stubBin := t.TempDir()
+	cargoLog := filepath.Join(t.TempDir(), "cargo.log")
+	cargoScript := "#!/usr/bin/env bash\n" +
+		"if [ \"${1:-}\" = \"--version\" ]; then echo \"cargo 1.99.1 (stub)\"; exit 0; fi\n" +
+		"if [ \"${1:-}\" = \"clippy\" ] && [[ \"$*\" == *\"--offline\"* ]]; then echo \"error: clippy::eq_op\" >&2; exit 1; fi\n" +
+		"echo \"$*\" >> " + cargoLog + "\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(stubBin, "cargo"), []byte(cargoScript), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", stubBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("LINT_POLICY", "")
+	if err := os.Unsetenv("LINT_POLICY"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+
+	var out, errBuf bytes.Buffer
+	code := lint.Run(context.Background(), repo, []string{"--policy", "block-new", "svc-rust"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("lint.Run(--policy block-new svc-rust) failed: code=%d stdout=%q stderr=%q", code, out.String(), errBuf.String())
+	}
+	logged, err := os.ReadFile(cargoLog)
+	if err != nil {
+		t.Fatalf("read cargo log: %v", err)
+	}
+	if !strings.Contains(string(logged), "--message-format=json") {
+		t.Fatalf("expected block-new mode (--message-format=json) via in-process runKind, got cargo args:\n%s", string(logged))
+	}
+	if v, ok := os.LookupEnv("LINT_POLICY"); ok {
+		t.Fatalf("lint.Run mutated process env LINT_POLICY=%q", v)
 	}
 }
 

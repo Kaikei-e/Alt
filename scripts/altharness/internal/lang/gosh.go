@@ -150,10 +150,7 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	for _, name := range []string{"golangci-lint.sarif", "gosec.sarif", "gosec.sarif.tmp", "govulncheck.sarif", "govulncheck.sarif.tmp", "govulncheck.stderr"} {
 		_ = os.Remove(filepath.Join(reports, name))
 	}
-	policy := os.Getenv("LINT_POLICY")
-	if policy == "" {
-		policy = "fix-existing"
-	}
+	policy := effectivePolicy(ctx)
 	fmt.Fprintf(stdout, "==> [%s] golangci-lint (incl. gosec SARIF)\n", rel)
 	sarif := filepath.Join(reports, "golangci-lint.sarif")
 	lintCode, lintErr := run(ctx, stdout, stderr, project, env, lintBin, "run", "--config", config, "--output.text.path", "stdout", "--output.sarif.path", sarif)

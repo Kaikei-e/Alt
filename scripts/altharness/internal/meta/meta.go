@@ -8,6 +8,7 @@ package meta
 import (
 	"alt/scripts/altharness/internal/fsperm"
 	"alt/scripts/altharness/internal/gate"
+	"alt/scripts/altharness/internal/lint"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -98,7 +99,7 @@ func Run(ctx context.Context, steps []Step, opt Options) (int, error) {
 	var mu sync.Mutex
 	for i, step := range steps {
 		i, step := i, step
-		key := cacheKey(fp, step)
+		key := cacheKey(ctx, fp, step)
 		gsteps[i] = gate.Step{
 			Name:     step.Name,
 			Parallel: step.Parallel,
@@ -175,8 +176,15 @@ func runStep(ctx context.Context, opt Options, step Step, key string) (string, i
 	if cmd.Dir == "" {
 		cmd.Dir = opt.Repo
 	}
-	if len(step.Env) > 0 {
-		cmd.Env = append(os.Environ(), step.Env...)
+	if ctxPolicy := lint.PolicyFromContext(ctx); ctxPolicy != "" || len(step.Env) > 0 {
+		env := os.Environ()
+		if ctxPolicy != "" {
+			env = append(env, "LINT_POLICY="+ctxPolicy)
+		}
+		if len(step.Env) > 0 {
+			env = append(env, step.Env...)
+		}
+		cmd.Env = env
 	}
 	out, err := cmd.CombinedOutput()
 	text := string(out)
@@ -299,11 +307,17 @@ func sha256File(path string) (string, error) {
 
 func bytesTrim(b []byte) []byte { return []byte(strings.TrimSpace(string(b))) }
 
-func cacheKey(fp string, step Step) string {
+func cacheKey(ctx context.Context, fp string, step Step) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n%s\n", fp, step.Name, step.Key, step.Dir, strings.Join(step.Args, "\x00"))
 	fmt.Fprintf(h, "%s\n", strings.Join(step.Env, "\x00"))
 	for _, k := range cacheEnvVars {
+		if k == "LINT_POLICY" {
+			if p := lint.PolicyFromContext(ctx); p != "" {
+				fmt.Fprintf(h, "env:%s=%s\x00", k, p)
+				continue
+			}
+		}
 		v, ok := os.LookupEnv(k)
 		if ok {
 			fmt.Fprintf(h, "env:%s=%s\x00", k, v)

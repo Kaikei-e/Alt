@@ -66,10 +66,7 @@ func RunDeno(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmtStatus = "fail"
 	}
 	lintStatus := "pass"
-	policy := os.Getenv("LINT_POLICY")
-	if policy == "" {
-		policy = "fix-existing"
-	}
+	policy := effectivePolicy(ctx)
 	if policy == "block-new" {
 		tmp, err := os.CreateTemp("", "alt-deno-lint-*.json")
 		if err != nil {

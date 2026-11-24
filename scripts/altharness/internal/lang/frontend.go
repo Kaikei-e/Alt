@@ -90,10 +90,7 @@ func RunFrontend(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	if canary.RunAudit(ctx, []string{"frontend-canary", "--project-dir", project}, stdout, stderr) != 0 {
 		return 1
 	}
-	policy := os.Getenv("LINT_POLICY")
-	if policy == "" {
-		policy = "fix-existing"
-	}
+	policy := effectivePolicy(ctx)
 	fmtRC, lintRC, checkRC := 0, 0, 0
 	lintStatus := "pass"
 	fmtStatus := "pass"

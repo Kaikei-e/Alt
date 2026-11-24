@@ -82,10 +82,7 @@ func RunRust(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	fmtStatus, clippyStatus := "pass", "pass"
 	overall := 0
-	policy := os.Getenv("LINT_POLICY")
-	if policy == "" {
-		policy = "fix-existing"
-	}
+	policy := effectivePolicy(ctx)
 	if code, err := run(ctx, stdout, stderr, project, nil, "cargo", "fmt", "--all", "--", "--check"); err != nil || code != 0 {
 		fmtStatus = "fail"
 		overall = 1
