@@ -99,7 +99,7 @@ func harnessSteps(repo, base string) []Step {
 		inProc("postmortem_ledger", "postmortem:--check:"+repo+":"+base, true, ledgers.RunPostmortem, "--check", "--root", repo, "--base", base),
 		inProc("migration_destructive_gate", "migration-gate:"+repo+":"+base, true, ledgers.RunMigration, "--root", repo, "--base", base),
 		inProc("adr_supersede_gate", "adr-gate:"+repo+":"+base, true, ledgers.RunAdr, "--dir", filepath.Join(repo, "docs", "ADR"), "--base", base),
-		inProc("task_packet_templates", "packet:check-templates", true, packet.Run, "check-templates"),
+		inProc("task_packet_templates", "packet:check-templates:"+repo, true, packet.Run, "check-templates", "--repo-root", repo),
 		inProc("go_canonical_sync", "sync-go:--check:"+repo, true, codegen.Run, "--check", "--repo-root", repo),
 		inProc("python_pki_sync", "pki:--check:"+repo, true, pki.Run, "--check", "--repo-root", repo),
 		inProc("suppression_ratchet", "ratchet:"+repo, true, ratchet.Run, "--repo-root", repo),
