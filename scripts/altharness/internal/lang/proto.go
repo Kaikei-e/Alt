@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/fsperm"
 	"context"
 	"fmt"
@@ -46,14 +47,8 @@ func RunProto(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprintf(stderr, "error: buf version mismatch: expected %s, got '%s'\n", bufVersion, actual)
 		return 1
 	}
-	canary := filepath.Join(root, "scripts", "lint", "canary_audit.py")
-	if _, err := os.Stat(canary); err == nil {
-		fmt.Fprintf(stdout, "==> [%s] canary audit (buf lint)\n", target)
-		if code, err := run(ctx, stdout, stderr, root, nil, "python3", canary, "proto-canary"); err != nil || code != 0 {
-			return 1
-		}
-	} else if _, err := os.Stat(filepath.Join(root, "scripts", "lint", "run.sh")); err == nil {
-		fmt.Fprintf(stderr, "error: missing canary audit helper: %s\n", canary)
+	fmt.Fprintf(stdout, "==> [%s] canary audit (buf lint)\n", target)
+	if canary.RunAudit(ctx, []string{"proto-canary"}, stdout, stderr) != 0 {
 		return 1
 	}
 	tmp, err := os.MkdirTemp("", "alt-proto-")

@@ -13,8 +13,13 @@ import (
 	"strings"
 )
 
-// RunLayers is .agents/skills/clean-architecture/scripts/check_layers.sh.
+// RunLayers is .claude/skills/clean-architecture/scripts/check_layers.sh.
 func RunLayers(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return RunLayersWithStdin(ctx, args, os.Stdin, stdout, stderr)
+}
+
+// RunLayersWithStdin runs the layer boundary checker with an explicit stdin reader.
+func RunLayersWithStdin(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, stdout, stderr, code := prepare(ctx, stdout, stderr)
 	if code != 0 {
 		return code
@@ -136,20 +141,14 @@ func RunLayers(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		}
 		return 0
 	case "hook":
-		if _, err := exec.LookPath("jq"); err != nil {
-			fmt.Fprintln(stderr, "check_layers.sh --hook: jq is required")
-			return 2
+		if stdin == nil {
+			return 0
 		}
-		data, err := io.ReadAll(os.Stdin)
+		data, err := io.ReadAll(stdin)
 		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
 			return 0
 		}
-		var doc map[string]any
-		if err := json.Unmarshal(data, &doc); err != nil {
-			return 0
-		}
-		tool, _ := doc["tool_input"].(map[string]any)
-		file, _ := tool["file_path"].(string)
+		file := extractHookFilePath(data)
 		if file == "" {
 			return 0
 		}
@@ -175,6 +174,30 @@ func layerUsage(stderr io.Writer) int {
 	return 2
 }
 
+// extractHookFilePath supports both Claude/Codex (tool_input.file_path)
+// and Antigravity agy (toolCall.args.Path / toolCall.args.TargetFile) JSON payloads.
+func extractHookFilePath(data []byte) string {
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return ""
+	}
+	if tool, ok := doc["tool_input"].(map[string]any); ok {
+		if file, ok := tool["file_path"].(string); ok && file != "" {
+			return file
+		}
+	}
+	if tc, ok := doc["toolCall"].(map[string]any); ok {
+		if args, ok := tc["args"].(map[string]any); ok {
+			for _, key := range []string{"Path", "TargetFile", "file_path"} {
+				if file, ok := args[key].(string); ok && file != "" {
+					return file
+				}
+			}
+		}
+	}
+	return ""
+}
+
 type knownEntry struct {
 	rule, prefix, substr, reason string
 	count                        int
@@ -196,6 +219,17 @@ func (k *knownLedger) hit(rule, rel, text string) bool {
 	return false
 }
 
+func (k *knownLedger) totalHits() int {
+	if k == nil {
+		return 0
+	}
+	total := 0
+	for _, e := range k.entries {
+		total += e.count
+	}
+	return total
+}
+
 func (k *knownLedger) knownLines() []string {
 	if k == nil {
 		return nil
@@ -213,7 +247,15 @@ func loadKnownLedger(stderr io.Writer) (*knownLedger, int) {
 	path := os.Getenv("CHECK_LAYERS_KNOWN")
 	if path == "" {
 		if root, err := repoRoot(); err == nil {
-			path = filepath.Join(root, ".agents", "skills", "clean-architecture", "scripts", "known_violations.tsv")
+			for _, cand := range []string{
+				filepath.Join(root, ".claude", "skills", "clean-architecture", "scripts", "known_violations.tsv"),
+				filepath.Join(root, ".agents", "skills", "clean-architecture", "scripts", "known_violations.tsv"),
+			} {
+				if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+					path = cand
+					break
+				}
+			}
 		}
 	}
 	if path == "" {
@@ -336,10 +378,11 @@ func scanLayers(ctx context.Context, service, repo, filterAbs, display string, l
 		}
 		for _, g := range groups {
 			before := rep.count
+			beforeKnown := ledger.totalHits()
 			for _, rule := range rules[g.from:g.to] {
 				applyRule(ctx, &rep, files, service, repo, filterAbs, display, ledger, rule)
 			}
-			if display == "" && filterAbs == "" && rep.count == before && hasLayerFiles(files, g.dirs, ".go", false) {
+			if display == "" && filterAbs == "" && rep.count == before && ledger.totalHits() == beforeKnown && hasLayerFiles(files, g.dirs, ".go", false) {
 				rep.clean = append(rep.clean, g.label)
 			}
 		}
@@ -369,10 +412,11 @@ func scanLayers(ctx context.Context, service, repo, filterAbs, display string, l
 		}
 		for _, g := range groups {
 			before := rep.count
+			beforeKnown := ledger.totalHits()
 			for _, rule := range rules[g.from:g.to] {
 				applyRule(ctx, &rep, files, service, repo, filterAbs, display, ledger, rule)
 			}
-			if display == "" && filterAbs == "" && rep.count == before && hasLayerFiles(files, g.dirs, ".py", true) {
+			if display == "" && filterAbs == "" && rep.count == before && ledger.totalHits() == beforeKnown && hasLayerFiles(files, g.dirs, ".py", true) {
 				rep.clean = append(rep.clean, g.label)
 			}
 		}

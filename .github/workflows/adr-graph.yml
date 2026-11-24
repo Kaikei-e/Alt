@@ -10,8 +10,6 @@ on:
       - "docs/ADR/**"
       - "docdag.yaml"
       - ".claude/skills/adr-preflight/**"
-      - "scripts/agent-harness/adr_supersede_gate.py"
-      - "scripts/tests/test-adr-supersede-gate.py"
       - "scripts/lint/**"
       - "scripts/altharness/**"
       - ".github/workflows/adr-graph.yml"
@@ -20,8 +18,6 @@ on:
       - "docs/ADR/**"
       - "docdag.yaml"
       - ".claude/skills/adr-preflight/**"
-      - "scripts/agent-harness/adr_supersede_gate.py"
-      - "scripts/tests/test-adr-supersede-gate.py"
       - "scripts/lint/**"
       - "scripts/altharness/**"
       - ".github/workflows/adr-graph.yml"
@@ -68,7 +64,23 @@ jobs:
           TARGET: adr
           LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: ./scripts/lint/run.sh "$TARGET"
-      - name: ADR preflight gate tests
-        run: python3 .claude/skills/adr-preflight/scripts/test_adr_preflight.py
-      - name: ADR supersede gate tests
-        run: python3 scripts/tests/test-adr-supersede-gate.py
+      - name: Resolve ADR gate base
+        id: adr_base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "base=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$BEFORE_SHA" ] && [[ ! "$BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            echo "base=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run ADR supersede gate
+        env:
+          ADR_BASE: ${{ steps.adr_base.outputs.base }}
+        run: ./scripts/altharness/alt-harness adr-gate --base "$ADR_BASE"
+      - name: ADR preflight and supersede gate Go tests
+        run: go -C scripts/altharness test -race -count=1 ./internal/preflight ./internal/ledgers

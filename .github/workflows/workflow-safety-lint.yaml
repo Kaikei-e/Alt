@@ -47,11 +47,10 @@
 # through an npm script and gutting the script is as effective a way to stop
 # the suite as deleting the job.
 #
-# Implementation note: the structural check lives in a sibling script file
-# (scripts/workflow-safety-check.py) rather than an inline heredoc, because
-# the script body contains literal `${{` sequences (GitHub Actions template
-# expressions) which GitHub would otherwise try to expand before the runner
-# executes the `run:` block.
+# Implementation note: the structural check lives in Go under
+# scripts/altharness/internal/workflow/ (invoked via ./scripts/lint/run.sh repo)
+# rather than an inline heredoc, because GitHub Actions expands `${{` template
+# expressions before the runner executes a `run:` block.
 #
 # This workflow itself must stay on ubuntu-latest with no secrets, which is
 # why it's listed among the safe exceptions the policy expects.
@@ -111,11 +110,6 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.14"
-
-      - name: Install PyYAML
-        # ubuntu-latest ships python3 but not PyYAML. Pin to the 6.x line so
-        # supply-chain drift is bounded.
-        run: pip install --quiet 'pyyaml==6.*'
 
       - name: Install ast-grep
         # Remove any adjacent `sg` shim installed by ast-grep-cli so /usr/bin/sg

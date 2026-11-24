@@ -27,58 +27,30 @@ assert_exit_and_err() {
   echo "PASS: $desc"
 }
 
-assert_exit_and_err 2 "usage:" "missing argument exits 2" bash "$RUN_SH"
-assert_exit_and_err 2 "usage:" "empty argument exits 2" bash "$RUN_SH" ""
-assert_exit_and_err 2 "usage:" "extra arguments exit 2" bash "$RUN_SH" repo extra
-assert_exit_and_err 2 "not found" "missing directory exits 2" bash "$RUN_SH" does-not-exist-dir
-assert_exit_and_err 2 "invalid lint target" "parent traversal exits 2" bash "$RUN_SH" "../outside"
-assert_exit_and_err 2 "no recognized lint marker" "directory without marker exits 2" bash "$RUN_SH" docs
-
-tmp_repo="$(mktemp -d)"
-trap 'rm -rf "$tmp_repo"' EXIT
-mkdir -p "$tmp_repo/scripts/lint"
-cp "$RUN_SH" "$tmp_repo/scripts/lint/run.sh"
-
-for spec in \
-  "svc-go:go.mod:go" \
-  "svc-rust:Cargo.toml:rust" \
-  "svc-py:pyproject.toml:python" \
-  "svc-deno:deno.json:deno" \
-  "svc-fe:bun.lock:frontend" \
-  "proto:buf.yaml:proto"; do
-  IFS=: read -r dir marker kind <<<"$spec"
-  mkdir -p "$tmp_repo/$dir"
-  : >"$tmp_repo/$dir/$marker"
-  printf '#!/usr/bin/env bash\necho "ran:%s:%s:%s"\n' "$kind" '$1' '$(pwd)' >"$tmp_repo/scripts/lint/$kind.sh"
-  assert_exit_and_err 0 "ran:$kind:$dir:$tmp_repo" "dispatches $dir via $marker to $kind.sh" \
-    env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" "$dir/"
-done
-
-mkdir -p "$tmp_repo/npm-only"
-: >"$tmp_repo/npm-only/package.json"
-assert_exit_and_err 2 "no recognized lint marker" "package.json without bun.lock is not dispatched as frontend" \
-  bash "$tmp_repo/scripts/lint/run.sh" npm-only
-
-printf '#!/usr/bin/env bash\necho "ran:repo:%s:%s"\n' '$1' '$(pwd)' >"$tmp_repo/scripts/lint/repo.sh"
-assert_exit_and_err 0 "ran:repo:repo:$tmp_repo" "dispatches named target repo from outside repo root" \
-  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" repo
-
-mkdir -p "$tmp_repo/e2e/playwright"
-: >"$tmp_repo/e2e/playwright/package.json"
-printf '#!/usr/bin/env bash\necho "ran:e2e:%s:%s"\n' '$1' '$(pwd)' >"$tmp_repo/scripts/lint/e2e.sh"
-assert_exit_and_err 0 "ran:e2e:e2e:$tmp_repo" "dispatches named target e2e when directory has no marker" \
-  bash "$tmp_repo/scripts/lint/run.sh" e2e
-
-mkdir -p "$tmp_repo/shadow"
-: >"$tmp_repo/shadow/go.mod"
-printf '#!/usr/bin/env bash\necho "ran:shadow"\n' >"$tmp_repo/scripts/lint/shadow.sh"
-assert_exit_and_err 2 "shadows directory shadow/" "named target shadowing marker directory exits 2" \
-  bash "$tmp_repo/scripts/lint/run.sh" shadow
-
-for bad_target in run go python rust deno frontend check-link-vs-url-naming; do
-  assert_exit_and_err 2 "invalid lint target" "rejects '$bad_target' explicitly" \
-    bash "$RUN_SH" "$bad_target"
-done
+assert_exact_stdout() {
+  local expected_rc="$1" expected_out="$2" desc="$3"
+  shift 3
+  local out="" rc=0
+  set +e
+  out="$("$@" 2>&1)"
+  rc=$?
+  set -e
+  if [ "$rc" -ne "$expected_rc" ]; then
+    echo "FAIL: $desc (expected rc=$expected_rc, got rc=$rc, out=$out)"
+    FAILS=$((FAILS + 1))
+    return
+  fi
+  if [ "$out" != "$expected_out" ]; then
+    echo "FAIL: $desc"
+    echo "  expected:"
+    printf '    %s\n' $expected_out
+    echo "  got:"
+    printf '    %s\n' $out
+    FAILS=$((FAILS + 1))
+    return
+  fi
+  echo "PASS: $desc"
+}
 
 # Helper to stage scripts/altharness into a fixture repo (symlinking prebuilt bin/alt-harness when available)
 stage_altharness() {
@@ -99,12 +71,92 @@ stage_altharness() {
   fi
 }
 
-# LINT_BASE resolution tests for harness.sh (Go alt-harness wrapper) and adr.sh
+# Pre-warm the Go binary once so staged fixture repos reuse bin/alt-harness instantly.
+"$REPO_ROOT/scripts/altharness/alt-harness" --help >/dev/null
+
+assert_exit_and_err 2 "usage:" "missing argument exits 2" bash "$RUN_SH"
+assert_exit_and_err 2 "usage:" "empty argument exits 2" bash "$RUN_SH" ""
+assert_exit_and_err 2 "usage:" "extra arguments exit 2" bash "$RUN_SH" repo extra
+assert_exit_and_err 2 "not found" "missing directory exits 2" bash "$RUN_SH" does-not-exist-dir
+assert_exit_and_err 2 "invalid lint target" "parent traversal exits 2" bash "$RUN_SH" "../outside"
+assert_exit_and_err 2 "no recognized lint marker" "directory without marker exits 2" bash "$RUN_SH" docs
+
+tmp_repo="$(mktemp -d)"
+trap 'rm -rf "$tmp_repo"' EXIT
+mkdir -p "$tmp_repo/scripts/lint"
+cp "$RUN_SH" "$tmp_repo/scripts/lint/run.sh"
+stage_altharness "$tmp_repo"
+
+# Marker-based in-process dispatch tests (all 6 language kinds)
+mkdir -p \
+  "$tmp_repo/svc-go" \
+  "$tmp_repo/svc-rust" \
+  "$tmp_repo/svc-py" \
+  "$tmp_repo/svc-deno" \
+  "$tmp_repo/svc-fe" \
+  "$tmp_repo/proto"
+: >"$tmp_repo/svc-go/go.mod"
+: >"$tmp_repo/svc-rust/Cargo.toml"
+: >"$tmp_repo/svc-py/pyproject.toml"
+: >"$tmp_repo/svc-deno/deno.json"
+: >"$tmp_repo/svc-fe/bun.lock"
+: >"$tmp_repo/proto/buf.yaml"
+
+# Minimal PATH containing POSIX tools for the alt-harness launcher, deliberately omitting uv and buf.
+tmp_min_bin="$tmp_repo/min-bin"
+mkdir -p "$tmp_min_bin"
+for tool in bash dirname find sort sha256sum cut mkdir cat rm awk id chmod mv flock xargs stat; do
+  if tool_path="$(command -v "$tool" 2>/dev/null)"; then
+    ln -sf "$tool_path" "$tmp_min_bin/$tool"
+  fi
+done
+
+assert_exit_and_err 1 "Missing golangci-lint config:" "dispatches svc-go via go.mod to Go runner" \
+  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" "svc-go/"
+assert_exit_and_err 1 "rust-toolchain.toml not found in svc-rust" "dispatches svc-rust via Cargo.toml to Rust runner" \
+  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" "svc-rust/"
+assert_exit_and_err 1 "Required command not found in PATH: uv" "dispatches svc-py via pyproject.toml to Python runner" \
+  env -C /tmp PATH="$tmp_min_bin" bash "$tmp_repo/scripts/lint/run.sh" "svc-py/"
+assert_exit_and_err 1 "Missing Deno version pin file:" "dispatches svc-deno via deno.json to Deno runner" \
+  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" "svc-deno/"
+assert_exit_and_err 2 "is not a frontend project directory (missing package.json)" "dispatches svc-fe via bun.lock to Frontend runner" \
+  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" "svc-fe/"
+assert_exit_and_err 1 "required command not found in PATH: buf" "dispatches proto via buf.yaml to Proto runner" \
+  env -C /tmp PATH="$tmp_min_bin" bash "$tmp_repo/scripts/lint/run.sh" "proto/"
+
+mkdir -p "$tmp_repo/npm-only"
+: >"$tmp_repo/npm-only/package.json"
+assert_exit_and_err 2 "no recognized lint marker" "package.json without bun.lock is not dispatched as frontend" \
+  bash "$tmp_repo/scripts/lint/run.sh" npm-only
+
+printf '#!/usr/bin/env bash\necho "ran:custom-named:%s:%s"\n' '$1' '$(pwd)' >"$tmp_repo/scripts/lint/custom-named.sh"
+assert_exit_and_err 0 "ran:custom-named:custom-named:$tmp_repo" "dispatches custom named target from outside repo root" \
+  env -C /tmp bash "$tmp_repo/scripts/lint/run.sh" custom-named
+
+mkdir -p "$tmp_repo/e2e/playwright"
+: >"$tmp_repo/e2e/playwright/package.json"
+cp "$REPO_ROOT/scripts/lint/e2e.sh" "$tmp_repo/scripts/lint/e2e.sh"
+assert_exit_and_err 1 "FAIL: check-suites" "dispatches named target e2e when directory has no marker" \
+  env PATH="$tmp_min_bin" bash "$tmp_repo/scripts/lint/run.sh" e2e
+
+mkdir -p "$tmp_repo/shadow"
+: >"$tmp_repo/shadow/go.mod"
+printf '#!/usr/bin/env bash\necho "ran:shadow"\n' >"$tmp_repo/scripts/lint/shadow.sh"
+assert_exit_and_err 2 "shadows directory shadow/" "named target shadowing marker directory exits 2" \
+  bash "$tmp_repo/scripts/lint/run.sh" shadow
+
+for bad_target in run go python rust deno frontend check-link-vs-url-naming; do
+  assert_exit_and_err 2 "invalid lint target" "rejects '$bad_target' explicitly" \
+    bash "$RUN_SH" "$bad_target"
+done
+
+# LINT_BASE resolution tests for harness.sh and adr.sh (Go alt-harness wrappers, zero python3)
 tmp_git="$tmp_repo/git-repo"
 tmp_bin="$tmp_repo/stub-bin"
-mkdir -p "$tmp_git/scripts/lint" "$tmp_bin"
+mkdir -p "$tmp_git/scripts/lint" "$tmp_git/docs/ADR" "$tmp_bin"
 cp "$REPO_ROOT/scripts/lint/harness.sh" "$tmp_git/scripts/lint/harness.sh"
 cp "$REPO_ROOT/scripts/lint/adr.sh" "$tmp_git/scripts/lint/adr.sh"
+cp "$REPO_ROOT/scripts/lint/run.sh" "$tmp_git/scripts/lint/run.sh"
 stage_altharness "$tmp_git"
 
 git -C "$tmp_git" init -b main >/dev/null
@@ -112,7 +164,8 @@ git -C "$tmp_git" config user.name "Test"
 git -C "$tmp_git" config user.email "test@example.com"
 
 printf 'one\n' >"$tmp_git/a.txt"
-git -C "$tmp_git" add a.txt
+printf -- '---\ntitle: init\n---\n# 1\n' >"$tmp_git/docs/ADR/000001.md"
+git -C "$tmp_git" add a.txt docs/ADR/000001.md
 git -C "$tmp_git" commit -m "c1" >/dev/null
 c1="$(git -C "$tmp_git" rev-parse HEAD)"
 
@@ -128,10 +181,6 @@ c3="$(git -C "$tmp_git" rev-parse HEAD)"
 
 git -C "$tmp_git" update-ref refs/remotes/origin/main "$c3"
 
-cat <<'EOF' >"$tmp_bin/python3"
-#!/usr/bin/env bash
-echo "stub-python3:$*"
-EOF
 cat <<'EOF' >"$tmp_bin/docdag"
 #!/usr/bin/env bash
 echo "stub-docdag:$*"
@@ -144,7 +193,7 @@ if [ "${1:-}" = "version" ] && [ "${2:-}" = "-m" ]; then
 fi
 exit 1
 EOF
-chmod +x "$tmp_bin/python3" "$tmp_bin/docdag" "$tmp_bin/go"
+chmod +x "$tmp_bin/docdag" "$tmp_bin/go"
 
 # Verify harness.sh delegates to scripts/altharness/alt-harness lint harness
 assert_exit_and_err 2 "cannot be resolved" "harness.sh (Go alt-harness) unresolvable LINT_BASE exits 2" \
@@ -186,31 +235,6 @@ assert_exit_and_err 1 "cannot compute merge-base" "adr.sh unrelated LINT_BASE ex
 # --list and all tests
 assert_exit_and_err 2 "usage:" "--list with extra argument exits 2" bash "$RUN_SH" --list extra
 assert_exit_and_err 2 "usage:" "all with extra argument exits 2" bash "$RUN_SH" all extra
-
-assert_exact_stdout() {
-  local expected_rc="$1" expected_out="$2" desc="$3"
-  shift 3
-  local out="" rc=0
-  set +e
-  out="$("$@" 2>&1)"
-  rc=$?
-  set -e
-  if [ "$rc" -ne "$expected_rc" ]; then
-    echo "FAIL: $desc (expected rc=$expected_rc, got rc=$rc, out=$out)"
-    FAILS=$((FAILS + 1))
-    return
-  fi
-  if [ "$out" != "$expected_out" ]; then
-    echo "FAIL: $desc"
-    echo "  expected:"
-    printf '    %s\n' $expected_out
-    echo "  got:"
-    printf '    %s\n' $out
-    FAILS=$((FAILS + 1))
-    return
-  fi
-  echo "PASS: $desc"
-}
 
 # 1. --list on a temporary non-git repository (staged with real Go alt-harness)
 tmp_list_repo="$tmp_repo/list-repo"
@@ -370,21 +394,15 @@ else
   fi
 fi
 
-# 4. all subcommand (all pass and partial fail with summary table)
+# 4. all subcommand (all pass and partial fail with summary table via real Go alt-harness)
 tmp_all_repo="$tmp_repo/all-repo"
-mkdir -p "$tmp_all_repo/scripts/lint" "$tmp_all_repo/a-go" "$tmp_all_repo/m-py" "$tmp_all_repo/proto" "$tmp_all_repo/z-rust"
+mkdir -p "$tmp_all_repo/scripts/lint"
 cp "$RUN_SH" "$tmp_all_repo/scripts/lint/run.sh"
-: >"$tmp_all_repo/a-go/go.mod"
-: >"$tmp_all_repo/a-go/main.go"
-: >"$tmp_all_repo/m-py/pyproject.toml"
-: >"$tmp_all_repo/proto/buf.yaml"
-: >"$tmp_all_repo/z-rust/Cargo.toml"
+stage_altharness "$tmp_all_repo"
 
-printf '#!/usr/bin/env bash\necho "ran:go:$1"\n' >"$tmp_all_repo/scripts/lint/go.sh"
-printf '#!/usr/bin/env bash\necho "ran:python:$1"\n' >"$tmp_all_repo/scripts/lint/python.sh"
-printf '#!/usr/bin/env bash\necho "ran:rust:$1"\n' >"$tmp_all_repo/scripts/lint/rust.sh"
-printf '#!/usr/bin/env bash\necho "ran:proto:$1"\n' >"$tmp_all_repo/scripts/lint/proto.sh"
-printf '#!/usr/bin/env bash\necho "ran:repo:$1"\n' >"$tmp_all_repo/scripts/lint/repo.sh"
+printf '#!/usr/bin/env bash\necho "ran:alpha:$1"\n' >"$tmp_all_repo/scripts/lint/alpha.sh"
+printf '#!/usr/bin/env bash\necho "ran:beta:$1"\n' >"$tmp_all_repo/scripts/lint/beta.sh"
+printf '#!/usr/bin/env bash\necho "ran:gamma:$1"\n' >"$tmp_all_repo/scripts/lint/gamma.sh"
 
 all_pass_rc=0
 set +e
@@ -397,16 +415,12 @@ if [ "$all_pass_rc" -ne 0 ]; then
 else
   all_pass_ok=1
   for expect_pat in \
-    "ran:go:a-go" \
-    "ran:python:m-py" \
-    "ran:proto:proto" \
-    "ran:repo:repo" \
-    "ran:rust:z-rust" \
-    "PASS.*a-go" \
-    "PASS.*m-py" \
-    "PASS.*proto" \
-    "PASS.*repo" \
-    "PASS.*z-rust"; do
+    "ran:alpha:alpha" \
+    "ran:beta:beta" \
+    "ran:gamma:gamma" \
+    "PASS.*alpha" \
+    "PASS.*beta" \
+    "PASS.*gamma"; do
     if ! grep -qE -- "$expect_pat" <<<"$all_pass_out"; then
       echo "FAIL: all pass output missing pattern '$expect_pat'"
       all_pass_ok=0
@@ -418,8 +432,8 @@ else
   fi
 fi
 
-# Partial failure: m-py fails, z-rust after it still runs, exit 1, summary shows PASS and FAIL
-printf '#!/usr/bin/env bash\necho "ran:python:$1"\nexit 1\n' >"$tmp_all_repo/scripts/lint/python.sh"
+# Partial failure: beta fails, gamma after it still runs, exit 1, summary shows PASS and FAIL
+printf '#!/usr/bin/env bash\necho "ran:beta:$1"\nexit 1\n' >"$tmp_all_repo/scripts/lint/beta.sh"
 all_fail_rc=0
 set +e
 all_fail_out="$(bash "$tmp_all_repo/scripts/lint/run.sh" all 2>&1)"
@@ -431,14 +445,12 @@ if [ "$all_fail_rc" -ne 1 ]; then
 else
   all_fail_ok=1
   for expect_pat in \
-    "ran:go:a-go" \
-    "ran:python:m-py" \
-    "ran:rust:z-rust" \
-    "PASS.*a-go" \
-    "FAIL.*m-py" \
-    "PASS.*proto" \
-    "PASS.*repo" \
-    "PASS.*z-rust"; do
+    "ran:alpha:alpha" \
+    "ran:beta:beta" \
+    "ran:gamma:gamma" \
+    "PASS.*alpha" \
+    "FAIL.*beta" \
+    "PASS.*gamma"; do
     if ! grep -qE -- "$expect_pat" <<<"$all_fail_out"; then
       echo "FAIL: all fail output missing pattern '$expect_pat'"
       all_fail_ok=0
@@ -450,11 +462,13 @@ else
   fi
 fi
 
-# rust.sh extra target (e.g. wasm32-unknown-unknown) verification
+# rust.sh extra target (e.g. wasm32-unknown-unknown) verification via real Go alt-harness + in-process rust-canary
 tmp_rust_repo="$tmp_repo/rust-target-repo"
 tmp_cargo_bin="$tmp_repo/stub-cargo-bin"
 mkdir -p "$tmp_rust_repo/scripts/lint" "$tmp_rust_repo/wasm-crate" "$tmp_cargo_bin"
 cp "$REPO_ROOT/scripts/lint/rust.sh" "$tmp_rust_repo/scripts/lint/rust.sh"
+cp "$RUN_SH" "$tmp_rust_repo/scripts/lint/run.sh"
+stage_altharness "$tmp_rust_repo"
 printf '[package]\nname = "wasm-crate"\nversion = "0.1.0"\n' >"$tmp_rust_repo/wasm-crate/Cargo.toml"
 printf '[toolchain]\nchannel = "1.99.1"\ntargets = ["wasm32-unknown-unknown"]\n' >"$tmp_rust_repo/wasm-crate/rust-toolchain.toml"
 
@@ -463,6 +477,10 @@ cat <<'EOF' >"$tmp_cargo_bin/cargo"
 if [ "${1:-}" = "--version" ]; then
   echo "cargo 1.99.1 (stub)"
   exit 0
+fi
+if [ "${1:-}" = "clippy" ] && [[ "$*" == *"--offline"* ]]; then
+  echo "error: equal expressions as operands to \`==\` (clippy::eq_op)" >&2
+  exit 1
 fi
 echo "stub-cargo:$*"
 if [ "${STUB_FAIL_WASM:-0}" = "1" ] && [[ "$*" == *"--target wasm32-unknown-unknown"* ]]; then
@@ -483,11 +501,11 @@ assert_exit_and_err 1 "clippy: fail" \
 # 5. Free disk space guard (CHECK-06)
 assert_exit_and_err 1 "ディスク空き容量不足" \
   "run.sh exits 1 with Japanese error when available disk space is below threshold" \
-  env ALT_LINT_FAKE_FREE_KB=1024 bash "$tmp_repo/scripts/lint/run.sh" repo
+  env ALT_LINT_FAKE_FREE_KB=1024 bash "$tmp_repo/scripts/lint/run.sh" custom-named
 
-assert_exit_and_err 0 "ran:repo:repo:$tmp_repo" \
+assert_exit_and_err 0 "ran:custom-named:custom-named:$tmp_repo" \
   "run.sh passes disk check when available disk space meets threshold" \
-  env ALT_LINT_FAKE_FREE_KB=20971520 bash "$tmp_repo/scripts/lint/run.sh" repo
+  env ALT_LINT_FAKE_FREE_KB=20971520 bash "$tmp_repo/scripts/lint/run.sh" custom-named
 
 assert_exit_and_err 0 "svc-go" \
   "run.sh --list skips disk space check even when disk space is below threshold" \
@@ -497,35 +515,36 @@ assert_exit_and_err 0 "svc-go" \
 tmp_policy_repo="$tmp_repo/policy-repo"
 mkdir -p "$tmp_policy_repo/scripts/lint"
 cp "$RUN_SH" "$tmp_policy_repo/scripts/lint/run.sh"
-printf '#!/usr/bin/env bash\necho "policy:${LINT_POLICY:-unset}:target:$1"\n' >"$tmp_policy_repo/scripts/lint/repo.sh"
+stage_altharness "$tmp_policy_repo"
+printf '#!/usr/bin/env bash\necho "policy:${LINT_POLICY:-unset}:target:$1"\n' >"$tmp_policy_repo/scripts/lint/policy-probe.sh"
 
-assert_exit_and_err 0 "policy:fix-existing:target:repo" \
+assert_exit_and_err 0 "policy:fix-existing:target:policy-probe" \
   "run.sh defaults LINT_POLICY to fix-existing" \
-  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" policy-probe
 
-assert_exit_and_err 0 "policy:fix-existing:target:repo" \
+assert_exit_and_err 0 "policy:fix-existing:target:policy-probe" \
   "run.sh --policy fix-existing propagates LINT_POLICY=fix-existing" \
-  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy fix-existing repo
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy fix-existing policy-probe
 
-assert_exit_and_err 0 "policy:block-new:target:repo" \
+assert_exit_and_err 0 "policy:block-new:target:policy-probe" \
   "run.sh --policy block-new propagates LINT_POLICY=block-new" \
-  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new repo
+  env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new policy-probe
 
-assert_exit_and_err 0 "policy:block-new:target:repo" \
+assert_exit_and_err 0 "policy:block-new:target:policy-probe" \
   "run.sh respects LINT_POLICY=block-new environment variable" \
-  env LINT_POLICY=block-new bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+  env LINT_POLICY=block-new bash "$tmp_policy_repo/scripts/lint/run.sh" policy-probe
 
-assert_exit_and_err 0 "policy:block-new:target:repo" \
+assert_exit_and_err 0 "policy:block-new:target:policy-probe" \
   "run.sh --policy block-new all propagates LINT_POLICY to every target" \
   env -u LINT_POLICY bash "$tmp_policy_repo/scripts/lint/run.sh" --policy block-new all
 
 assert_exit_and_err 2 "invalid lint policy" \
   "run.sh --policy foo exits 2" \
-  bash "$tmp_policy_repo/scripts/lint/run.sh" --policy foo repo
+  bash "$tmp_policy_repo/scripts/lint/run.sh" --policy foo policy-probe
 
 assert_exit_and_err 2 "invalid lint policy" \
   "run.sh rejects invalid LINT_POLICY env value with exit 2" \
-  env LINT_POLICY=foo bash "$tmp_policy_repo/scripts/lint/run.sh" repo
+  env LINT_POLICY=foo bash "$tmp_policy_repo/scripts/lint/run.sh" policy-probe
 
 assert_exit_and_err 2 "usage:" \
   "run.sh --policy without target exits 2" \
@@ -543,7 +562,6 @@ mkdir -p \
   "$tmp_proto_bin"
 cp "$RUN_SH" "$tmp_dirty_git/scripts/lint/run.sh"
 cp "$REPO_ROOT/scripts/lint/proto.sh" "$tmp_dirty_git/scripts/lint/proto.sh"
-cp "$REPO_ROOT/scripts/lint/canary_audit.py" "$tmp_dirty_git/scripts/lint/canary_audit.py"
 stage_altharness "$tmp_dirty_git"
 cp "$REPO_ROOT/alt-frontend-sv/biome.json" "$tmp_dirty_git/alt-frontend-sv/biome.json"
 printf 'alt-frontend-sv/test-results/\n' >"$tmp_dirty_git/.gitignore"
@@ -575,15 +593,8 @@ assert_exact_stdout 0 "$clean_dirty_list" \
 # Verify Biome VCS .gitignore config ignores test-results/ in real biome.json and real repo .gitignore
 assert_exit_and_err 0 "biome-vcs-ok" \
   "alt-frontend-sv/biome.json enables vcs useIgnoreFile and excludes test-results" \
-  python3 -c '
-import json, pathlib, sys
-cfg = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert cfg["vcs"]["enabled"] is True
-assert cfg["vcs"]["clientKind"] == "git"
-assert cfg["vcs"]["useIgnoreFile"] is True
-assert "!test-results" in cfg["files"]["includes"]
-print("biome-vcs-ok")
-' "$REPO_ROOT/alt-frontend-sv/biome.json"
+  jq -re 'if (.vcs.enabled == true and .vcs.clientKind == "git" and .vcs.useIgnoreFile == true and (.files.includes | index("!test-results") != null)) then "biome-vcs-ok" else error("mismatch") end' \
+  "$REPO_ROOT/alt-frontend-sv/biome.json"
 
 assert_exit_and_err 0 "alt-frontend-sv/test-results/artifact.json" \
   "real repo .gitignore ignores alt-frontend-sv/test-results/artifact.json" \

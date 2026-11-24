@@ -1,6 +1,8 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/canary"
+	"alt/scripts/altharness/internal/ratchet"
 	"context"
 	"fmt"
 	"io"
@@ -74,17 +76,8 @@ func RunRust(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "error: active cargo version '%s' does not match channel '%s' in %s (%s)\n", active, channel, trimRepo(root, toolchain), strings.TrimSpace(versionLine))
 		return 1
 	}
-	canary := filepath.Join(root, "scripts", "lint", "canary_audit.py")
-	if _, err := os.Stat(canary); err == nil {
-		fmt.Fprintf(stdout, "==> [%s] canary audit (cargo clippy)\n", rel)
-		if code, err := run(ctx, stdout, stderr, project, nil, "python3", canary, "rust-canary", "--project-dir", project, "--toolchain-file", toolchain); err != nil || code != 0 {
-			if err != nil {
-				fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: python3")
-			}
-			return 1
-		}
-	} else if _, err := os.Stat(filepath.Join(root, "scripts", "lint", "run.sh")); err == nil {
-		fmt.Fprintf(stderr, "error: missing canary audit helper: %s\n", canary)
+	fmt.Fprintf(stdout, "==> [%s] canary audit (cargo clippy)\n", rel)
+	if canary.RunAudit(ctx, []string{"rust-canary", "--project-dir", project, "--toolchain-file", toolchain}, stdout, stderr) != 0 {
 		return 1
 	}
 	fmtStatus, clippyStatus := "pass", "pass"
@@ -185,12 +178,8 @@ func runClippy(ctx context.Context, stdout, stderr io.Writer, root, project, pol
 	if code == 0 {
 		return 0
 	}
-	fp, fpErr := run(ctx, stdout, stderr, project, nil, "python3", filepath.Join(root, "scripts", "lint", "check_ratchet.py"), "check-fingerprints",
-		"--repo-root", root, "--project-dir", project, "--clippy-json", path, "--require-findings")
-	if fpErr != nil {
-		return 1
-	}
-	return fp
+	return ratchet.Run(ctx, []string{"check-fingerprints",
+		"--repo-root", root, "--project-dir", project, "--clippy-json", path, "--require-findings"}, stdout, stderr)
 }
 
 func firstSubmatch(pattern, text string) string {

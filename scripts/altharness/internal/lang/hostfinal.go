@@ -62,15 +62,6 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, "error: --packet is required when --handoff is provided")
 		return 2
 	}
-	defaultRoot, _ := repoRoot()
-	hygieneScript := filepath.Join(root, "scripts", "lint", "check_worktree_hygiene.py")
-	if _, err := os.Stat(hygieneScript); err != nil && defaultRoot != "" {
-		hygieneScript = filepath.Join(defaultRoot, "scripts", "lint", "check_worktree_hygiene.py")
-	}
-	taskPacket := filepath.Join(root, "scripts", "agent-harness", "task_packet.py")
-	if _, err := os.Stat(taskPacket); err != nil && defaultRoot != "" {
-		taskPacket = filepath.Join(defaultRoot, "scripts", "agent-harness", "task_packet.py")
-	}
 	runSh := filepath.Join(root, "scripts", "lint", "run.sh")
 	if _, err := os.Stat(runSh); err != nil {
 		fmt.Fprintf(stderr, "error: missing lint runner: %s\n", runSh)
@@ -101,15 +92,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		}
 	}
 	fmt.Fprintln(stdout, "==> [host-final-check] 1/5 worktree hygiene")
-	if _, err := os.Stat(hygieneScript); err == nil {
-		if code, err := run(ctx, stdout, stderr, root, nil, "python3", hygieneScript, "--repo-root", root); err != nil || code != 0 {
-			if err != nil {
-				fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: python3")
-				return 1
-			}
-			return code
-		}
-	} else if code := hygiene.Run(ctx, []string{"--repo-root", root}, stdout, stderr); code != 0 {
+	if code := hygiene.Run(ctx, []string{"--repo-root", root}, stdout, stderr); code != 0 {
 		return code
 	}
 	fmt.Fprintln(stdout, "==> [host-final-check] 2/5 targeted lint")
@@ -156,7 +139,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	if opt.handoff != "" {
 		fmt.Fprintln(stdout, "==> [host-final-check] 5/5 LOOP-01 verify-handoff")
-		argv := []string{"python3", taskPacket, "verify-handoff", opt.handoff, "--packet", opt.packet, "--repo-root", root}
+		argv := []string{"verify-handoff", opt.handoff, "--packet", opt.packet, "--repo-root", root}
 		if opt.baseCommit != "" {
 			argv = append(argv, "--base-commit", opt.baseCommit)
 		}
@@ -166,11 +149,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		if opt.noRerun {
 			argv = append(argv, "--no-rerun")
 		}
-		if code, err := run(ctx, stdout, stderr, root, nil, argv...); err != nil || code != 0 {
-			if err != nil {
-				fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: python3")
-				return 1
-			}
+		if code := packet.Run(ctx, argv, stdout, stderr); code != 0 {
 			return code
 		}
 	} else {

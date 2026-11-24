@@ -1,7 +1,9 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/ratchet"
 	"context"
 	"fmt"
 	"io"
@@ -53,7 +55,7 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: Missing golangci-lint config: %s\n", config)
 		return 1
 	}
-	if rc := requireCommands(stderr, "go", "jq", "python3"); rc != 0 {
+	if rc := requireCommands(stderr, "go", "jq"); rc != 0 {
 		return rc
 	}
 	goVerOut, _, verCode, verErr := capture(ctx, root, nil, "go", "env", "GOVERSION")
@@ -81,11 +83,6 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return rc
 	}
 	env := []string{"GOFLAGS=-buildvcs=false"}
-	canary := filepath.Join(root, "scripts", "lint", "canary_audit.py")
-	if _, err := os.Stat(canary); err != nil {
-		fmt.Fprintf(stderr, "ERROR: Missing canary audit helper: %s\n", canary)
-		return 1
-	}
 	canaryDir, err := os.MkdirTemp("", "alt-go-canary-")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %s\n", err.Error())
@@ -102,9 +99,8 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	defer os.Remove(govulnPath)
 
 	fmt.Fprintf(stdout, "==> [%s] canary audit (golangci-lint incl. gosec SARIF)\n", rel)
-	canaryCode, canaryErr := run(ctx, stdout, stderr, project, nil, "python3", canary, "go-canary",
-		"--project-dir", project, "--config", config, "--golangci-lint-bin", lintBin, "--work-dir", canaryDir)
-	if canaryErr != nil || canaryCode != 0 {
+	if canary.RunAudit(ctx, []string{"go-canary",
+		"--project-dir", project, "--config", config, "--golangci-lint-bin", lintBin, "--work-dir", canaryDir}, stdout, stderr) != 0 {
 		return 1
 	}
 
@@ -175,12 +171,11 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: golangci-lint did not produce ./_reports/golangci-lint.sarif (exit code %d)\n", lintCode)
 		return 1
 	}
-	ratchet := filepath.Join(root, "scripts", "lint", "check_ratchet.py")
 	if lintCode == 1 {
 		if policy == "block-new" {
-			fp, fpErr := run(ctx, stdout, stderr, project, nil, "python3", ratchet, "check-fingerprints",
-				"--repo-root", root, "--project-dir", project, "--golangci-sarif", "./_reports/golangci-lint.sarif", "--require-findings")
-			if fpErr != nil || fp != 0 {
+			fp := ratchet.Run(ctx, []string{"check-fingerprints",
+				"--repo-root", root, "--project-dir", project, "--golangci-sarif", sarif, "--require-findings"}, stdout, stderr)
+			if fp != 0 {
 				status["golangci"] = "FAIL"
 				overall = 1
 			} else {
@@ -196,7 +191,7 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return rc
 	}
 	_ = os.Remove(sarif)
-	if code, err := run(ctx, stdout, stderr, project, nil, "python3", canary, "go-verify-scan", "--project-dir", project, "--gosec-sarif", "./_reports/gosec.sarif"); err != nil || code != 0 {
+	if canary.RunAudit(ctx, []string{"go-verify-scan", "--project-dir", project, "--gosec-sarif", gosec}, stdout, stderr) != 0 {
 		return 1
 	}
 	countOut, _, countCode, countErr := capture(ctx, project, nil, "jq", `[.runs[]?.results[]?] | length`, gosec)
@@ -206,9 +201,9 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if n, _ := strconv.Atoi(strings.TrimSpace(countOut)); n > 0 {
 		if policy == "block-new" {
-			fp, fpErr := run(ctx, stdout, stderr, project, nil, "python3", ratchet, "check-fingerprints",
-				"--repo-root", root, "--project-dir", project, "--golangci-sarif", "./_reports/gosec.sarif", "--require-findings")
-			if fpErr != nil || fp != 0 {
+			fp := ratchet.Run(ctx, []string{"check-fingerprints",
+				"--repo-root", root, "--project-dir", project, "--golangci-sarif", gosec, "--require-findings"}, stdout, stderr)
+			if fp != 0 {
 				status["gosec"] = "FAIL"
 				overall = 1
 			} else {
@@ -231,8 +226,8 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if rc := runGovuln(ctx, project, env, vulnBin, []string{"-format=json", "./..."}, govulnPath, filepath.Join(reports, "govulncheck.stderr"), stderr, "ERROR: govulncheck JSON coverage run failed"); rc != 0 {
 		return rc
 	}
-	if code, err := run(ctx, stdout, stderr, project, nil, "python3", canary, "go-verify-govulncheck",
-		"--project-dir", project, "--govulncheck-sarif", "./_reports/govulncheck.sarif", "--govulncheck-json", govulnPath); err != nil || code != 0 {
+	if canary.RunAudit(ctx, []string{"go-verify-govulncheck",
+		"--project-dir", project, "--govulncheck-sarif", filepath.Join(reports, "govulncheck.sarif"), "--govulncheck-json", govulnPath}, stdout, stderr) != 0 {
 		return 1
 	}
 	unique := filepath.Join(reports, "govulncheck.sarif.tmp")

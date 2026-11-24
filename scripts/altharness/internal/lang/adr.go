@@ -29,7 +29,7 @@ func RunAdr(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if rc != 0 {
 		return rc
 	}
-	for _, name := range []string{"git", "docdag", "go", "python3"} {
+	for _, name := range []string{"git", "docdag", "go"} {
 		if _, err := exec.LookPath(name); err != nil {
 			fmt.Fprintf(stderr, "error: required command not found in PATH: %s\n", name)
 			return 1
@@ -74,7 +74,7 @@ func RunAdr(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		statusValidate = "fail"
 		overall = 1
 	}
-	fmt.Fprintf(stdout, "==> [adr] adr_supersede_gate.py --base %s\n", base)
+	fmt.Fprintf(stdout, "==> [adr] adr-gate --base %s\n", base)
 	if ledgers.RunAdr(ctx, []string{"--base", base, "--dir", filepath.Join(root, "docs", "ADR")}, stdout, stderr) != 0 {
 		statusSupersede = "fail"
 		overall = 1

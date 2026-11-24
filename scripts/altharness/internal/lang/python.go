@@ -1,7 +1,10 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/pyver"
+	"alt/scripts/altharness/internal/ratchet"
 	"context"
 	"fmt"
 	"io"
@@ -30,11 +33,6 @@ func RunPython(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	if _, err := os.Stat(filepath.Join(target, "pyproject.toml")); err != nil {
 		fmt.Fprintf(stderr, "Error: %s/pyproject.toml not found\n", target)
 		return 2
-	}
-	canary := filepath.Join(root, "scripts", "lint", "canary_audit.py")
-	if _, err := os.Stat(canary); err != nil {
-		fmt.Fprintf(stderr, "Error: missing canary audit helper: %s\n", canary)
-		return 1
 	}
 	work, err := os.MkdirTemp("", "alt-py-canary-")
 	if err != nil {
@@ -86,28 +84,24 @@ func RunPython(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 
 	fmt.Fprintf(stdout, "==> canary audit (ruff%s%s)\n", banditSuffix, pyreflySuffix)
-	if code, err := run(ctx, stdout, stderr, target, nil, "uv", "run", "--frozen", "--only-group", "dev", "python", canary, "python-canary",
-		"--project-dir", target, "--work-dir", filepath.Join(work, "canary"), "--check-bandit", checkBandit, "--check-pyrefly", checkPyrefly); err != nil || code != 0 {
-		if err != nil {
-			fmt.Fprintf(stderr, "ERROR: Required command not found in PATH: uv\n")
-		}
+	if canary.RunAudit(ctx, []string{"python-canary",
+		"--project-dir", target, "--work-dir", filepath.Join(work, "canary"), "--check-bandit", checkBandit, "--check-pyrefly", checkPyrefly}, stdout, stderr) != 0 {
 		return 1
 	}
 	_ = os.RemoveAll(filepath.Join(work, "canary"))
 	record("canary", "pass", false)
 
 	fmt.Fprintln(stdout, "==> source files check")
-	if code, err := run(ctx, stdout, stderr, target, nil, "uv", "run", "--frozen", "--only-group", "dev", "python", canary, "python-verify-files", "--project-dir", target); err != nil || code != 0 {
+	if canary.RunAudit(ctx, []string{"python-verify-files", "--project-dir", target}, stdout, stderr) != 0 {
 		return 1
 	}
 	record("source files", "pass", false)
 
-	versions := filepath.Join(root, "scripts", "lint", "check_python_versions.py")
-	if _, err := os.Stat(versions); err == nil {
-		runStep("python versions", "python3", versions, "--repo-root", root, "--project-dir", projectRel)
-	} else if _, err := os.Stat(filepath.Join(root, "scripts", "lint", "run.sh")); err == nil {
-		fmt.Fprintf(stderr, "Error: missing python version validator: %s\n", versions)
-		return 1
+	fmt.Fprintln(stdout, "==> python versions")
+	if pvCode := pyver.Run(ctx, []string{"--repo-root", root, "--project-dir", projectRel}, stdout, stderr); pvCode == 0 {
+		record("python versions", "pass", false)
+	} else {
+		record("python versions", fmt.Sprintf("fail (exit %d)", pvCode), true)
 	}
 
 	policy := os.Getenv("LINT_POLICY")
@@ -131,14 +125,10 @@ func RunPython(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		case ruffCode == 0:
 			record("ruff check", "pass", false)
 		case ruffCode == 1:
-			fp, fpErr := run(ctx, stdout, stderr, target, nil, "python3", filepath.Join(root, "scripts", "lint", "check_ratchet.py"), "check-fingerprints",
-				"--repo-root", root, "--project-dir", target, "--ruff-json", ruffJSON, "--require-findings")
-			if fpErr != nil || fp != 0 {
-				exit := fp
-				if fpErr != nil {
-					exit = 127
-				}
-				record("ruff check", fmt.Sprintf("fail (block-new exit %d)", exit), true)
+			fp := ratchet.Run(ctx, []string{"check-fingerprints",
+				"--repo-root", root, "--project-dir", target, "--ruff-json", ruffJSON, "--require-findings"}, stdout, stderr)
+			if fp != 0 {
+				record("ruff check", fmt.Sprintf("fail (block-new exit %d)", fp), true)
 			} else {
 				record("ruff check", "pass (block-new)", false)
 			}
@@ -166,8 +156,8 @@ func RunPython(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: uv")
 			return 1
 		}
-		if code, err := run(ctx, stdout, stderr, target, nil, "uv", "run", "--frozen", "--only-group", "dev", "python", canary, "python-verify-bandit-scan",
-			"--project-dir", target, "--bandit-out", banditPath); err != nil || code != 0 {
+		if canary.RunAudit(ctx, []string{"python-verify-bandit-scan",
+			"--project-dir", target, "--bandit-out", banditPath}, stdout, stderr) != 0 {
 			return 1
 		}
 		if banditCode == 0 {
@@ -259,8 +249,6 @@ func helperTests(target string) []string {
 	patterns := []string{
 		"tests/test-*-helpers.py",
 		"tests/test-genre-report-on-error-stop.py",
-		"tests/test-lint-canary.py",
-		"tests/test-check-python-versions.py",
 	}
 	var matches []string
 	seen := map[string]struct{}{}

@@ -4,7 +4,9 @@ import (
 	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,6 +139,221 @@ func TestLayersViolation(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "FIX ") {
 		t.Fatalf("missing FIX\n%s", out.String())
+	}
+}
+
+func TestLayersHookClaudeAndAgy(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	svc := filepath.Join(dir, "svc")
+	handler := filepath.Join(svc, "handler")
+	cleanDomain := filepath.Join(svc, "domain")
+	if err := os.MkdirAll(handler, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cleanDomain, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(svc, "go.mod"), []byte("module example.com/svc\n\ngo 1.24\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	badFile := filepath.Join(handler, "h.go")
+	if err := os.WriteFile(badFile, []byte("package handler\n\nimport \"example.com/svc/driver\"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	goodFile := filepath.Join(cleanDomain, "item.go")
+	if err := os.WriteFile(goodFile, []byte("package domain\n\ntype Item struct{}\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	mustJSON := func(v any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	cases := []struct {
+		name     string
+		payload  string
+		wantCode int
+		wantErr  string
+	}{
+		{
+			name:     "claude tool_input violation",
+			payload:  mustJSON(map[string]any{"tool_input": map[string]any{"file_path": badFile}}),
+			wantCode: 2,
+			wantErr:  "VIOLATION rest-imports-driver-gateway-or-pgx",
+		},
+		{
+			name:     "agy toolCall Path violation",
+			payload:  mustJSON(map[string]any{"toolCall": map[string]any{"args": map[string]any{"Path": badFile}}}),
+			wantCode: 2,
+			wantErr:  "VIOLATION rest-imports-driver-gateway-or-pgx",
+		},
+		{
+			name:     "agy toolCall TargetFile violation",
+			payload:  mustJSON(map[string]any{"toolCall": map[string]any{"args": map[string]any{"TargetFile": badFile}}}),
+			wantCode: 2,
+			wantErr:  "VIOLATION rest-imports-driver-gateway-or-pgx",
+		},
+		{
+			name:     "agy toolCall clean file",
+			payload:  mustJSON(map[string]any{"toolCall": map[string]any{"args": map[string]any{"Path": goodFile}}}),
+			wantCode: 0,
+		},
+		{
+			name:     "invalid json silent allow",
+			payload:  "not-json{{{",
+			wantCode: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errBuf bytes.Buffer
+			code := RunLayersWithStdin(context.Background(), []string{"--hook"}, strings.NewReader(tc.payload), &out, &errBuf)
+			if code != tc.wantCode {
+				t.Fatalf("code=%d want=%d out=%q err=%q", code, tc.wantCode, out.String(), errBuf.String())
+			}
+			if tc.wantErr != "" {
+				if !strings.Contains(errBuf.String(), tc.wantErr) {
+					t.Fatalf("stderr missing %q:\n%s", tc.wantErr, errBuf.String())
+				}
+				if !strings.Contains(errBuf.String(), "FIX rest-imports-driver-gateway-or-pgx:") {
+					t.Fatalf("stderr missing FIX:\n%s", errBuf.String())
+				}
+				if !strings.Contains(errBuf.String(), "See .claude/skills/clean-architecture/SKILL.md section 9.") {
+					t.Fatalf("stderr missing SKILL.md pointer:\n%s", errBuf.String())
+				}
+			}
+		})
+	}
+}
+
+func TestLayersKnownSuppressesClean(t *testing.T) {
+	dir := t.TempDir()
+	svc := filepath.Join(dir, "svc")
+	drv := filepath.Join(svc, "driver")
+	if err := os.MkdirAll(drv, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(svc, "go.mod"), []byte("module example.com/svc\n\ngo 1.24\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(drv, "repo.go"), []byte("package driver\n\nimport \"example.com/svc/domain\"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	known := filepath.Join(dir, "known.tsv")
+	if err := os.WriteFile(known, []byte("driver-imports-domain\tsvc/driver/\t*\tlegacy driver\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CHECK_LAYERS_ROOT", dir)
+	t.Setenv("CHECK_LAYERS_KNOWN", known)
+
+	var out, errBuf bytes.Buffer
+	code := RunLayers(context.Background(), []string{svc}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("code=%d out=%q err=%q", code, out.String(), errBuf.String())
+	}
+	if !strings.Contains(out.String(), "KNOWN driver-imports-domain svc/driver/ (1 lines): legacy driver") {
+		t.Fatalf("missing KNOWN line:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "[clean] Go driver: clean") {
+		t.Fatalf("expected [clean] suppressed when KNOWN matched:\n%s", out.String())
+	}
+}
+
+func TestAdrRunsWithoutPython3(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "scripts", "lint"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "docs", "ADR"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	gitExec := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	gitExec("init", "-b", "main", "-q")
+	gitExec("config", "user.email", "t@example.com")
+	gitExec("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "docs", "ADR", "000001.md"), []byte("---\ntitle: init\n---\n# 1\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	gitExec("add", ".")
+	gitExec("commit", "-q", "-m", "c1")
+	c1 := gitExec("rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "docs", "ADR", "000002.md"), []byte("---\ntitle: two\n---\n# 2\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	gitExec("add", ".")
+	gitExec("commit", "-q", "-m", "c2")
+	c2 := gitExec("rev-parse", "HEAD")
+	gitExec("update-ref", "refs/remotes/origin/main", c2)
+
+	stubBin := t.TempDir()
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(gitPath, filepath.Join(stubBin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stubBin, "docdag"), []byte("#!/bin/sh\necho stub-docdag \"$@\"\n"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stubBin, "go"), []byte("#!/bin/sh\nprintf '%s: go1.27.4\\n\\tpath\\tgithub.com/Kaikei-e/DocDag/cmd/docdag\\n\\tmod\\tgithub.com/Kaikei-e/DocDag\\tv0.6.0\\th1:stub\\n' \"$3\"\n"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	// Restricted PATH has git, docdag, go — deliberately NO python3!
+	t.Setenv("PATH", stubBin)
+	t.Setenv("LINT_BASE", "")
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origWD) }()
+
+	var out, errBuf bytes.Buffer
+	code := RunAdr(context.Background(), nil, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("RunAdr without python3 failed: code=%d out=%q err=%q", code, out.String(), errBuf.String())
+	}
+	if !strings.Contains(out.String(), "base="+c1) {
+		t.Fatalf("expected base=%s in output:\n%s", c1, out.String())
+	}
+}
+
+func TestNoPythonHarnessCallsInLangRunners(t *testing.T) {
+	t.Parallel()
+	files := []string{"gosh.go", "python.go", "rust.go", "frontend.go", "deno.go", "proto.go", "adr.go", "hostfinal.go"}
+	forbidden := []string{"canary_audit.py", "check_ratchet.py", "check_python_versions.py", "check_worktree_hygiene.py", "task_packet.py", "adr_supersede_gate.py"}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		text := string(data)
+		for _, tok := range forbidden {
+			if strings.Contains(text, tok) {
+				t.Errorf("%s still references retired Python script %q", f, tok)
+			}
+		}
 	}
 }
 

@@ -265,20 +265,59 @@ func TestCatalogPropertiesAndUnionSteps(t *testing.T) {
 			if s.Cache {
 				t.Fatal("suppression-diff-summary must have Cache=false")
 			}
+			if s.Run == nil {
+				t.Fatal("suppression-diff-summary must run in-process")
+			}
+		}
+		if len(s.Args) > 0 && (s.Args[0] == "python3" || s.Args[0] == "python") {
+			t.Fatalf("repoSteps step %q spawns python: %v", s.Name, s.Args)
+		}
+		if len(s.Args) > 0 && strings.Contains(s.Args[0], "alt-harness") {
+			t.Fatalf("repoSteps step %q spawns alt-harness child process instead of in-process Run: %v", s.Name, s.Args)
 		}
 	}
 	if !foundSummary {
 		t.Fatal("missing suppression-diff-summary in repoSteps")
 	}
 
-	hSteps := harnessSteps("/tmp/nonexistent-repo", "HEAD~1")
+	// Verify GITHUB_STEP_SUMMARY unset uses in-process closure (no python3 -c).
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+	rStepsUnset, err := repoSteps("/tmp/fake-repo", "HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range rStepsUnset {
+		if s.Name == "suppression-diff-summary" {
+			if s.Run == nil || len(s.Args) != 0 {
+				t.Fatalf("unset suppression-diff-summary must be in-process Run with empty Args: %#v", s)
+			}
+			out, code, runErr := s.Run(context.Background())
+			if runErr != nil || code != 0 || !strings.Contains(out, "GITHUB_STEP_SUMMARY unset") {
+				t.Fatalf("unset suppression-diff-summary: out=%q code=%d err=%v", out, code, runErr)
+			}
+		}
+	}
+
+	hSteps := harnessSteps("/tmp/fake-repo", "HEAD~1")
 	wantNames := map[string]bool{
-		"exec_guards_and_runs_tests": false,
+		"harness_selfcheck":          false,
+		"postmortem_ledger":          false,
+		"migration_destructive_gate": false,
+		"adr_supersede_gate":         false,
+		"task_packet_templates":      false,
+		"entrypoint_canary":          false,
 		"altharness_gofmt":           false,
 		"altharness_govet":           false,
 		"altharness_go_test_race":    false,
+		"corpus":                     false,
 	}
 	for _, s := range hSteps {
+		if len(s.Args) > 0 && (s.Args[0] == "python3" || s.Args[0] == "python") {
+			t.Fatalf("harnessSteps step %q spawns python: %v", s.Name, s.Args)
+		}
+		if len(s.Args) > 0 && strings.Contains(s.Args[0], "alt-harness") {
+			t.Fatalf("harnessSteps step %q spawns alt-harness child process instead of in-process Run: %v", s.Name, s.Args)
+		}
 		if _, ok := wantNames[s.Name]; ok {
 			wantNames[s.Name] = true
 		}
@@ -289,16 +328,36 @@ func TestCatalogPropertiesAndUnionSteps(t *testing.T) {
 		}
 	}
 
-	// unionSteps must NOT collapse steps with different Dir or Env.
+	// unionSteps must deduplicate shared in-process steps by Key across repo/harness.
+	combined := unionSteps(rStepsUnset, hSteps)
+	if len(combined) >= len(rStepsUnset)+len(hSteps) {
+		t.Fatalf("expected unionSteps to deduplicate shared repo/harness steps: got %d from %d+%d", len(combined), len(rStepsUnset), len(hSteps))
+	}
+
+	// unionSteps must NOT collapse steps with different Dir or Env, and MUST collapse matching Key.
 	a := []Step{
 		{Name: "s1", Dir: "/a", Args: []string{"echo", "hi"}},
 		{Name: "s2", Dir: "/b", Args: []string{"echo", "hi"}},
 		{Name: "s3", Dir: "/a", Env: []string{"X=1"}, Args: []string{"echo", "hi"}},
 		{Name: "s4-dup", Dir: "/a", Args: []string{"echo", "hi"}},
+		{Name: "p1", Key: "inproc:shared", Run: func(context.Context) (string, int, error) { return "", 0, nil }},
+		{Name: "p2-dup", Key: "inproc:shared", Run: func(context.Context) (string, int, error) { return "", 0, nil }},
+		{Name: "p3-diff", Key: "inproc:other", Run: func(context.Context) (string, int, error) { return "", 0, nil }},
 	}
 	got := unionSteps(a)
-	if len(got) != 3 {
-		t.Fatalf("unionSteps len=%d, want 3 (%#v)", len(got), got)
+	if len(got) != 5 {
+		t.Fatalf("unionSteps len=%d, want 5 (%#v)", len(got), got)
+	}
+}
+
+func TestCacheKeyDistinguishesStepKey(t *testing.T) {
+	t.Parallel()
+	s1 := Step{Name: "inproc", Key: "base=abc", Run: func(context.Context) (string, int, error) { return "", 0, nil }}
+	s2 := Step{Name: "inproc", Key: "base=def", Run: func(context.Context) (string, int, error) { return "", 0, nil }}
+	k1 := cacheKey("fp", s1)
+	k2 := cacheKey("fp", s2)
+	if k1 == k2 {
+		t.Fatalf("expected distinct cache keys for different Step.Key values, both=%s", k1)
 	}
 }
 

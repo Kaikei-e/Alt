@@ -1,7 +1,8 @@
 // Package lint is the ./scripts/lint/run.sh entrypoint: policy, disk floor,
-// target discovery, and dispatch. Named gates repo/harness/both run in process
-// on the worker pool. Other targets still exec scripts/lint/<kind>.sh until
-// that language runner is ported.
+// target discovery, and dispatch. Language runners (internal/lang) and meta
+// gates (internal/meta) register in-process dispatchers at package init so
+// lower-level packages (e.g. internal/ratchet) can call lint --list without
+// creating an import cycle.
 package lint
 
 import (
@@ -15,12 +16,35 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
-	"time"
-
-	"alt/scripts/altharness/internal/lang"
-	"alt/scripts/altharness/internal/meta"
 )
+
+// KindDispatcher handles a built-in language or named lint kind in-process.
+type KindDispatcher func(ctx context.Context, kind, target string, stdout, stderr io.Writer) (int, bool)
+
+// GateRunner handles repo/harness/both meta gates in-process.
+type GateRunner func(ctx context.Context, repo, target string, stdout, stderr io.Writer) int
+
+var (
+	regMu          sync.RWMutex
+	kindDispatcher KindDispatcher
+	gateRunner     GateRunner
+)
+
+// RegisterKindDispatcher registers the in-process language runner dispatcher.
+func RegisterKindDispatcher(fn KindDispatcher) {
+	regMu.Lock()
+	kindDispatcher = fn
+	regMu.Unlock()
+}
+
+// RegisterGateRunner registers the in-process meta gate runner.
+func RegisterGateRunner(fn GateRunner) {
+	regMu.Lock()
+	gateRunner = fn
+	regMu.Unlock()
+}
 
 // Run matches scripts/lint/run.sh.
 func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writer) int {
@@ -99,17 +123,14 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if target == "repo" || target == "harness" || target == "both" {
-		steps, err := meta.Catalog(ctx, repo, target)
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
+		regMu.RLock()
+		runner := gateRunner
+		regMu.RUnlock()
+		if runner == nil {
+			fmt.Fprintf(stderr, "ERROR: meta gate runner not registered for target %q\n", target)
 			return 2
 		}
-		code, err := meta.Run(ctx, steps, meta.Options{Repo: repo, Stdout: stdout, Stderr: stderr, Timeout: 15 * time.Minute})
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
-			return 1
-		}
-		return code
+		return runner(ctx, repo, target, stdout, stderr)
 	}
 	kind := ""
 	if !strings.Contains(target, "/") {
@@ -161,35 +182,13 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 }
 
 func runKind(ctx context.Context, kind, target string, stdout, stderr io.Writer) (int, bool) {
-	args := []string{target}
-	switch kind {
-	case "go":
-		return lang.RunGo(ctx, args, stdout, stderr), true
-	case "python":
-		return lang.RunPython(ctx, args, stdout, stderr), true
-	case "rust":
-		return lang.RunRust(ctx, args, stdout, stderr), true
-	case "deno":
-		return lang.RunDeno(ctx, args, stdout, stderr), true
-	case "frontend":
-		return lang.RunFrontend(ctx, args, stdout, stderr), true
-	case "adr":
-		return lang.RunAdr(ctx, args, stdout, stderr), true
-	case "proto":
-		return lang.RunProto(ctx, args, stdout, stderr), true
-	case "compose":
-		return lang.RunCompose(ctx, args, stdout, stderr), true
-	case "observability":
-		return lang.RunObservability(ctx, args, stdout, stderr), true
-	case "apparmor":
-		return lang.RunApparmor(ctx, args, stdout, stderr), true
-	case "e2e":
-		return lang.RunE2E(ctx, args, stdout, stderr), true
-	case "registry":
-		return lang.RunRegistry(ctx, args, stdout, stderr), true
-	default:
+	regMu.RLock()
+	fn := kindDispatcher
+	regMu.RUnlock()
+	if fn == nil {
 		return 0, false
 	}
+	return fn(ctx, kind, target, stdout, stderr)
 }
 
 func runAll(ctx context.Context, repo string, stdout, stderr io.Writer) int {

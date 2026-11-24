@@ -35,9 +35,11 @@ var cacheEnvVars = []string{
 }
 
 // Step is one catalog entry. Dir is the working directory. Env is extra KEY=VAL.
+// Key distinguishes in-process Run steps in cache keys and unionSteps dedup.
 // When Run is set it replaces Args.
 type Step struct {
 	Name     string
+	Key      string
 	Parallel bool
 	Args     []string
 	Dir      string
@@ -299,7 +301,7 @@ func bytesTrim(b []byte) []byte { return []byte(strings.TrimSpace(string(b))) }
 
 func cacheKey(fp string, step Step) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n", fp, step.Name, step.Dir, strings.Join(step.Args, "\x00"))
+	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n%s\n", fp, step.Name, step.Key, step.Dir, strings.Join(step.Args, "\x00"))
 	fmt.Fprintf(h, "%s\n", strings.Join(step.Env, "\x00"))
 	for _, k := range cacheEnvVars {
 		v, ok := os.LookupEnv(k)

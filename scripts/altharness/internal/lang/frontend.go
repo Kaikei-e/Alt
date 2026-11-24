@@ -1,7 +1,9 @@
 package lang
 
 import (
+	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/ratchet"
 	"archive/zip"
 	"context"
 	"crypto/sha256"
@@ -50,10 +52,6 @@ func RunFrontend(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "error: %s/node_modules is missing; run `bun install --frozen-lockfile` in %s\n", rel, rel)
 		return 1
 	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		fmt.Fprintln(stderr, "error: required command not found in PATH: python3")
-		return 1
-	}
 	dockerfile := filepath.Join(project, "Dockerfile")
 	expected, err := bunPinFromDockerfile(dockerfile)
 	if err != nil {
@@ -88,14 +86,8 @@ func RunFrontend(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}
-	canary := filepath.Join(root, "scripts", "lint", "canary_audit.py")
-	if _, err := os.Stat(canary); err == nil {
-		fmt.Fprintf(stdout, "==> [%s] canary audit (biome)\n", rel)
-		if code, err := run(ctx, stdout, stderr, project, nil, "python3", canary, "frontend-canary", "--project-dir", project); err != nil || code != 0 {
-			return 1
-		}
-	} else if _, err := os.Stat(filepath.Join(root, "scripts", "lint", "run.sh")); err == nil {
-		fmt.Fprintf(stderr, "error: missing canary audit helper: %s\n", canary)
+	fmt.Fprintf(stdout, "==> [%s] canary audit (biome)\n", rel)
+	if canary.RunAudit(ctx, []string{"frontend-canary", "--project-dir", project}, stdout, stderr) != 0 {
 		return 1
 	}
 	policy := os.Getenv("LINT_POLICY")
@@ -135,9 +127,9 @@ func RunFrontend(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			case fmtRC != 0:
 				lintStatus = "fail"
 			default:
-				fp, fpErr := run(ctx, stdout, stderr, project, nil, "python3", filepath.Join(root, "scripts", "lint", "check_ratchet.py"), "check-fingerprints",
-					"--repo-root", root, "--project-dir", project, "--biome-json", jsonPath, "--require-findings")
-				if fpErr == nil && fp == 0 {
+				fp := ratchet.Run(ctx, []string{"check-fingerprints",
+					"--repo-root", root, "--project-dir", project, "--biome-json", jsonPath, "--require-findings"}, stdout, stderr)
+				if fp == 0 {
 					lintRC = 0
 					lintStatus = "pass (block-new)"
 				} else {

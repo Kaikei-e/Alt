@@ -73,7 +73,7 @@ func ForbiddenTriggers(ctx context.Context, repo string) (string, int, error) {
 
 func astStep(repo, name string, args ...string) Step {
 	return Step{
-		Name: name, Parallel: true, Cache: true, Dir: repo,
+		Name: name, Key: "ast-grep:" + strings.Join(args, "\x00"), Parallel: true, Cache: true, Dir: repo,
 		Run: func(ctx context.Context) (string, int, error) {
 			bin, err := lookAstGrep()
 			if err != nil {
@@ -95,7 +95,7 @@ func astStep(repo, name string, args ...string) Step {
 
 func gofmtStep(repo, name string, paths ...string) Step {
 	return Step{
-		Name: name, Parallel: true, Cache: true, Dir: repo,
+		Name: name, Key: "gofmt:" + strings.Join(paths, "\x00"), Parallel: true, Cache: true, Dir: repo,
 		Run: func(ctx context.Context) (string, int, error) {
 			gofmtBin, err := exec.LookPath("gofmt")
 			if err != nil {
