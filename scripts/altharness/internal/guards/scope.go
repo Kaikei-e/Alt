@@ -94,9 +94,13 @@ func resolveRepoRel(rawPath, repoRoot, cwd string) (string, string) {
 	if strings.Contains(rawPath, "\x00") || strings.TrimSpace(rawPath) == "" {
 		return "", fmt.Sprintf("BLOCKED [EXEC-02]: invalid target path: %#v", rawPath)
 	}
-	repoResolved, err := filepath.Abs(repoRoot)
+	repoResolved := resolveExisting(repoRoot)
+	if repoResolved == "" {
+		return "", fmt.Sprintf("BLOCKED [EXEC-02]: could not resolve target path '%s' (empty repoRoot)", rawPath)
+	}
+	repoAbs, err := filepath.Abs(repoRoot)
 	if err != nil {
-		return "", fmt.Sprintf("BLOCKED [EXEC-02]: could not resolve target path '%s' (%v)", rawPath, err)
+		repoAbs = filepath.Clean(repoRoot)
 	}
 	base := relativeBase(repoResolved, cwd)
 	var candidate string
@@ -110,7 +114,7 @@ func resolveRepoRel(rawPath, repoRoot, cwd string) (string, string) {
 	if err != nil {
 		return "", fmt.Sprintf("BLOCKED [EXEC-02]: could not resolve target path '%s' (%v)", rawPath, err)
 	}
-	lexicalInside := pathInside(lexical, repoResolved) || pathInside(lexical, filepath.Clean(repoRoot))
+	lexicalInside := pathInside(lexical, repoResolved) || pathInside(lexical, repoAbs) || pathInside(lexical, filepath.Clean(repoRoot))
 	resolvedInside := pathInside(resolved, repoResolved)
 	if lexicalInside && !resolvedInside {
 		return "", fmt.Sprintf("BLOCKED [EXEC-02]: symlink escapes repository root: '%s' -> '%s'", rawPath, resolved)
@@ -130,9 +134,9 @@ func relativeBase(repoResolved, cwd string) string {
 		return cwd
 	}
 	if proc, err := os.Getwd(); err == nil {
-		abs, err := filepath.Abs(proc)
-		if err == nil && pathInside(abs, repoResolved) {
-			return abs
+		resolvedProc := resolveExisting(proc)
+		if resolvedProc != "" && pathInside(resolvedProc, repoResolved) {
+			return resolvedProc
 		}
 	}
 	return repoResolved

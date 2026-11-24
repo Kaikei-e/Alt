@@ -29,21 +29,44 @@ func boolVal(v any, fallback bool) bool {
 	return b
 }
 
-func stringList(v any) []string {
+// strictStringList parses a list of strings, rejecting non-list values and any
+// non-string element (failing closed rather than silently dropping bad entries).
+func strictStringList(v any, allowNil, requireNonEmpty, requireNonBlank bool) ([]string, bool) {
+	if v == nil {
+		if allowNil && !requireNonEmpty {
+			return []string{}, true
+		}
+		return nil, false
+	}
+	var out []string
 	switch items := v.(type) {
 	case []any:
-		var out []string
+		out = make([]string, 0, len(items))
 		for _, item := range items {
-			if s, ok := item.(string); ok {
-				out = append(out, s)
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
 			}
+			if requireNonBlank && strings.TrimSpace(s) == "" {
+				return nil, false
+			}
+			out = append(out, s)
 		}
-		return out
 	case []string:
-		return append([]string(nil), items...)
+		out = make([]string, 0, len(items))
+		for _, s := range items {
+			if requireNonBlank && strings.TrimSpace(s) == "" {
+				return nil, false
+			}
+			out = append(out, s)
+		}
 	default:
-		return nil
+		return nil, false
 	}
+	if requireNonEmpty && len(out) == 0 {
+		return nil, false
+	}
+	return out, true
 }
 
 // RunPacketScope is the EXEC-02 guard entry point.

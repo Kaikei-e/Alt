@@ -28,7 +28,7 @@ func RunProtected(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	}
 	var violations []string
 	for _, path := range payload.Paths {
-		if msg := CheckProtectedPath(path); msg != "" {
+		if msg := CheckProtectedPathInCwd(path, payload.Cwd); msg != "" {
 			violations = append(violations, msg)
 		}
 	}
@@ -39,15 +39,131 @@ func RunProtected(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	return 0
 }
 
-// CheckProtectedPath returns a block message when rawPath is protected.
+// CheckProtectedPath returns a block message when rawPath is protected,
+// resolving relative paths against the current working directory.
 func CheckProtectedPath(rawPath string) string {
-	norm := filepath.Clean(rawPath)
-	name := filepath.Base(norm)
-	dir := filepath.Dir(norm)
-	var parts []string
-	if dir != "." && dir != string(filepath.Separator) {
-		parts = strings.Split(filepath.ToSlash(dir), "/")
+	return CheckProtectedPathInCwd(rawPath, "")
+}
+
+// CheckProtectedPathInCwd returns a block message when rawPath is protected.
+// Relative paths are resolved against cwd (falling back to os.Getwd()), and
+// both the lexical and symlink-resolved paths are checked so in-repo symlinks
+// (e.g. benign.txt -> .env) and relative subdir cwds cannot bypass the guard.
+func CheckProtectedPathInCwd(rawPath, cwd string) string {
+	candidates, migTargets := expandProtectedCandidates(rawPath, cwd)
+	for _, cand := range candidates {
+		if msg := checkStaticProtected(rawPath, cand); msg != "" {
+			return msg
+		}
 	}
+	for _, target := range migTargets {
+		blocked, gitErr := trackedInGit(target)
+		if !blocked {
+			continue
+		}
+		if gitErr != "" {
+			return fmt.Sprintf("Blocked edit to %s: migration tracking status could not be verified by git (%s). Ensure you are inside the git repository, add a new migration file, and regenerate atlas.sum with atlas migrate hash.", rawPath, gitErr)
+		}
+		return fmt.Sprintf("Blocked edit to %s: tracked files under a 'migrations' directory are immutable once applied. Add a new migration file and regenerate atlas.sum with atlas migrate hash.", rawPath)
+	}
+	return ""
+}
+
+func expandProtectedCandidates(rawPath, cwd string) (candidates []string, migTargets []string) {
+	seen := map[string]struct{}{}
+	addCand := func(p string) {
+		if p == "" {
+			return
+		}
+		clean := filepath.Clean(p)
+		if _, ok := seen[clean]; ok {
+			return
+		}
+		seen[clean] = struct{}{}
+		candidates = append(candidates, clean)
+	}
+
+	rawClean := filepath.Clean(rawPath)
+	addCand(rawClean)
+
+	base := strings.TrimSpace(cwd)
+	if base == "" {
+		if wd, err := os.Getwd(); err == nil {
+			base = wd
+		}
+	}
+	var joined string
+	if filepath.IsAbs(rawPath) {
+		joined = rawClean
+	} else if base != "" {
+		joined = filepath.Clean(filepath.Join(base, rawPath))
+	} else {
+		joined = rawClean
+	}
+	addCand(joined)
+
+	resolved := ""
+	if r, err := resolveNonStrict(joined); err == nil && r != "" {
+		resolved = r
+		addCand(resolved)
+	}
+
+	// Collect concrete target paths to verify via git ls-files when any
+	// lexical or symlink-resolved representation lives under a 'migrations' dir.
+	seenMig := map[string]struct{}{}
+	addMig := func(p string) {
+		if p == "" {
+			return
+		}
+		if _, ok := seenMig[p]; ok {
+			return
+		}
+		seenMig[p] = struct{}{}
+		migTargets = append(migTargets, p)
+	}
+	if hasPathSegment(resolved, "migrations") {
+		addMig(resolved)
+	}
+	if hasPathSegment(joined, "migrations") {
+		if resolved != "" {
+			addMig(resolved)
+		} else {
+			addMig(joined)
+		}
+	}
+	if hasPathSegment(rawClean, "migrations") {
+		if resolved != "" {
+			addMig(resolved)
+		} else {
+			addMig(joined)
+		}
+	}
+	return candidates, migTargets
+}
+
+func dirSegments(norm string) []string {
+	dir := filepath.Dir(norm)
+	if dir == "." || dir == string(filepath.Separator) {
+		return nil
+	}
+	return strings.Split(filepath.ToSlash(dir), "/")
+}
+
+func hasPathSegment(norm, target string) bool {
+	if norm == "" {
+		return false
+	}
+	for _, seg := range dirSegments(norm) {
+		if seg == target {
+			return true
+		}
+	}
+	return false
+}
+
+func checkStaticProtected(rawPath, norm string) string {
+	name := filepath.Base(norm)
+	parts := dirSegments(norm)
 	if isProtectedEnvName(name) {
 		return fmt.Sprintf("Blocked edit to %s: environment files matching .env are protected unless they end in .example, .template, or .sample. Change host env through deploy/desired-env.lkal and the kisage tools, or edit a tracked template file instead.", rawPath)
 	}
@@ -68,19 +184,6 @@ func CheckProtectedPath(rawPath string) string {
 			next = "Secret files are written by the host operator; ask the user to change them."
 		}
 		return fmt.Sprintf("Blocked edit to %s: files inside a '%s' directory are protected. %s", rawPath, seg, next)
-	}
-	for _, seg := range parts {
-		if seg != "migrations" {
-			continue
-		}
-		blocked, gitErr := trackedInGit(rawPath)
-		if !blocked {
-			return ""
-		}
-		if gitErr != "" {
-			return fmt.Sprintf("Blocked edit to %s: migration tracking status could not be verified by git (%s). Ensure you are inside the git repository, add a new migration file, and regenerate atlas.sum with atlas migrate hash.", rawPath, gitErr)
-		}
-		return fmt.Sprintf("Blocked edit to %s: tracked files under a 'migrations' directory are immutable once applied. Add a new migration file and regenerate atlas.sum with atlas migrate hash.", rawPath)
 	}
 	return ""
 }

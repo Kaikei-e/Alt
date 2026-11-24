@@ -1,0 +1,52 @@
+{
+  "alt-agent-harness": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" session-start",
+        "timeout": 30
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "run_command|Bash|shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" pre-shell",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|Edit|Write|NotebookEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" pre-edit",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|Edit|Write|NotebookEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" post-edit",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py\" stop",
+        "timeout": 30
+      }
+    ]
+  }
+}

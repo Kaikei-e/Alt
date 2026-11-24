@@ -34,7 +34,7 @@ func RunEventTime(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	}
 	var violations []string
 	for _, path := range payload.Paths {
-		if !IsGuardedPath(path) {
+		if !IsGuardedPathInCwd(path, payload.Cwd) {
 			continue
 		}
 		if call := FindEventTimeViolation(payload.AddedText[path]); call != "" {
@@ -46,6 +46,29 @@ func RunEventTime(ctx context.Context, args []string, stdin io.Reader, stdout, s
 		return 2
 	}
 	return 0
+}
+
+// IsGuardedPathInCwd checks rawPath and its cwd/symlink-resolved form.
+func IsGuardedPathInCwd(rawPath, cwd string) bool {
+	if IsGuardedPath(rawPath) {
+		return true
+	}
+	base := strings.TrimSpace(cwd)
+	var candidate string
+	if filepath.IsAbs(rawPath) {
+		candidate = rawPath
+	} else if base != "" {
+		candidate = filepath.Join(base, rawPath)
+	}
+	if candidate != "" {
+		if IsGuardedPath(candidate) {
+			return true
+		}
+		if resolved, err := resolveNonStrict(candidate); err == nil && resolved != "" && IsGuardedPath(resolved) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsGuardedPath reports whether rawPath is a non-test projector source file.

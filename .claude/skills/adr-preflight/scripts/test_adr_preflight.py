@@ -1302,6 +1302,41 @@ class AdrPreflightTests(unittest.TestCase):
         self.assertIn("FIX:", res.stdout)
         self.assertIn("docdag@v9.9.9", res.stdout)
 
+    def test_38_agy_camelcase_session_start_and_pretooluse_payloads(self) -> None:
+        ss_payload = json.dumps(
+            {
+                "conversationId": "agy-conv-42",
+                "hookEventName": "SessionStart",
+                "cwd": str(self.repo),
+            }
+        )
+        ss_res = self.run_preflight("--hook", stdin_data=ss_payload)
+        self.assertEqual(ss_res.returncode, 0, msg=ss_res.stderr)
+        self.assertTrue(ss_res.stdout.startswith("adr_preflight_enabled:"), msg=ss_res.stdout)
+
+        for tool_name, args_obj in (
+            ("write_file", {"Path": str(self.repo / "alt-backend/app/a.go"), "Content": "x"}),
+            ("edit_file", {"Path": str(self.repo / "tag-generator/b.py"), "Replacement": "y"}),
+            (
+                "replace_file_content",
+                {"TargetFile": str(self.repo / "mq-hub/c.go"), "ReplacementContent": "z"},
+            ),
+        ):
+            payload = json.dumps(
+                {
+                    "conversationId": "agy-conv-42",
+                    "hookEventName": "PreToolUse",
+                    "cwd": str(self.repo),
+                    "toolCall": {"id": "tc-1", "name": tool_name, "args": args_obj},
+                }
+            )
+            first = self.run_preflight("--hook", stdin_data=payload)
+            self.assertEqual(first.returncode, 2, msg=f"{tool_name}: {first.stderr}")
+            self.assertTrue(first.stderr.startswith("ADR PREFLIGHT (not an error)"), msg=first.stderr)
+
+            retry = self.run_preflight("--hook", stdin_data=payload)
+            self.assertEqual(retry.returncode, 0, msg=f"{tool_name} retry: {retry.stderr}")
+
 
 @unittest.skipUnless(shutil.which("docdag"), "docdag binary not found on PATH")
 class AdrPreflightRealRepoIntegrationTests(unittest.TestCase):

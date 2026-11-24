@@ -15,11 +15,11 @@ func repoRelIsGenerated(repoRoot, rel string) bool {
 	if norm == "" {
 		return false
 	}
-	repoResolved, err := filepath.Abs(repoRoot)
-	if err != nil {
+	repoResolved := resolveExisting(repoRoot)
+	if repoResolved == "" {
 		repoResolved = repoRoot
 	}
-	disk := filepath.Join(repoRoot, filepath.FromSlash(norm))
+	disk := filepath.Join(repoResolved, filepath.FromSlash(norm))
 	if info, err := os.Lstat(disk); err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 		if resolved, err := filepath.EvalSymlinks(disk); err == nil && pathInside(resolved, repoResolved) && fileHasGeneratedHeader(disk) {
 			return true

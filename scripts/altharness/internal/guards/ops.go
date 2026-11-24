@@ -209,8 +209,51 @@ func extractShellCScript(tokens []Token, start int) (string, bool) {
 }
 
 func classifyOpsTokens(tokens []Token, depth int) (string, error) {
-	envVars := map[string]string{}
 	best := ""
+
+	// 1. Check the command in argv[0] position (after env vars, control keywords,
+	//    and command wrappers like sudo/env/xargs/timeout/nohup) regardless of
+	//    quoting so `"docker" rm x`, `'docker' rm x`, `d'o'cker rm x`, and
+	//    `$'docker' rm x` are caught while positional quoted args like
+	//    `rg "docker rm"` or `echo "docker" rm` remain unflagged.
+	remaining, unwrappedEnv, _, extra := unwrapCommandPrefix(tokens)
+	for _, script := range extra {
+		rule, err := ClassifyOps(script, depth+1)
+		if err != nil {
+			return "", err
+		}
+		best = pickOps(best, rule)
+	}
+	if len(remaining) > 0 {
+		cmdBase := baseName(remaining[0].Text)
+		if cmdBase == "docker" || cmdBase == "docker-compose" {
+			texts := make([]string, len(remaining))
+			for i, t := range remaining {
+				texts[i] = t.Text
+			}
+			best = pickOps(best, classifyDockerSegment(texts, unwrappedEnv))
+		} else if isShellName(cmdBase) {
+			if script, ok := extractShellCScript(remaining, 0); ok {
+				rule, err := ClassifyOps(script, depth+1)
+				if err != nil {
+					return "", err
+				}
+				best = pickOps(best, rule)
+			}
+		} else if cmdBase == "eval" {
+			for _, nested := range extractNestedScripts(remaining) {
+				rule, err := ClassifyOps(nested, depth+1)
+				if err != nil {
+					return "", err
+				}
+				best = pickOps(best, rule)
+			}
+		}
+	}
+
+	// 2. Scan remaining unquoted tokens for embedded docker/shell invocations
+	//    (e.g. `echo a\; docker rm x` or `for c in ...; do docker rm $c`).
+	envVars := map[string]string{}
 	for idx, tok := range tokens {
 		if envAssignRE.MatchString(tok.Text) {
 			parts := strings.SplitN(tok.Text, "=", 2)
@@ -298,6 +341,8 @@ func opsJSON(decision, reason string) string {
 	return pythonJSON(payload) + "\n"
 }
 
+const opsUsageLine = "usage: guard_ops_commands.py [-h] [--on-match {ask,deny}]"
+
 // RunOps is the docker/compose PreToolUse guard. It exits 0 and writes a JSON decision on match.
 func RunOps(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = ctx
@@ -309,18 +354,32 @@ func RunOps(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	}
 	onMatch := "ask"
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--on-match" && i+1 < len(args) {
+		arg := args[i]
+		switch {
+		case arg == "-h" || arg == "--help":
+			fmt.Fprintln(stdout, opsUsageLine)
+			return 0
+		case arg == "--on-match":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s\nguard_ops_commands.py: error: argument --on-match: expected one argument\n", opsUsageLine)
+				return 2
+			}
 			onMatch = args[i+1]
 			i++
-			continue
-		}
-		if strings.HasPrefix(args[i], "--on-match=") {
-			onMatch = strings.TrimPrefix(args[i], "--on-match=")
+		case strings.HasPrefix(arg, "--on-match="):
+			onMatch = strings.TrimPrefix(arg, "--on-match=")
+		default:
+			fmt.Fprintf(stderr, "%s\nguard_ops_commands.py: error: unrecognized arguments: %s\n", opsUsageLine, arg)
+			return 2
 		}
 	}
 	if onMatch != "ask" && onMatch != "deny" {
-		fmt.Fprintf(stderr, "usage: guard_ops_commands.py [-h] [--on-match {ask,deny}]\nguard_ops_commands.py: error: argument --on-match: invalid choice: '%s' (choose from 'ask', 'deny')\n", onMatch)
+		fmt.Fprintf(stderr, "%s\nguard_ops_commands.py: error: argument --on-match: invalid choice: '%s' (choose from 'ask', 'deny')\n", opsUsageLine, onMatch)
 		return 2
+	}
+	if stdin == nil {
+		fmt.Fprint(stdout, opsJSON(onMatch, opsUnreadable))
+		return 0
 	}
 	raw, err := io.ReadAll(stdin)
 	if err != nil {

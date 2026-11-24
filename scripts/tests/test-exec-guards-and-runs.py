@@ -8,33 +8,31 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
-import importlib
-import io
 import json
 import os
 import pathlib
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
-import unittest.mock
 import zipfile
 from dataclasses import dataclass
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
+EXEC_SCRIPT = HARNESS_DIR / "guard_exec_commands.py"
+SCOPE_SCRIPT = HARNESS_DIR / "guard_packet_scope.py"
+HARNESS_RUN_SCRIPT = HARNESS_DIR / "harness_run.py"
 CLAUDE_HOOK_SH = ROOT / ".claude" / "hooks" / "deny-unsafe-commands.sh"
 FRONTEND_SH = ROOT / "scripts" / "lint" / "frontend.sh"
-
-if str(HARNESS_DIR) not in sys.path:
-    sys.path.insert(0, str(HARNESS_DIR))
 
 GIT_BIN = shutil.which("git")
 BASH_BIN = shutil.which("bash")
 BLOCKED_RC = 2
 INIT_TSV_LINES = 2
+STATUS_TEXT_LINES = 8
 PAR_BASE = 2
 PAR_UP = 4
 PAR_CAP = 8
@@ -66,31 +64,14 @@ class RunResult:
     stderr: str
 
 
-class _BytesTextStdin:
-    """Minimal stdin stub providing both .read() and .buffer.read()."""
-
-    def __init__(self, raw_bytes: bytes) -> None:
-        self.buffer = io.BytesIO(raw_bytes)
-        self._text = raw_bytes.decode("utf-8", errors="replace")
-
-    def read(self) -> str:
-        return self._text
-
-
 def invoke_main(
-    mod: object,
+    script: pathlib.Path,
     *,
     argv: list[str] | None = None,
     stdin_text: str | None = None,
     env: dict[str, str] | None = None,
     cwd: pathlib.Path | None = None,
 ) -> RunResult:
-    raw_bytes = stdin_text.encode("utf-8") if stdin_text is not None else b""
-    out_buf = io.StringIO()
-    err_buf = io.StringIO()
-    fake_stdin = _BytesTextStdin(raw_bytes)
-    main_fn = mod.main  # type: ignore[attr-defined]
-
     clean_env = dict(os.environ)
     for key in (
         "ALT_HARNESS_ROLE",
@@ -101,27 +82,16 @@ def invoke_main(
         clean_env.pop(key, None)
     if env:
         clean_env.update(env)
-
-    orig_cwd = pathlib.Path.cwd()
-    rc = 0
-    try:
-        if cwd is not None:
-            os.chdir(cwd)
-        with (
-            unittest.mock.patch.dict(os.environ, clean_env, clear=True),
-            unittest.mock.patch.object(sys, "stdin", fake_stdin),
-            contextlib.redirect_stdout(out_buf),
-            contextlib.redirect_stderr(err_buf),
-        ):
-            try:
-                rc = main_fn(argv) if argv is not None else main_fn()
-            except SystemExit as exc:
-                code = exc.code
-                rc = code if isinstance(code, int) else (1 if code else 0)
-    finally:
-        if cwd is not None:
-            os.chdir(orig_cwd)
-    return RunResult(returncode=rc, stdout=out_buf.getvalue(), stderr=err_buf.getvalue())
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [sys.executable, str(script), *(argv or [])],
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+        env=clean_env,
+        cwd=str(cwd) if cwd is not None else str(ROOT),
+        check=False,
+    )
+    return RunResult(returncode=res.returncode, stdout=res.stdout, stderr=res.stderr)
 
 
 async def _exec_bash_script_async(
@@ -213,28 +183,71 @@ def edit_payload(path: str, tool_name: str = "Edit", *, cwd: str | None = None) 
     return json.dumps(payload)
 
 
-def init_git_repo(task_packet_mod: object, repo: pathlib.Path) -> None:
+def _run_git(repo: pathlib.Path, *args: str) -> None:
     assert GIT_BIN is not None
-    run_git = task_packet_mod._run_git_bytes  # type: ignore[attr-defined]
-    assert run_git(repo, GIT_BIN, "init", "-b", "feat/test-branch").returncode == 0
-    assert run_git(repo, GIT_BIN, "config", "user.email", "test@example.com").returncode == 0
-    assert run_git(repo, GIT_BIN, "config", "user.name", "Harness Test").returncode == 0
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT_BIN, "-C", str(repo), *args],
+        capture_output=True,
+        check=True,
+    )
+
+
+def init_git_repo(_unused: object, repo: pathlib.Path) -> None:
+    _run_git(repo, "init", "-b", "feat/test-branch")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Harness Test")
 
 
 def git_commit_file(
-    task_packet_mod: object,
+    _unused: object,
     repo: pathlib.Path,
     rel_path: str,
     content: str,
     message: str,
 ) -> None:
-    assert GIT_BIN is not None
-    run_git = task_packet_mod._run_git_bytes  # type: ignore[attr-defined]
     target = repo / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    assert run_git(repo, GIT_BIN, "add", "--", rel_path).returncode == 0
-    assert run_git(repo, GIT_BIN, "commit", "-m", message).returncode == 0
+    _run_git(repo, "add", "--", rel_path)
+    _run_git(repo, "commit", "-m", message)
+
+
+def eval_parallelism_via_cli(
+    harness_run_script: pathlib.Path,
+    outcomes: list[str],
+    *,
+    base: int = PAR_BASE,
+) -> dict[str, object]:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        init_git_repo(None, repo)
+        env = {"ALT_HARNESS_REPO_ROOT": str(repo)}
+        for idx, res_name in enumerate(outcomes):
+            r = invoke_main(
+                harness_run_script,
+                argv=[
+                    "log",
+                    "--phase",
+                    "handoff",
+                    "--decision",
+                    f"handoff P-{idx}: {res_name}",
+                    "--why",
+                    "test outcome",
+                    "--evidence",
+                    f".harness/runs/feat-test-branch/handoffs/P-{idx}.md",
+                    "--result",
+                    res_name,
+                ],
+                env=env,
+            )
+            assert r.returncode == 0, r.stderr
+        st = invoke_main(
+            harness_run_script,
+            argv=["status", "--format", "json", "--base-parallelism", str(base)],
+            env=env,
+        )
+        assert st.returncode == 0, st.stderr
+        return json.loads(st.stdout)["current_run"]["parallelism"]
 
 
 def sample_packet_md(
@@ -825,10 +838,20 @@ def _verify_subagent_and_parallelism(
     )
 
     res_status_txt = invoke_main(harness_run_mod, argv=["status"], env=env)
+    txt_lines = [ln for ln in res_status_txt.stdout.splitlines() if ln.strip()]
     check(
-        "status text output succeeds and mentions parallelism",
-        res_status_txt.returncode == 0 and "parallelism" in res_status_txt.stdout.lower(),
+        "status text output succeeds with full 8-line summary and parallelism",
+        res_status_txt.returncode == 0
+        and len(txt_lines) == STATUS_TEXT_LINES
+        and "parallelism" in res_status_txt.stdout.lower(),
         res_status_txt.stdout,
+    )
+
+    res_status_xml = invoke_main(harness_run_mod, argv=["status", "--format", "xml"], env=env)
+    check(
+        "status --format xml exits 2",
+        res_status_xml.returncode == BLOCKED_RC,
+        f"rc={res_status_xml.returncode} err={res_status_xml.stderr!r}",
     )
 
     for idx in range(2, 11):
@@ -853,13 +876,35 @@ def _verify_subagent_and_parallelism(
 
     res_st_up = invoke_main(harness_run_mod, argv=["status", "--format", "json"], env=env)
     st_up = json.loads(res_st_up.stdout)
+    required_cur_keys = {
+        "branch",
+        "sanitized_branch",
+        "path",
+        "decisions_count",
+        "active_packet",
+        "packets",
+        "handoffs",
+        "verify",
+        "evidence",
+        "subagents_count",
+        "parallelism",
+    }
+    check(
+        "status --format json includes runs array and full current_run schema",
+        res_st_up.returncode == 0
+        and isinstance(st_up.get("runs"), list)
+        and required_cur_keys.issubset(st_up.get("current_run", {}).keys()),
+        res_st_up.stdout,
+    )
     check(
         "LOOP-06 scales up to 4 on 10 clean outcomes",
         res_st_up.returncode == 0 and st_up["current_run"]["parallelism"]["recommended"] == PAR_UP,
         res_st_up.stdout,
     )
 
-    calc = harness_run_mod.compute_recommended_parallelism  # type: ignore[attr-defined]
+    def calc(outcomes: list[str], base: int = PAR_BASE) -> dict[str, object]:
+        return eval_parallelism_via_cli(harness_run_mod, outcomes, base=base)
+
     check("LOOP-06 empty outcomes stays at base 2", calc([])["recommended"] == PAR_BASE)
     check(
         "LOOP-06 9 adopted + 1 reverted scales +2 -> 4",
@@ -1052,6 +1097,9 @@ def test_mf06_exec01_bypasses(exec_mod: object) -> None:
             None,
         ),
         ("bash --init-file -lc cargo fix", 'bash --init-file rcfile -lc "cargo fix"', None),
+        ("ANSI-C $'golangci-lint' --fix", "$'golangci-lint' run --fix", None),
+        ("ANSI-C hex $'\\x67olangci-lint' --fix", "$'\\x67olangci-lint' run --fix", None),
+        ('$"golangci-lint" --fix', '$"golangci-lint" run --fix', None),
     ]
     for label, cmd, agent_id in mf06_cases:
         res = invoke_main(exec_mod, stdin_text=bash_payload(cmd, agent_id=agent_id))
@@ -1162,9 +1210,14 @@ def test_mf07_scope_cwd(
         )
 
 
-def test_c01_c03_harness_run_hardening(harness_run_mod: object, task_packet_mod: object) -> None:
+def test_c01_c03_harness_run_hardening(
+    harness_run_mod: pathlib.Path, task_packet_mod: object
+) -> None:
     sys.stdout.write("C-01 / C-03: LOOP-06 window=10 scale-up guard & activate-packet validation\n")
-    calc = harness_run_mod.compute_recommended_parallelism  # type: ignore[attr-defined]
+
+    def calc(outcomes: list[str], base: int = PAR_BASE) -> dict[str, object]:
+        return eval_parallelism_via_cli(harness_run_mod, outcomes, base=base)
+
     check(
         "C-01 1 adopted outcome holds base 2 (no premature scale-up)",
         calc(["adopted"])["recommended"] == PAR_BASE,
@@ -1308,17 +1361,12 @@ def test_cs02_frontend_sha256_and_mktemp() -> None:
 
 
 def main() -> int:
-    task_packet_mod = importlib.import_module("task_packet")
-    exec_mod = importlib.import_module("guard_exec_commands")
-    scope_mod = importlib.import_module("guard_packet_scope")
-    harness_run_mod = importlib.import_module("harness_run")
-
-    test_exec01_commands(exec_mod, harness_run_mod, task_packet_mod)
-    test_mf06_exec01_bypasses(exec_mod)
-    test_exec02_scope(scope_mod, harness_run_mod, task_packet_mod)
-    test_mf07_scope_cwd(scope_mod, harness_run_mod, task_packet_mod)
-    test_loop03_exec03_loop06_runs(harness_run_mod, task_packet_mod)
-    test_c01_c03_harness_run_hardening(harness_run_mod, task_packet_mod)
+    test_exec01_commands(EXEC_SCRIPT, HARNESS_RUN_SCRIPT, None)
+    test_mf06_exec01_bypasses(EXEC_SCRIPT)
+    test_exec02_scope(SCOPE_SCRIPT, HARNESS_RUN_SCRIPT, None)
+    test_mf07_scope_cwd(SCOPE_SCRIPT, HARNESS_RUN_SCRIPT, None)
+    test_loop03_exec03_loop06_runs(HARNESS_RUN_SCRIPT, None)
+    test_c01_c03_harness_run_hardening(HARNESS_RUN_SCRIPT, None)
     test_cs02_frontend_sha256_and_mktemp()
 
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")

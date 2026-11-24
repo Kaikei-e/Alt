@@ -100,6 +100,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return guards.RunEventTime(ctx, args[1:], stdin, stdout, stderr)
 	case "harness-run":
 		return guards.RunHarness(ctx, args[1:], stdin, stdout, stderr)
+	case "agy-hook":
+		return guards.RunAgyHook(ctx, args[1:], stdin, stdout, stderr)
 	case "gate":
 		if len(args) != 2 {
 			fmt.Fprintln(stderr, "usage: alt-harness gate <repo|harness|both>")

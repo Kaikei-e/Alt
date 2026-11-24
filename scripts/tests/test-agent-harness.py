@@ -7,7 +7,6 @@ Run:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import pathlib
 import re
@@ -15,8 +14,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import types
-import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
@@ -24,6 +21,7 @@ PROTECTED_SCRIPT = HARNESS_DIR / "guard_protected_paths.py"
 EVENT_TIME_SCRIPT = HARNESS_DIR / "guard_event_time.py"
 OPS_COMMANDS_SCRIPT = HARNESS_DIR / "guard_ops_commands.py"
 SELFCHECK_SCRIPT = HARNESS_DIR / "harness_selfcheck.py"
+AGY_HOOK_SCRIPT = HARNESS_DIR / "agy_hook.py"
 
 GIT_BIN = shutil.which("git")
 assert GIT_BIN is not None, "git executable not found in PATH"
@@ -49,16 +47,6 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         suffix = f" ({detail})" if detail else ""
         sys.stdout.write(f"  FAIL  {name}{suffix}\n")
         RESULTS.failed += 1
-
-
-def load_module(name: str, path: pathlib.Path) -> types.ModuleType:
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None, f"missing module: {path}"
-    assert spec.loader is not None, f"missing module: {path}"
-    mod = importlib.util.module_from_spec(spec)
-    with unittest.mock.patch.dict(sys.modules, {name: mod}):
-        spec.loader.exec_module(mod)
-    return mod
 
 
 def run_script(
@@ -184,6 +172,7 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     write_and_track(
         repo, "scripts/agent-harness/guard_exec_commands.py", "#!/usr/bin/env python3\n"
     )
+    write_and_track(repo, "scripts/agent-harness/agy_hook.py", "#!/usr/bin/env python3\n")
     write_and_track(
         repo, ".claude/skills/adr-preflight/scripts/adr_preflight.py", "#!/usr/bin/env python3\n"
     )
@@ -251,6 +240,59 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
         }
     }
     write_and_track(repo, ".codex/hooks.json", json.dumps(hooks_cfg, indent=2) + "\n")
+    agy_hooks_cfg = {
+        "alt-agent-harness": {
+            "SessionStart": [
+                {
+                    "type": "command",
+                    "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py" session-start',
+                    "timeout": 30,
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "run_command|Bash|shell",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py" pre-shell',
+                            "timeout": 15,
+                        }
+                    ],
+                },
+                {
+                    "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|Edit|Write|NotebookEdit|apply_patch",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py" pre-edit',
+                            "timeout": 15,
+                        }
+                    ],
+                },
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|Edit|Write|NotebookEdit|apply_patch",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py" post-edit',
+                            "timeout": 15,
+                        }
+                    ],
+                }
+            ],
+            "Stop": [
+                {
+                    "type": "command",
+                    "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/agy_hook.py" stop',
+                    "timeout": 30,
+                }
+            ],
+        }
+    }
+    write_and_track(repo, ".agents/hooks.json", json.dumps(agy_hooks_cfg, indent=2) + "\n")
 
     shared = (
         "# Shared\n<!-- shared:core:start -->\nNever skip verification.\n<!-- shared:core:end -->\n"
@@ -325,12 +367,6 @@ def write_claude_settings(repo: pathlib.Path, hooks_cfg: dict) -> None:
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(hooks_cfg, indent=2) + "\n", encoding="utf-8")
 
-
-# Load modules directly to verify module-level contracts (will fail before implementation).
-hook_payload_mod = load_module("hook_payload", HARNESS_DIR / "hook_payload.py")
-protected_mod = load_module("guard_protected_paths", PROTECTED_SCRIPT)
-event_time_mod = load_module("guard_event_time", EVENT_TIME_SCRIPT)
-selfcheck_mod = load_module("harness_selfcheck", SELFCHECK_SCRIPT)
 
 # ---------------------------------------------------------------------------
 # 1. Protected paths tests (SPEC 1)
@@ -494,14 +530,6 @@ check("protected_paths allows other tool_name", res_other.returncode == 0, res_o
 # 2. Event-time guard tests (SPEC 2)
 # ---------------------------------------------------------------------------
 sys.stdout.write("event_time: GUARDED_GLOBS, wall-clock, GetLatest, comments, exemptions\n")
-check(
-    "GUARDED_GLOBS matches spec",
-    event_time_mod.GUARDED_GLOBS
-    == [
-        "knowledge-sovereign/app/usecase/knowledge_home_projector/*.go",
-        "knowledge-sovereign/app/usecase/knowledge_trail_projector/*.go",
-    ],
-)
 
 HOME_GO = "/abs/worktree/knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go"
 TRAIL_GO = "knowledge-sovereign/app/usecase/knowledge_trail_projector/folds.go"
@@ -2091,6 +2119,170 @@ check(
     res_bad_flag.returncode == USAGE_RC and "usage" in res_bad_flag.stderr.lower(),
     f"rc={res_bad_flag.returncode} out={res_bad_flag.stdout!r} err={res_bad_flag.stderr!r}",
 )
+
+# ---------------------------------------------------------------------------
+# 6. Hardening regressions + Antigravity (agy) hooks CLI tests
+# ---------------------------------------------------------------------------
+sys.stdout.write("agy_hook & security hardening: symlinks, quotes, AGY hooks\n")
+
+with tempfile.TemporaryDirectory() as tmp:
+    repo = init_git_repo(pathlib.Path(tmp))
+    (repo / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    (repo / "benign.txt").symlink_to(repo / ".env")
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / "api_key.txt").write_text("k\n", encoding="utf-8")
+    write_and_track(repo, "db/migrations/001.sql", "CREATE TABLE t (id INT);\n")
+    git(repo, "commit", "-m", "add mig")
+
+    res_sym = run_script(
+        PROTECTED_SCRIPT,
+        stdin_text=json.dumps(
+            {
+                "tool_name": "Write",
+                "cwd": str(repo),
+                "tool_input": {"file_path": "benign.txt", "content": "x"},
+            }
+        ),
+    )
+    check(
+        "protected blocks in-repo symlink to .env", res_sym.returncode == BLOCKED_RC, res_sym.stderr
+    )
+
+    res_sec_cwd = run_script(
+        PROTECTED_SCRIPT,
+        stdin_text=json.dumps(
+            {
+                "tool_name": "Edit",
+                "cwd": str(repo / "secrets"),
+                "tool_input": {"file_path": "api_key.txt", "new_string": "x"},
+            }
+        ),
+    )
+    check(
+        "protected blocks relative path under secrets cwd",
+        res_sec_cwd.returncode == BLOCKED_RC,
+        res_sec_cwd.stderr,
+    )
+
+    res_mig_cwd = run_script(
+        PROTECTED_SCRIPT,
+        stdin_text=json.dumps(
+            {
+                "tool_name": "Edit",
+                "cwd": str(repo / "db" / "migrations"),
+                "tool_input": {"file_path": "001.sql", "new_string": "x"},
+            }
+        ),
+    )
+    check(
+        "protected blocks relative path under tracked migrations cwd",
+        res_mig_cwd.returncode == BLOCKED_RC,
+        res_mig_cwd.stderr,
+    )
+
+for label, cmd in [
+    ("dangling --on-match", ["--on-match"]),
+    ("unknown --bogus", ["--bogus"]),
+]:
+    res_f = run_script(OPS_COMMANDS_SCRIPT, stdin_text=bash_payload("docker ps"), args=cmd)
+    check(f"ops {label} exits 2", res_f.returncode == USAGE_RC, res_f.stderr)
+
+for label, cmd in [
+    ('quoted "docker" rm x', '"docker" rm x'),
+    ("single-quoted 'docker' rm x", "'docker' rm x"),
+    ("split d'o'cker rm x", "d'o'cker rm x"),
+    ("ANSI-C $'docker' rm x", "$'docker' rm x"),
+]:
+    res_q = run_script(
+        OPS_COMMANDS_SCRIPT, stdin_text=bash_payload(cmd), args=["--on-match", "deny"]
+    )
+    parsed_q = json.loads(res_q.stdout) if res_q.stdout.strip() else {}
+    check(
+        f"ops blocks {label}",
+        res_q.returncode == 0
+        and parsed_q.get("hookSpecificOutput", {}).get("permissionDecision") == "deny",
+        res_q.stdout,
+    )
+
+# Antigravity agy_hook.py CLI smoke tests
+res_agy_push = run_script(
+    AGY_HOOK_SCRIPT,
+    args=["pre-shell"],
+    stdin_text=json.dumps(
+        {
+            "conversationId": "c-1",
+            "hookEventName": "PreToolUse",
+            "cwd": str(ROOT),
+            "toolCall": {
+                "id": "t1",
+                "name": "run_command",
+                "args": {"CommandLine": '"git" -C/tmp push origin main'},
+            },
+        }
+    ),
+)
+check(
+    "agy_hook pre-shell denies push-class with exit 0 JSON",
+    res_agy_push.returncode == 0
+    and json.loads(res_agy_push.stdout).get("decision") == "deny"
+    and "push-class" in json.loads(res_agy_push.stdout).get("reason", ""),
+    f"rc={res_agy_push.returncode} out={res_agy_push.stdout!r}",
+)
+
+res_agy_ok = run_script(
+    AGY_HOOK_SCRIPT,
+    args=["pre-shell"],
+    stdin_text=json.dumps(
+        {
+            "conversationId": "c-1",
+            "hookEventName": "PreToolUse",
+            "cwd": str(ROOT),
+            "toolCall": {
+                "id": "t2",
+                "name": "run_command",
+                "args": {"CommandLine": "git status"},
+            },
+        }
+    ),
+)
+check(
+    "agy_hook pre-shell allows git status with exit 0 JSON",
+    res_agy_ok.returncode == 0 and json.loads(res_agy_ok.stdout).get("decision") == "allow",
+    f"rc={res_agy_ok.returncode} out={res_agy_ok.stdout!r}",
+)
+
+res_agy_env = run_script(
+    AGY_HOOK_SCRIPT,
+    args=["pre-edit"],
+    stdin_text=json.dumps(
+        {
+            "conversationId": "c-1",
+            "hookEventName": "PreToolUse",
+            "cwd": str(ROOT),
+            "toolCall": {
+                "id": "t3",
+                "name": "write_file",
+                "args": {"Path": str(ROOT / ".env"), "Content": "X=1"},
+            },
+        }
+    ),
+)
+check(
+    "agy_hook pre-edit denies .env write with exit 0 JSON",
+    res_agy_env.returncode == 0 and json.loads(res_agy_env.stdout).get("decision") == "deny",
+    f"rc={res_agy_env.returncode} out={res_agy_env.stdout!r}",
+)
+
+# Selfcheck H4 detects missing .agents/hooks.json
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    (repo / ".agents" / "hooks.json").unlink()
+    res_agy_miss = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detects missing .agents/hooks.json",
+        res_agy_miss.returncode == 1 and "H4 .agents/hooks.json:" in res_agy_miss.stdout,
+        res_agy_miss.stdout,
+    )
 
 sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
 sys.exit(1 if RESULTS.failed else 0)

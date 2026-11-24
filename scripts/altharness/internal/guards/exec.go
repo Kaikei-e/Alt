@@ -15,6 +15,7 @@ const (
 	execRulePriorityE1 = 3
 	execRulePriorityE2 = 2
 	execRulePriorityE3 = 1
+	pushBlockMessage   = "BLOCKED: git/gh push-class commands are forbidden by user policy. Ask the user to run push manually."
 )
 
 var (
@@ -24,6 +25,8 @@ var (
 	falseBools        = map[string]struct{}{"false": {}, "0": {}, "no": {}, "off": {}}
 	cargoValueFlags   = map[string]struct{}{"-C": {}, "--manifest-path": {}, "--target-dir": {}, "--config": {}, "--color": {}, "-Z": {}}
 	makeValueFlags    = map[string]struct{}{"-C": {}, "-f": {}, "-I": {}, "-j": {}, "-l": {}, "-o": {}, "-W": {}, "--directory": {}, "--file": {}, "--makefile": {}, "--jobs": {}}
+	gitValueFlags     = map[string]struct{}{"-C": {}, "-c": {}, "--git-dir": {}, "--work-tree": {}, "--namespace": {}, "--super-prefix": {}, "--config-env": {}, "--exec-path": {}}
+	gitAttachedFlags  = []string{"-C", "-c"}
 	wrapperValueFlags = map[string]map[string]struct{}{
 		"env":     {"-u": {}, "--unset": {}, "-C": {}, "--chdir": {}},
 		"sudo":    {"-u": {}, "-g": {}, "-C": {}, "-h": {}, "-p": {}, "-r": {}, "-t": {}, "-T": {}, "-U": {}, "--user": {}, "--group": {}},
@@ -507,6 +510,167 @@ func extractNestedScripts(remaining []Token) []string {
 	return nil
 }
 
+// checkPushCmd inspects an unwrapped command argv for forbidden git/gh
+// push-class operations (handling attached flags like -C/path and --git-dir=...).
+func checkPushCmd(cmd []string) string {
+	if len(cmd) == 0 {
+		return ""
+	}
+	base := baseName(cmd[0])
+	switch base {
+	case "git":
+		return checkGitPushCmd(cmd[1:])
+	case "gh":
+		return checkGhPushCmd(cmd[1:])
+	default:
+		return ""
+	}
+}
+
+func checkGitPushCmd(args []string) string {
+	i := 0
+	for i < len(args) {
+		tok := args[i]
+		if tok == "--" {
+			i++
+			break
+		}
+		if _, ok := gitValueFlags[tok]; ok {
+			i += 2
+			continue
+		}
+		attached := false
+		for _, pfx := range gitAttachedFlags {
+			if strings.HasPrefix(tok, pfx) && len(tok) > len(pfx) {
+				attached = true
+				break
+			}
+		}
+		if attached || strings.HasPrefix(tok, "-") {
+			i++
+			continue
+		}
+		break
+	}
+	if i >= len(args) {
+		return ""
+	}
+	sub := args[i]
+	rest := args[i+1:]
+	switch sub {
+	case "push":
+		return "git push"
+	case "remote":
+		action, _ := firstPositional(rest, 0, map[string]struct{}{})
+		switch action {
+		case "add", "set-url", "update":
+			return "git remote " + action
+		}
+	case "fetch":
+		for _, a := range rest {
+			if a == "push" || a == "--push" {
+				return "git fetch ... push"
+			}
+		}
+	}
+	return ""
+}
+
+func checkGhPushCmd(args []string) string {
+	group, next := firstPositional(args, 0, map[string]struct{}{})
+	if group == "" {
+		return ""
+	}
+	action, _ := firstPositional(args, next, map[string]struct{}{})
+	switch group {
+	case "pr":
+		if action == "create" || action == "merge" {
+			return "gh pr " + action
+		}
+	case "release":
+		if action == "create" || action == "upload" {
+			return "gh release " + action
+		}
+	case "repo":
+		if action == "sync" {
+			return "gh repo sync"
+		}
+	case "workflow":
+		if action == "run" {
+			return "gh workflow run"
+		}
+	case "run":
+		if action == "rerun" {
+			return "gh run rerun"
+		}
+	}
+	return ""
+}
+
+func checkPushSegment(seg []Token, depth int) (string, error) {
+	remaining, _, _, extra := unwrapCommandPrefix(seg)
+	for _, script := range extra {
+		hit, err := CheckPushCommand(script, depth+1)
+		if err != nil || hit != "" {
+			return hit, err
+		}
+	}
+	if len(remaining) == 0 {
+		return "", nil
+	}
+	cmd := make([]string, len(remaining))
+	for i, t := range remaining {
+		cmd[i] = t.Text
+	}
+	if hit := checkPushCmd(cmd); hit != "" {
+		return hit, nil
+	}
+	for _, nestedScript := range extractNestedScripts(remaining) {
+		hit, err := CheckPushCommand(nestedScript, depth+1)
+		if err != nil || hit != "" {
+			return hit, err
+		}
+	}
+	return "", nil
+}
+
+// CheckPushCommand detects forbidden git/gh push-class operations using the
+// token-aware shell parser (handling quotes, ANSI-C escapes, wrappers, and
+// attached git flags like -C/path or --git-dir=...).
+func CheckPushCommand(command string, depth int) (string, error) {
+	if depth > execMaxRecursion {
+		return "", fmt.Errorf("command nesting exceeded maximum recursion depth")
+	}
+	if strings.TrimSpace(command) == "" {
+		return "", nil
+	}
+	for _, seg := range splitShellSegments(command) {
+		hit, err := checkPushSegment(seg, depth)
+		if err != nil || hit != "" {
+			return hit, err
+		}
+	}
+	for _, sub := range extractSubstitutions(command) {
+		hit, err := CheckPushCommand(sub, depth+1)
+		if err != nil || hit != "" {
+			return hit, err
+		}
+	}
+	return "", nil
+}
+
+// CheckPushArgv detects forbidden git/gh push-class operations in argv form.
+func CheckPushArgv(argv []string) (string, error) {
+	if len(argv) == 0 {
+		return "", nil
+	}
+	tokens := make([]Token, len(argv))
+	for i, part := range argv {
+		tokens[i] = Token{Text: part, Quoted: false}
+	}
+	return checkPushSegment(tokens, 0)
+}
+
 func classifySegment(seg []Token, enforceE2, enforceE3 bool, depth int) (*execVerdict, error) {
 	remaining, envVars, sawNohup, extra := unwrapCommandPrefix(seg)
 	var best *execVerdict
@@ -621,6 +785,21 @@ func RunExec(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if kind == execIgnore {
 		return 0
 	}
+	var pushHit string
+	var pushErr error
+	if cmdList != nil {
+		pushHit, pushErr = CheckPushArgv(cmdList)
+	} else {
+		pushHit, pushErr = CheckPushCommand(cmdStr, 0)
+	}
+	if pushErr != nil {
+		fmt.Fprintf(stderr, "BLOCKED [EXEC-01]: command analysis failed (%s).\n", pushErr.Error())
+		return execBlockedRC
+	}
+	if pushHit != "" {
+		fmt.Fprintln(stderr, pushBlockMessage)
+		return execBlockedRC
+	}
 	repoRoot := ResolveRepoRoot("", "")
 	packet, pktErr := LoadActivePacket(repoRoot, "")
 	if pktErr != "" {
@@ -654,10 +833,6 @@ const (
 	execList
 	execWorker
 )
-
-func parseExecHook(raw []byte) (any, bool, error) {
-	return nil, false, nil
-}
 
 func parseExecHookResult(raw []byte) (int, string, []string, error) {
 	if !validUTF8(string(raw)) {
@@ -710,12 +885,7 @@ func jsonErrMsg(err error) string {
 	if err == nil {
 		return ""
 	}
-	msg := err.Error()
-	if i := strings.Index(msg, ":"); i >= 0 {
-		// encoding/json prefixes "invalid character"; keep the tail-ish message short
-		return msg
-	}
-	return msg
+	return err.Error()
 }
 
 func packetBool(packet map[string]any, key string, fallback bool) bool {

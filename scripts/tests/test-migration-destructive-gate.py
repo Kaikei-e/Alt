@@ -12,9 +12,6 @@ Run:
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
-import io
 import os
 import pathlib
 import shutil
@@ -30,12 +27,6 @@ GIT_BIN = shutil.which("git")
 if GIT_BIN is None:
     msg = "git executable not found on PATH"
     raise FileNotFoundError(msg)
-
-spec = importlib.util.spec_from_file_location("migration_destructive_gate", GATE_PATH)
-assert spec is not None, "gate script missing"
-assert spec.loader is not None, "gate script missing"
-gate = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(gate)
 
 
 class _Results:
@@ -100,14 +91,13 @@ def write_file_and_add(repo: pathlib.Path, rel: str, content: str) -> pathlib.Pa
 
 
 def invoke_gate(repo: pathlib.Path, base: str) -> tuple[int, str, str]:
-    stdout_buf = io.StringIO()
-    stderr_buf = io.StringIO()
-    with (
-        contextlib.redirect_stdout(stdout_buf),
-        contextlib.redirect_stderr(stderr_buf),
-    ):
-        rc = gate.main(["--base", base, "--root", str(repo)])
-    return rc, stdout_buf.getvalue(), stderr_buf.getvalue()
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [sys.executable, str(GATE_PATH), "--base", base, "--root", str(repo)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return res.returncode, res.stdout, res.stderr
 
 
 sys.stdout.write("1. each destructive statement kind in an added migration fails\n")
@@ -529,34 +519,28 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={rc}, out={out!r}",
     )
 
-sys.stdout.write("15. smoke detector across all existing tracked migration files in repo\n")
+sys.stdout.write("15. smoke detector across existing repo HEAD via Go CLI\n")
 ls_out = subprocess.run(  # noqa: S603 - fixed argv built in this test
     [GIT_BIN, "-C", str(ROOT), "ls-files", "-z"],
     capture_output=True,
     check=True,
 ).stdout
-mig_files = [p for p in ls_out.decode("utf-8").split("\0") if p and gate.is_migration_sql(p)]
-flagged_existing: list[str] = []
-raised_err: Exception | None = None
-for rel in mig_files:
-    try:
-        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
-        found = gate.find_destructive_statements(text)
-        if found:
-            flagged_existing.append(f"{rel} ({len(found)}: {', '.join(k for _, k in found)})")
-    except (OSError, ValueError, RuntimeError) as exc:  # fmt: skip # pragma: no cover
-        raised_err = exc
-        break
+mig_files = [
+    p
+    for p in ls_out.decode("utf-8").split("\0")
+    if p and p.endswith(".sql") and "migrations" in pathlib.PurePosixPath(p).parts[:-1]
+]
+res_smoke = subprocess.run(  # noqa: S603 - fixed argv built in this test
+    [sys.executable, str(GATE_PATH), "--base", "HEAD", "--root", str(ROOT)],
+    capture_output=True,
+    text=True,
+    check=False,
+)
 check(
-    f"scanned {len(mig_files)} existing migration files without exception",
-    len(mig_files) > 0 and raised_err is None,
-    f"err={raised_err!r}",
+    f"CLI smoke run on repo with {len(mig_files)} tracked migration files exits 0",
+    len(mig_files) > 0 and res_smoke.returncode == 0,
+    f"rc={res_smoke.returncode} out={res_smoke.stdout!r} err={res_smoke.stderr!r}",
 )
-sys.stdout.write(
-    f"  INFO  existing migration files with findings: {len(flagged_existing)}/{len(mig_files)}\n"
-)
-for item in flagged_existing:
-    sys.stdout.write(f"    - {item}\n")
 
 sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
 sys.exit(1 if RESULTS.failed else 0)

@@ -2,6 +2,8 @@ package guards
 
 import (
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/packet"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,10 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
-
-	"alt/scripts/altharness/internal/execx"
 )
 
 const (
@@ -176,7 +178,6 @@ func RunDirForBranch(repoRoot, branch string) (string, error) {
 	safe := SanitizeBranchName(ResolveGitBranch(repoRoot, branch))
 	target := resolveExisting(filepath.Join(runsBase, safe))
 	if !pathWithin(target, runsBase) && target != runsBase {
-		// target may not exist yet; compare lexically
 		rel, err := filepath.Rel(runsBase, filepath.Join(filepath.Join(repoRoot, ".harness", "runs"), safe))
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return "", fmt.Errorf("resolved run directory escapes .harness/runs: %s", target)
@@ -416,7 +417,11 @@ func RunHarness(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	sub := args[0]
 	rest := args[1:]
-	repoFlag, branch, rest := takeCommon(rest)
+	repoFlag, branch, rest, err := takeCommon(rest)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
 	repo := ResolveRepoRoot(repoFlag, "")
 	switch sub {
 	case "init":
@@ -424,11 +429,11 @@ func RunHarness(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	case "log":
 		return cmdLog(repo, branch, rest, stdout, stderr)
 	case "deactivate-packet":
-		return cmdDeactivate(repo, branch, stdout)
+		return cmdDeactivate(repo, branch, rest, stdout, stderr)
 	case "status":
 		return cmdStatus(repo, branch, rest, stdout, stderr)
 	case "subagent-stop":
-		return cmdSubagentStop(ctx, repo, branch, stdin)
+		return cmdSubagentStop(ctx, repo, branch, rest, stdin, stderr)
 	case "activate-packet":
 		return cmdActivate(ctx, repo, branch, rest, stdout, stderr)
 	case "record-handoff":
@@ -443,15 +448,21 @@ func harnessUsage() string {
 	return "usage: harness <init|log|activate-packet|deactivate-packet|record-handoff|subagent-stop|status> [flags]\n"
 }
 
-func takeCommon(args []string) (repo, branch string, rest []string) {
+func takeCommon(args []string) (repo, branch string, rest []string, err error) {
 	for i := 0; i < len(args); i++ {
 		switch {
-		case args[i] == "--repo-root" && i+1 < len(args):
+		case args[i] == "--repo-root":
+			if i+1 >= len(args) {
+				return "", "", nil, fmt.Errorf("argument --repo-root: expected one argument")
+			}
 			repo = args[i+1]
 			i++
 		case strings.HasPrefix(args[i], "--repo-root="):
 			repo = strings.TrimPrefix(args[i], "--repo-root=")
-		case args[i] == "--branch" && i+1 < len(args):
+		case args[i] == "--branch":
+			if i+1 >= len(args) {
+				return "", "", nil, fmt.Errorf("argument --branch: expected one argument")
+			}
 			branch = args[i+1]
 			i++
 		case strings.HasPrefix(args[i], "--branch="):
@@ -460,34 +471,86 @@ func takeCommon(args []string) (repo, branch string, rest []string) {
 			rest = append(rest, args[i])
 		}
 	}
-	return repo, branch, rest
+	return repo, branch, rest, nil
 }
 
-func flagValue(args []string, name string) (string, bool) {
+type parsedHarnessFlags struct {
+	values      map[string]string
+	bools       map[string]bool
+	positionals []string
+	help        bool
+}
+
+func parseSubFlags(args []string, valueNames, boolNames map[string]bool) (parsedHarnessFlags, error) {
+	out := parsedHarnessFlags{
+		values: map[string]string{},
+		bools:  map[string]bool{},
+	}
 	for i := 0; i < len(args); i++ {
-		if args[i] == name && i+1 < len(args) {
-			return args[i+1], true
+		a := args[i]
+		if a == "-h" || a == "--help" {
+			out.help = true
+			return out, nil
 		}
-		if strings.HasPrefix(args[i], name+"=") {
-			return strings.TrimPrefix(args[i], name+"="), true
+		if a == "--" {
+			out.positionals = append(out.positionals, args[i+1:]...)
+			break
 		}
+		if !strings.HasPrefix(a, "-") {
+			out.positionals = append(out.positionals, a)
+			continue
+		}
+		name := a
+		val := ""
+		hasEq := false
+		if eq := strings.IndexByte(a, '='); eq >= 0 {
+			name = a[:eq]
+			val = a[eq+1:]
+			hasEq = true
+		}
+		if boolNames[name] {
+			if hasEq {
+				return out, fmt.Errorf("argument %s does not accept a value", name)
+			}
+			out.bools[name] = true
+			continue
+		}
+		if valueNames[name] {
+			if !hasEq {
+				if i+1 >= len(args) {
+					return out, fmt.Errorf("argument %s: expected one argument", name)
+				}
+				i++
+				val = args[i]
+			}
+			out.values[name] = val
+			continue
+		}
+		return out, fmt.Errorf("unrecognized arguments: %s", a)
 	}
-	return "", false
-}
-
-func hasFlag(args []string, name string) bool {
-	for _, a := range args {
-		if a == name {
-			return true
-		}
-	}
-	return false
+	return out, nil
 }
 
 func cmdInit(repo, branch string, args []string, stdout, stderr io.Writer) int {
-	policy, ok := flagValue(args, "--policy")
-	goal, okG := flagValue(args, "--goal")
-	completion, okC := flagValue(args, "--completion")
+	p, err := parseSubFlags(args,
+		map[string]bool{"--policy": true, "--goal": true, "--completion": true},
+		map[string]bool{"--force": true},
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
+	policy, ok := p.values["--policy"]
+	goal, okG := p.values["--goal"]
+	completion, okC := p.values["--completion"]
 	if !ok || !okG || !okC {
 		fmt.Fprintln(stderr, "error: init requires --policy, --goal, and --completion")
 		return harnessExitUsage
@@ -502,7 +565,7 @@ func cmdInit(repo, branch string, args []string, stdout, stderr io.Writer) int {
 		return harnessExitError
 	}
 	decisions := filepath.Join(runDir, decisionsFilename)
-	if _, err := os.Stat(decisions); err == nil && !hasFlag(args, "--force") {
+	if _, err := os.Stat(decisions); err == nil && !p.bools["--force"] {
 		fmt.Fprintf(stderr, "error: run already initialized at %s (pass --force to reinitialize)\n", decisions)
 		return harnessExitError
 	}
@@ -545,11 +608,27 @@ func cmdInit(repo, branch string, args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdLog(repo, branch string, args []string, stdout, stderr io.Writer) int {
-	phase, ok1 := flagValue(args, "--phase")
-	decision, ok2 := flagValue(args, "--decision")
-	why, ok3 := flagValue(args, "--why")
-	evidence, ok4 := flagValue(args, "--evidence")
-	result, ok5 := flagValue(args, "--result")
+	p, err := parseSubFlags(args,
+		map[string]bool{"--phase": true, "--decision": true, "--why": true, "--evidence": true, "--result": true},
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
+	phase, ok1 := p.values["--phase"]
+	decision, ok2 := p.values["--decision"]
+	why, ok3 := p.values["--why"]
+	evidence, ok4 := p.values["--evidence"]
+	result, ok5 := p.values["--result"]
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 		fmt.Fprintln(stderr, "error: log requires --phase, --decision, --why, --evidence, and --result")
 		return harnessExitUsage
@@ -568,7 +647,20 @@ func cmdLog(repo, branch string, args []string, stdout, stderr io.Writer) int {
 	return harnessExitOK
 }
 
-func cmdDeactivate(repo, branch string, stdout io.Writer) int {
+func cmdDeactivate(repo, branch string, args []string, stdout, stderr io.Writer) int {
+	p, err := parseSubFlags(args, nil, nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
 	runDir, err := RunDirForBranch(repo, branch)
 	if err != nil {
 		fmt.Fprintf(stdout, "no active packet to deactivate\n")
@@ -597,16 +689,111 @@ func cmdDeactivate(repo, branch string, stdout io.Writer) int {
 	return harnessExitOK
 }
 
+func listRegularFileNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{}
+	}
+	names := []string{}
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(dir, ent.Name())); err == nil && info.Mode().IsRegular() {
+			names = append(names, ent.Name())
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func summarizeRunDir(runDir string, baseParallelism int) map[string]any {
+	rows := readDecisions(runDir)
+	outcomes := make([]string, 0, len(rows))
+	for _, row := range rows {
+		outcomes = append(outcomes, row["result"])
+	}
+	par := ComputeRecommendedParallelism(outcomes, baseParallelism)
+
+	var activePacket any
+	activeFile := filepath.Join(runDir, activePacketFilename)
+	if info, err := os.Stat(activeFile); err == nil && info.Mode().IsRegular() {
+		raw, err := os.ReadFile(activeFile)
+		if err != nil {
+			activePacket = map[string]any{"active": false, "error": "malformed active-packet.json"}
+		} else {
+			var loaded map[string]any
+			if err := json.Unmarshal(raw, &loaded); err != nil || loaded == nil {
+				activePacket = map[string]any{"active": false, "error": "malformed active-packet.json"}
+			} else {
+				activePacket = loaded
+			}
+		}
+	}
+
+	subagentsCount := 0
+	subagentsFile := filepath.Join(runDir, subagentsFilename)
+	if raw, err := os.ReadFile(subagentsFile); err == nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.TrimSpace(line) != "" {
+				subagentsCount++
+			}
+		}
+	}
+
+	sanitized := filepath.Base(runDir)
+	return map[string]any{
+		"branch":           sanitized,
+		"sanitized_branch": sanitized,
+		"path":             runDir,
+		"decisions_count":  len(rows),
+		"active_packet":    activePacket,
+		"packets":          listRegularFileNames(filepath.Join(runDir, "packets")),
+		"handoffs":         listRegularFileNames(filepath.Join(runDir, "handoffs")),
+		"verify":           listRegularFileNames(filepath.Join(runDir, "verify")),
+		"evidence":         listRegularFileNames(filepath.Join(runDir, "evidence")),
+		"subagents_count":  subagentsCount,
+		"parallelism": map[string]any{
+			"base":        par.Base,
+			"delta":       par.Delta,
+			"recommended": par.Recommended,
+			"window_size": par.WindowSize,
+			"counts":      par.Counts,
+			"reason":      par.Reason,
+		},
+	}
+}
+
 func cmdStatus(repo, branch string, args []string, stdout, stderr io.Writer) int {
-	format, _ := flagValue(args, "--format")
-	if format == "" {
-		format = "text"
+	p, err := parseSubFlags(args,
+		map[string]bool{"--format": true, "--base-parallelism": true},
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
+	format := "text"
+	if f, ok := p.values["--format"]; ok {
+		if f != "text" && f != "json" {
+			fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
+			return harnessExitUsage
+		}
+		format = f
 	}
 	base := parallelismBaseDefault
-	if raw, ok := flagValue(args, "--base-parallelism"); ok {
-		var n int
-		if _, err := fmt.Sscan(raw, &n); err != nil {
-			fmt.Fprintf(stderr, "error: invalid --base-parallelism\n")
+	if raw, ok := p.values["--base-parallelism"]; ok {
+		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
+		if convErr != nil {
+			fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s\n", raw)
 			return harnessExitUsage
 		}
 		base = n
@@ -616,38 +803,77 @@ func cmdStatus(repo, branch string, args []string, stdout, stderr io.Writer) int
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitError
 	}
-	rows := readDecisions(currentDir)
-	var outcomes []string
-	for _, row := range rows {
-		outcomes = append(outcomes, row["result"])
-	}
-	par := ComputeRecommendedParallelism(outcomes, base)
-	if format == "json" {
-		payload := map[string]any{
-			"repo_root":      repo,
-			"current_branch": ResolveGitBranch(repo, branch),
-			"current_run": map[string]any{
-				"branch":          filepath.Base(currentDir),
-				"decisions_count": len(rows),
-				"parallelism": map[string]any{
-					"base":        par.Base,
-					"delta":       par.Delta,
-					"recommended": par.Recommended,
-					"window_size": par.WindowSize,
-					"counts":      par.Counts,
-					"reason":      par.Reason,
-				},
-			},
+	runsBase := filepath.Join(repo, ".harness", "runs")
+	summaries := []map[string]any{}
+	if entries, err := os.ReadDir(runsBase); err == nil {
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+		for _, ent := range entries {
+			if ent.IsDir() {
+				summaries = append(summaries, summarizeRunDir(filepath.Join(runsBase, ent.Name()), base))
+			}
 		}
-		fmt.Fprintln(stdout, pythonJSON(payload))
+	}
+	currentSummary := summarizeRunDir(currentDir, base)
+	payload := map[string]any{
+		"repo_root":      repo,
+		"current_branch": ResolveGitBranch(repo, branch),
+		"current_run":    currentSummary,
+		"runs":           summaries,
+	}
+	if format == "json" {
+		enc, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+		fmt.Fprintln(stdout, string(enc))
 		return harnessExitOK
 	}
-	fmt.Fprintf(stdout, "parallelism   : %d (base=%d, delta=%+d; %s)\n", par.Recommended, par.Base, par.Delta, par.Reason)
+	par := currentSummary["parallelism"].(map[string]any)
+	pktLabel := "none"
+	if pkt, ok := currentSummary["active_packet"].(map[string]any); ok && pkt["active"] == true {
+		pktLabel = fmt.Sprintf("%v (active)", pkt["packet_id"])
+	}
+	packets := currentSummary["packets"].([]string)
+	handoffs := currentSummary["handoffs"].([]string)
+	fmt.Fprintf(stdout,
+		"Harness Run Status (branch=%s)\n"+
+			"  active_packet : %s\n"+
+			"  decisions     : %d\n"+
+			"  packets       : %d\n"+
+			"  handoffs      : %d\n"+
+			"  subagents     : %d\n"+
+			"  parallelism   : %d (base=%d, delta=%+d; %s)\n"+
+			"  total_runs    : %d\n",
+		currentSummary["branch"],
+		pktLabel,
+		currentSummary["decisions_count"],
+		len(packets),
+		len(handoffs),
+		currentSummary["subagents_count"],
+		par["recommended"],
+		par["base"],
+		par["delta"],
+		par["reason"],
+		len(summaries),
+	)
 	return harnessExitOK
 }
 
-func cmdSubagentStop(ctx context.Context, repo, branch string, stdin io.Reader) int {
+func cmdSubagentStop(ctx context.Context, repo, branch string, args []string, stdin io.Reader, stderr io.Writer) int {
 	_ = ctx
+	p, err := parseSubFlags(args, nil, nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
 	if stdin == nil {
 		return harnessExitOK
 	}
@@ -673,6 +899,10 @@ func cmdSubagentStop(ctx context.Context, repo, branch string, stdin io.Reader) 
 		"cwd":                    stringOr(payload["cwd"], ""),
 		"last_assistant_message": last,
 	}
+	return appendSubagentRecord(repo, branch, record)
+}
+
+func appendSubagentRecord(repo, branch string, record map[string]any) int {
 	runDir, err := RunDirForBranch(repo, branch)
 	if err != nil {
 		return harnessExitError
@@ -708,17 +938,26 @@ func firstString(vals ...any) string {
 }
 
 func cmdActivate(ctx context.Context, repo, branch string, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+	p, err := parseSubFlags(args, nil, nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) != 1 {
 		fmt.Fprintln(stderr, "error: activate-packet requires a packet path")
 		return harnessExitUsage
 	}
-	src := args[0]
+	src := p.positionals[0]
 	info, err := os.Stat(src)
 	if err != nil || !info.Mode().IsRegular() {
 		fmt.Fprintf(stderr, "error: packet file not found: %s\n", src)
 		return harnessExitUsage
 	}
-	data, issues, rc, errText := validatePacketViaPython(ctx, repo, src)
+	data, issues, rc, errText := validatePacketInProcess(ctx, src)
 	if errText != "" && rc != harnessExitOK && data == nil {
 		fmt.Fprint(stderr, errText)
 		return rc
@@ -746,12 +985,16 @@ func cmdActivate(ctx context.Context, repo, branch string, args []string, stdout
 		fmt.Fprintln(stderr, "error: packet missing 'scope' mapping")
 		return harnessExitUsage
 	}
-	allowed := stringList(scope["allowed_paths"])
-	if len(allowed) == 0 {
+	allowed, okAllowed := strictStringList(scope["allowed_paths"], false, true, true)
+	if !okAllowed {
 		fmt.Fprintln(stderr, "error: packet scope.allowed_paths must be a non-empty list of strings")
 		return harnessExitUsage
 	}
-	forbidden := stringList(scope["forbidden_paths"])
+	forbidden, okForbidden := strictStringList(scope["forbidden_paths"], true, false, false)
+	if !okForbidden {
+		fmt.Fprintln(stderr, "error: packet scope.forbidden_paths must be a list of strings")
+		return harnessExitUsage
+	}
 	execPolicy, _ := data["execution_policy"].(map[string]any)
 	if execPolicy == nil {
 		execPolicy = map[string]any{}
@@ -815,75 +1058,64 @@ type packetIssue struct {
 	code, path, message string
 }
 
-func validatePacketViaPython(ctx context.Context, repo, src string) (map[string]any, []packetIssue, int, string) {
+func validatePacketInProcess(ctx context.Context, src string) (map[string]any, []packetIssue, int, string) {
 	if ctx == nil {
-		return nil, nil, harnessExitError, "error: nil context\n"
+		ctx = context.Background()
 	}
-	script := `import json, sys
-sys.path.insert(0, sys.argv[1])
-import task_packet
-from pathlib import Path
-src = Path(sys.argv[2])
-try:
-    doc = task_packet.load_document(src)
-except Exception as exc:
-    json.dump({"error": str(exc)}, sys.stdout)
-    raise SystemExit(0)
-schema = task_packet.load_schema()
-issues = task_packet.validate_packet_doc(doc, schema)
-json.dump({"data": doc.data, "issues": [{"code": i.code, "path": i.path, "message": i.message} for i in issues]}, sys.stdout)
-`
-	stdout, stderr, code, err := execx.Combined(ctx, execx.Cmd{Args: []string{"python3", "-c", script, filepath.Join(repo, "scripts", "agent-harness"), src}, Dir: repo})
+	doc, err := packet.LoadDocument(src)
 	if err != nil {
-		return nil, nil, harnessExitError, fmt.Sprintf("error: failed to parse packet %s: %v\n", src, err)
+		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to parse packet %s: %v\n", src, err)
 	}
-	if code != 0 && strings.TrimSpace(stdout) == "" {
-		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to parse packet %s: %s\n", src, strings.TrimSpace(stderr))
+	var outBuf, errBuf bytes.Buffer
+	rc := packet.Run(ctx, []string{"validate-packet", "--format", "json", src}, &outBuf, &errBuf)
+	if rc == harnessExitOK {
+		return doc.Data, nil, harnessExitOK, ""
 	}
-	var payload struct {
-		Error  string         `json:"error"`
-		Data   map[string]any `json:"data"`
-		Issues []struct {
+	var parsed struct {
+		Errors []struct {
 			Code    string `json:"code"`
 			Path    string `json:"path"`
 			Message string `json:"message"`
-		} `json:"issues"`
+		} `json:"errors"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
-		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to parse packet %s: %v\n", src, err)
+	if err := json.Unmarshal(outBuf.Bytes(), &parsed); err != nil {
+		detail := strings.TrimSpace(errBuf.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to validate packet %s: %s\n", src, detail)
 	}
-	if payload.Error != "" {
-		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to parse packet %s: %s\n", src, payload.Error)
-	}
-	var issues []packetIssue
-	for _, item := range payload.Issues {
+	issues := make([]packetIssue, 0, len(parsed.Errors))
+	for _, item := range parsed.Errors {
 		issues = append(issues, packetIssue{code: item.Code, path: item.Path, message: item.Message})
 	}
-	return payload.Data, issues, harnessExitOK, ""
+	if len(issues) == 1 && issues[0].code == "PARSE_ERROR" {
+		return nil, nil, harnessExitUsage, fmt.Sprintf("error: failed to parse packet %s: %s\n", src, issues[0].message)
+	}
+	return doc.Data, issues, harnessExitError, ""
 }
 
 func cmdHandoff(ctx context.Context, repo, branch string, args []string, stdout, stderr io.Writer) int {
-	var path, result, why string
-	for i := 0; i < len(args); i++ {
-		switch {
-		case args[i] == "--result" && i+1 < len(args):
-			result = args[i+1]
-			i++
-		case strings.HasPrefix(args[i], "--result="):
-			result = strings.TrimPrefix(args[i], "--result=")
-		case args[i] == "--why" && i+1 < len(args):
-			why = args[i+1]
-			i++
-		case strings.HasPrefix(args[i], "--why="):
-			why = strings.TrimPrefix(args[i], "--why=")
-		case !strings.HasPrefix(args[i], "-") && path == "":
-			path = args[i]
-		}
+	_ = ctx
+	p, err := parseSubFlags(args,
+		map[string]bool{"--result": true, "--why": true},
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
 	}
-	if path == "" {
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) != 1 {
 		fmt.Fprintln(stderr, "error: record-handoff requires a handoff path")
 		return harnessExitUsage
 	}
+	path := p.positionals[0]
+	result := p.values["--result"]
+	why := p.values["--why"]
 	if _, ok := terminalResults[result]; !ok {
 		fmt.Fprintf(stderr, "error: invalid result %s\n", result)
 		return harnessExitUsage
@@ -893,15 +1125,16 @@ func cmdHandoff(ctx context.Context, repo, branch string, args []string, stdout,
 		fmt.Fprintf(stderr, "error: handoff file not found: %s\n", path)
 		return harnessExitUsage
 	}
-	data, _, _, errText := validatePacketViaPython(ctx, repo, path)
-	if data == nil {
-		if errText == "" {
-			errText = fmt.Sprintf("error: failed to parse handoff %s\n", path)
+	doc, err := packet.LoadDocument(path)
+	if err != nil || doc == nil || doc.Data == nil {
+		msg := "invalid document"
+		if err != nil {
+			msg = err.Error()
 		}
-		fmt.Fprint(stderr, strings.Replace(errText, "packet", "handoff", 1))
+		fmt.Fprintf(stderr, "error: failed to parse handoff %s: %s\n", path, msg)
 		return harnessExitUsage
 	}
-	packetID, _ := data["packet_id"].(string)
+	packetID, _ := doc.Data["packet_id"].(string)
 	if !packetIDRE.MatchString(packetID) {
 		fmt.Fprintf(stderr, "error: failed to parse handoff %s: invalid or missing packet_id\n", path)
 		return harnessExitUsage

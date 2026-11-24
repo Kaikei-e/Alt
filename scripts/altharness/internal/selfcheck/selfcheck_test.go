@@ -17,7 +17,7 @@ func TestRealRepoPasses(t *testing.T) {
 		t.Fatalf("code=%d\n%s\n%s", code, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "agent_harness_selfcheck: OK") || !strings.Contains(out, "codex_hooks=8") || !strings.Contains(out, "shared_blocks=2") {
+	if !strings.Contains(out, "agent_harness_selfcheck: OK") || !strings.Contains(out, "codex_hooks=8") || !strings.Contains(out, "agy_hooks=5") || !strings.Contains(out, "shared_blocks=2") {
 		t.Fatalf("stdout=%s", out)
 	}
 }
@@ -46,6 +46,58 @@ func TestJudgmentRatchetCeiling(t *testing.T) {
 	}
 	if extractMaxJudgment(string(text)) != 6 {
 		t.Fatalf("ledger ceiling=%d", extractMaxJudgment(string(text)))
+	}
+}
+
+func TestStdlibGovernanceTOMLParser(t *testing.T) {
+	val, found, err := parseGovernanceMaxJudgmentTOML("version = 1\n\n[governance]\nmax_judgment_rules = 6 # inline comment\n\n[targets.foo]\npython_noqa = 10\n")
+	if err != nil || !found || val != 6 {
+		t.Fatalf("got (%d, %v, %v), want (6, true, nil)", val, found, err)
+	}
+	_, found, err = parseGovernanceMaxJudgmentTOML("version = 1\n[other]\nmax_judgment_rules = 99\n")
+	if err != nil || found {
+		t.Fatalf("other section should not match: (%v, %v)", found, err)
+	}
+	_, _, err = parseGovernanceMaxJudgmentTOML("[broken\n")
+	if err == nil {
+		t.Fatalf("expected parse error for unclosed header")
+	}
+}
+
+func TestCheckAgyHookFileSchema(t *testing.T) {
+	root := t.TempDir()
+	script := filepath.Join(root, "scripts", "agent-harness", "agy_hook.py")
+	if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env python3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reject Claude/Codex "hooks" wrapper.
+	var findings []Finding
+	checkAgyHookFile(root, ".agents/hooks.json", map[string]any{"hooks": map[string]any{}}, &findings)
+	if len(findings) == 0 || !strings.Contains(findings[0].Message, `not a "hooks" wrapper`) {
+		t.Fatalf("expected wrapper rejection, got %+v", findings)
+	}
+
+	// Reject grouped SessionStart (must be flat).
+	findings = nil
+	checkAgyHookFile(root, ".agents/hooks.json", map[string]any{
+		"alt": map[string]any{
+			"SessionStart": []any{
+				map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "echo hi"}}},
+			},
+		},
+	}, &findings)
+	foundFlatErr := false
+	for _, f := range findings {
+		if strings.Contains(f.Message, "flat handler objects") {
+			foundFlatErr = true
+		}
+	}
+	if !foundFlatErr {
+		t.Fatalf("expected flat SessionStart error, got %+v", findings)
 	}
 }
 

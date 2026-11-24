@@ -2,6 +2,7 @@
 package selfcheck
 
 import (
+	"alt/scripts/altharness/internal/guards"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 const (
@@ -30,11 +29,6 @@ const (
 
 var requiredLeadins = []string{
 	"**機構.**", "**先例.**", "**問い.**", "**確認コマンド.**", "**機械的に見ているもの.**",
-}
-
-var guardedGlobs = []string{
-	"knowledge-sovereign/app/usecase/knowledge_home_projector/*.go",
-	"knowledge-sovereign/app/usecase/knowledge_trail_projector/*.go",
 }
 
 var (
@@ -107,7 +101,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			}
 			fmt.Fprintf(stdout, "agent_harness_selfcheck_FAILED: %d finding(s): %s run python3 scripts/agent-harness/harness_selfcheck.py\n", len(findings), strings.Join(ids, ", "))
 		} else {
-			fmt.Fprintf(stdout, "agent_harness_selfcheck: OK (codex_hooks=%v, claude_hooks=%v, guarded_globs=%v, shared_blocks=%v)\n", meta["codex_hooks"], meta["claude_hooks"], meta["guarded_globs"], meta["shared_blocks"])
+			fmt.Fprintf(stdout, "agent_harness_selfcheck: OK (codex_hooks=%v, claude_hooks=%v, agy_hooks=%v, guarded_globs=%v, shared_blocks=%v)\n", meta["codex_hooks"], meta["claude_hooks"], meta["agy_hooks"], meta["guarded_globs"], meta["shared_blocks"])
 		}
 		return 0
 	}
@@ -120,7 +114,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "agent_harness_selfcheck: OK (codex_hooks=%v, claude_hooks=%v, guarded_globs=%v, shared_blocks=%v)\n", meta["codex_hooks"], meta["claude_hooks"], meta["guarded_globs"], meta["shared_blocks"])
+	fmt.Fprintf(stdout, "agent_harness_selfcheck: OK (codex_hooks=%v, claude_hooks=%v, agy_hooks=%v, guarded_globs=%v, shared_blocks=%v)\n", meta["codex_hooks"], meta["claude_hooks"], meta["agy_hooks"], meta["guarded_globs"], meta["shared_blocks"])
 	return 0
 }
 
@@ -143,14 +137,14 @@ func defaultRoot(ctx context.Context) string {
 func runSelfcheck(ctx context.Context, root string) ([]Finding, map[string]any) {
 	var findings []Finding
 	tracked := gitLsFiles(ctx, root)
-	claudePresent, codexHooks, claudeHooks := checkHooksPair(root, &findings)
+	claudePresent, codexHooks, claudeHooks, agyHooks := checkHooksPair(root, &findings)
 	nonTest := make([]string, 0, len(tracked))
 	for _, f := range tracked {
 		if !strings.HasSuffix(f, "_test.go") {
 			nonTest = append(nonTest, f)
 		}
 	}
-	for _, pat := range guardedGlobs {
+	for _, pat := range guards.GuardedGlobs {
 		rx := globToRegex(pat)
 		hit := false
 		for _, f := range nonTest {
@@ -191,7 +185,8 @@ func runSelfcheck(ctx context.Context, root string) ([]Finding, map[string]any) 
 		"claude_present": claudePresent,
 		"codex_hooks":    codexHooks,
 		"claude_hooks":   claudeHooks,
-		"guarded_globs":  len(guardedGlobs),
+		"agy_hooks":      agyHooks,
+		"guarded_globs":  len(guards.GuardedGlobs),
 		"shared_blocks":  shared,
 	}
 	return findings, meta
@@ -216,7 +211,7 @@ func gitLsFiles(ctx context.Context, root string) []string {
 	return files
 }
 
-func checkHooksPair(root string, findings *[]Finding) (bool, int, any) {
+func checkHooksPair(root string, findings *[]Finding) (bool, int, any, int) {
 	codexPath := filepath.Join(root, ".codex", "hooks.json")
 	codexCount := 0
 	if st, err := os.Stat(codexPath); err == nil && st.Mode().IsRegular() {
@@ -235,7 +230,172 @@ func checkHooksPair(root string, findings *[]Finding) (bool, int, any) {
 			claudeHooks = checkHookFile(root, ".claude/settings.json", cfg, true, findings)
 		}
 	}
-	return present, codexCount, claudeHooks
+	agyPath := filepath.Join(root, ".agents", "hooks.json")
+	agyCount := 0
+	if st, err := os.Stat(agyPath); err == nil && st.Mode().IsRegular() {
+		if cfg := loadHookConfig(agyPath, ".agents/hooks.json", findings); cfg != nil {
+			agyCount = checkAgyHookFile(root, ".agents/hooks.json", cfg, findings)
+		}
+	} else {
+		*findings = append(*findings, Finding{"H4", ".agents/hooks.json", ".agents/hooks.json is missing"})
+	}
+	return present, codexCount, claudeHooks, agyCount
+}
+
+var (
+	agyFlatEvents    = map[string]bool{"SessionStart": true, "Stop": true, "PreInvocation": true, "PostInvocation": true}
+	agyGroupedEvents = map[string]bool{"PreToolUse": true, "PostToolUse": true}
+)
+
+func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Finding) int {
+	if _, hasWrongRoot := cfg["hooks"]; hasWrongRoot {
+		*findings = append(*findings, Finding{"H4", label, `Antigravity hooks.json must use named top-level hook keys, not a "hooks" wrapper`})
+		return 0
+	}
+	total := 0
+	var hasSessionStart, hasPreShell, hasPreEdit, hasPostEdit, hasStop bool
+
+	names := make([]string, 0, len(cfg))
+	for k := range cfg {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		spec, ok := cfg[name].(map[string]any)
+		if !ok {
+			*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("top-level hook %q must be a JSON object", name)})
+			continue
+		}
+		if enabled, ok := spec["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		for event, rawEntries := range spec {
+			if event == "enabled" {
+				continue
+			}
+			if agyFlatEvents[event] {
+				list, ok := rawEntries.([]any)
+				if !ok {
+					*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s must be a flat array of handler objects", name, event)})
+					continue
+				}
+				for _, item := range list {
+					h, ok := item.(map[string]any)
+					if !ok {
+						*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s entry must be a handler object", name, event)})
+						continue
+					}
+					if _, nested := h["hooks"]; nested {
+						*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s must be flat handler objects, not grouped {matcher, hooks}", name, event)})
+						continue
+					}
+					cmd, ok := h["command"].(string)
+					if !ok || strings.TrimSpace(cmd) == "" {
+						*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s handler missing non-empty command", name, event)})
+						continue
+					}
+					if t, hasType := h["type"].(string); hasType && t != "" && t != "command" {
+						continue
+					}
+					total++
+					checkHookCommandRefs(root, label, cmd, findings)
+					if event == "SessionStart" && strings.Contains(cmd, "agy_hook.py") && strings.Contains(cmd, "session-start") {
+						hasSessionStart = true
+					}
+					if event == "Stop" && strings.Contains(cmd, "agy_hook.py") && strings.Contains(cmd, "stop") {
+						hasStop = true
+					}
+				}
+				continue
+			}
+			if agyGroupedEvents[event] {
+				list, ok := rawEntries.([]any)
+				if !ok {
+					*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s must be a grouped array of {matcher, hooks} objects", name, event)})
+					continue
+				}
+				for _, item := range list {
+					grp, ok := item.(map[string]any)
+					if !ok {
+						*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s entry must be an object", name, event)})
+						continue
+					}
+					nested, ok := grp["hooks"].([]any)
+					if !ok {
+						*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s entry must have a 'hooks' array (grouped format)", name, event)})
+						continue
+					}
+					matcher := grp["matcher"]
+					for _, hRaw := range nested {
+						h, ok := hRaw.(map[string]any)
+						if !ok {
+							*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s nested hook must be an object", name, event)})
+							continue
+						}
+						cmd, ok := h["command"].(string)
+						if !ok || strings.TrimSpace(cmd) == "" {
+							*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s.%s handler missing non-empty command", name, event)})
+							continue
+						}
+						if t, hasType := h["type"].(string); hasType && t != "" && t != "command" {
+							continue
+						}
+						total++
+						checkHookCommandRefs(root, label, cmd, findings)
+						if event == "PreToolUse" && strings.Contains(cmd, "agy_hook.py") {
+							if strings.Contains(cmd, "pre-shell") && matcherMatches(matcher, "run_command") {
+								hasPreShell = true
+							}
+							if strings.Contains(cmd, "pre-edit") && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
+								hasPreEdit = true
+							}
+						}
+						if event == "PostToolUse" && strings.Contains(cmd, "agy_hook.py") {
+							if strings.Contains(cmd, "post-edit") && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
+								hasPostEdit = true
+							}
+						}
+					}
+				}
+				continue
+			}
+			*findings = append(*findings, Finding{"H4", label, fmt.Sprintf("%s contains unsupported event type %q", name, event)})
+		}
+	}
+
+	if !hasSessionStart {
+		*findings = append(*findings, Finding{"H4", label, `SessionStart hooks do not reference agy_hook.py session-start`})
+	}
+	if !hasPreShell {
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference agy_hook.py pre-shell with a matcher matching "run_command"`})
+	}
+	if !hasPreEdit {
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference agy_hook.py pre-edit with a matcher matching "write_file" and "edit_file"`})
+	}
+	if !hasPostEdit {
+		*findings = append(*findings, Finding{"H4", label, `PostToolUse hooks do not reference agy_hook.py post-edit with a matcher matching "write_file" and "edit_file"`})
+	}
+	if !hasStop {
+		*findings = append(*findings, Finding{"H4", label, `Stop hooks do not reference agy_hook.py stop`})
+	}
+	return total
+}
+
+func checkHookCommandRefs(root, label, cmd string, findings *[]Finding) {
+	for _, env := range badEnvVars {
+		if strings.Contains(cmd, env) {
+			*findings = append(*findings, Finding{"H1", label, fmt.Sprintf("hook command references non-existent %s; read JSON from stdin instead", env)})
+		}
+	}
+	for _, m := range repoScriptRefRE.FindAllStringSubmatch(cmd, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, m[1])); err != nil {
+			*findings = append(*findings, Finding{"H2", label, fmt.Sprintf("hook command references missing repo script '%s'", m[1])})
+		}
+	}
 }
 
 func loadHookConfig(path, label string, findings *[]Finding) map[string]any {
@@ -1093,20 +1253,94 @@ func crossCheckRatchet(root string, maxJ int, findings *[]Finding) {
 	if err != nil {
 		return
 	}
-	var data map[string]any
-	if err := toml.Unmarshal(raw, &data); err != nil {
-		*findings = append(*findings, Finding{"H11", ratchetRel, fmt.Sprintf("failed to parse %s for max_judgment_rules cross-check: %v", ratchetRel, err)})
+	ratchetVal, found, parseErr := parseGovernanceMaxJudgmentTOML(string(raw))
+	if parseErr != nil {
+		*findings = append(*findings, Finding{"H11", ratchetRel, fmt.Sprintf("failed to parse %s for max_judgment_rules cross-check: %v", ratchetRel, parseErr)})
 		return
 	}
-	gov, _ := data["governance"].(map[string]any)
-	var ratchet any
-	if gov != nil {
-		ratchet = gov["max_judgment_rules"]
+	if !found || ratchetVal != maxJ {
+		var shown any
+		if found {
+			shown = ratchetVal
+		}
+		*findings = append(*findings, Finding{"H11", ratchetRel, fmt.Sprintf("[governance].max_judgment_rules in %s (%v) does not match %s (%d)", ratchetRel, shown, ruleLedgerRel, maxJ)})
 	}
-	n, ok := asInt(ratchet)
-	if !ok || n != maxJ {
-		*findings = append(*findings, Finding{"H11", ratchetRel, fmt.Sprintf("[governance].max_judgment_rules in %s (%v) does not match %s (%d)", ratchetRel, ratchet, ruleLedgerRel, maxJ)})
+}
+
+// parseGovernanceMaxJudgmentTOML extracts [governance].max_judgment_rules from
+// suppressions.toml using only the Go standard library (zero external TOML dep).
+func parseGovernanceMaxJudgmentTOML(text string) (int, bool, error) {
+	section := ""
+	found := false
+	value := 0
+	for lineNo, rawLine := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(stripTOMLComment(rawLine))
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			if !strings.HasSuffix(line, "]") {
+				return 0, false, fmt.Errorf("line %d: unclosed table header %q", lineNo+1, line)
+			}
+			inner := strings.TrimSpace(line[1 : len(line)-1])
+			if strings.HasPrefix(inner, "[") && strings.HasSuffix(inner, "]") {
+				inner = strings.TrimSpace(inner[1 : len(inner)-1])
+			}
+			if inner == "" {
+				return 0, false, fmt.Errorf("line %d: empty table header", lineNo+1)
+			}
+			section = inner
+			continue
+		}
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 {
+			return 0, false, fmt.Errorf("line %d: expected key = value", lineNo+1)
+		}
+		key := strings.TrimSpace(line[:eq])
+		rawVal := strings.TrimSpace(line[eq+1:])
+		if section == "governance" && key == "max_judgment_rules" {
+			cleaned := strings.ReplaceAll(rawVal, "_", "")
+			n, err := strconv.Atoi(cleaned)
+			if err != nil {
+				return 0, false, nil
+			}
+			value = n
+			found = true
+		}
 	}
+	return value, found, nil
+}
+
+func stripTOMLComment(line string) string {
+	quote := byte(0)
+	escaped := false
+	for i := 0; i < len(line); i++ {
+		ch := line[i]
+		if quote != 0 {
+			if quote == '"' {
+				if escaped {
+					escaped = false
+					continue
+				}
+				if ch == '\\' {
+					escaped = true
+					continue
+				}
+			}
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			quote = ch
+			continue
+		}
+		if ch == '#' {
+			return line[:i]
+		}
+	}
+	return line
 }
 
 func loadAstGrepIDs(root string) map[string]struct{} {
@@ -1136,22 +1370,6 @@ func loadAstGrepIDs(root string) map[string]struct{} {
 		}
 	}
 	return ids
-}
-
-func asInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int64:
-		return int(n), true
-	case int:
-		return n, true
-	case uint64:
-		return int(n), true
-	case float64:
-		if n == float64(int(n)) {
-			return int(n), true
-		}
-	}
-	return 0, false
 }
 
 func hasKey(m map[string]struct{}, k string) bool {

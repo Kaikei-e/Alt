@@ -125,23 +125,39 @@ def extract_patch_paths(command_text: str) -> list[str]:
 
 
 def extract_hook_paths(payload: dict[str, Any]) -> list[str]:
-    tool_input = payload.get("tool_input")
-    if not isinstance(tool_input, dict):
-        return []
-
     paths: list[str] = []
-    for field in ("file_path", "notebook_path"):
-        value = tool_input.get(field)
-        if isinstance(value, str) and value.strip():
-            paths.append(value.strip())
 
-    if payload.get("tool_name") == "apply_patch":
-        cmd = tool_input.get("command")
-        if isinstance(cmd, str):
-            paths.extend(extract_patch_paths(cmd))
-        elif isinstance(cmd, list):
-            joined = "\n".join(part for part in cmd if isinstance(part, str))
-            paths.extend(extract_patch_paths(joined))
+    tool_call = payload.get("toolCall")
+    if isinstance(tool_call, dict):
+        tc_name = tool_call.get("name")
+        tc_args = tool_call.get("args")
+        if isinstance(tc_args, dict):
+            for field in ("Path", "TargetFile", "file_path", "notebook_path"):
+                value = tc_args.get(field)
+                if isinstance(value, str) and value.strip():
+                    paths.append(value.strip())
+            if tc_name == "apply_patch":
+                cmd = tc_args.get("command")
+                if isinstance(cmd, str):
+                    paths.extend(extract_patch_paths(cmd))
+                elif isinstance(cmd, list):
+                    joined = "\n".join(part for part in cmd if isinstance(part, str))
+                    paths.extend(extract_patch_paths(joined))
+
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        for field in ("file_path", "notebook_path", "Path", "TargetFile"):
+            value = tool_input.get(field)
+            if isinstance(value, str) and value.strip():
+                paths.append(value.strip())
+
+        if payload.get("tool_name") == "apply_patch":
+            cmd = tool_input.get("command")
+            if isinstance(cmd, str):
+                paths.extend(extract_patch_paths(cmd))
+            elif isinstance(cmd, list):
+                joined = "\n".join(part for part in cmd if isinstance(part, str))
+                paths.extend(extract_patch_paths(joined))
     return paths
 
 
@@ -580,8 +596,8 @@ def handle_pre_tool_use(payload: dict[str, Any]) -> int:
         base_cwd = (
             Path(cwd_val) if isinstance(cwd_val, str) and cwd_val else Path.cwd()
         )
-        session_raw = payload.get("session_id")
-        session_id = session_raw if isinstance(session_raw, str) else "default"
+        session_raw = payload.get("session_id") or payload.get("conversationId")
+        session_id = session_raw if isinstance(session_raw, str) and session_raw else "default"
         agent_raw = payload.get("agent_id")
         agent_id = agent_raw if isinstance(agent_raw, str) and agent_raw else None
 
@@ -668,8 +684,8 @@ def handle_session_start(payload: dict[str, Any]) -> int:
             )
             return 0
 
-        session_raw = payload.get("session_id")
-        session_id = session_raw if isinstance(session_raw, str) else "default"
+        session_raw = payload.get("session_id") or payload.get("conversationId")
+        session_id = session_raw if isinstance(session_raw, str) and session_raw else "default"
         cleanup_session_state(session_id)
 
         root, _ = get_script_git_identity()
@@ -718,7 +734,7 @@ def run_hook_mode() -> int:
     if not isinstance(payload, dict):
         return 0
 
-    event = payload.get("hook_event_name")
+    event = payload.get("hook_event_name") or payload.get("hookEventName")
     if event == "PreToolUse":
         return handle_pre_tool_use(payload)
     if event == "SessionStart":

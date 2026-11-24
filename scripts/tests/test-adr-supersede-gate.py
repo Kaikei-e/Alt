@@ -11,9 +11,6 @@ Run:
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
-import io
 import os
 import pathlib
 import shutil
@@ -29,12 +26,6 @@ assert GIT_BIN is not None, "git executable not found in PATH"
 WIDENED_FINDING_COUNT = 54
 LIST_FORM_FINDING_COUNT = 2
 USAGE_EXIT_CODE = 2
-
-spec = importlib.util.spec_from_file_location("adr_supersede_gate", GATE_PATH)
-assert spec is not None
-assert spec.loader is not None
-gate = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(gate)
 
 
 class _Results:
@@ -110,14 +101,13 @@ def write_adr(
 
 
 def invoke_gate(repo: pathlib.Path, base: str) -> tuple[int, str, str]:
-    stdout_buf = io.StringIO()
-    stderr_buf = io.StringIO()
-    with (
-        contextlib.redirect_stdout(stdout_buf),
-        contextlib.redirect_stderr(stderr_buf),
-    ):
-        rc = gate.main(["--base", base, "--dir", str(repo / "docs" / "ADR")])
-    return rc, stdout_buf.getvalue(), stderr_buf.getvalue()
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [sys.executable, str(GATE_PATH), "--base", base, "--dir", str(repo / "docs" / "ADR")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return res.returncode, res.stdout, res.stderr
 
 
 sys.stdout.write("1. new ADR superseding one named ADR passes\n")
