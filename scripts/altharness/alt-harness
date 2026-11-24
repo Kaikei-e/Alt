@@ -5,15 +5,48 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mod="$root/scripts/altharness"
 bin_dir="$mod/bin"
-bin="$bin_dir/alt-harness"
+orig_bin="$bin_dir/alt-harness"
+bin="$orig_bin"
 stamp_file="$bin_dir/.alt-harness.stamp"
 lock_file="$bin_dir/.alt-harness.lock"
 cmd_name="${1:-}"
+sub_cmd="${2:-}"
 
 fail_exit() {
   case "$cmd_name" in
     guard-*|agy-hook*)
+      local lkg=""
+      if [ -x "$bin" ]; then
+        lkg="$bin"
+      elif [ -x "$orig_bin" ]; then
+        lkg="$orig_bin"
+      fi
+      if [ -n "$lkg" ]; then
+        echo "WARN: alt-harness rebuild failed; falling back to last-known-good binary: $lkg" >&2
+        exec "$lkg" "$@"
+      fi
+      ;;
+  esac
+  case "$cmd_name" in
+    guard-*)
       exit 2
+      ;;
+    agy-hook*)
+      case "$sub_cmd" in
+        post-edit)
+          printf '{}\n'
+          ;;
+        session-start)
+          printf '{"injectSteps":[]}\n'
+          ;;
+        stop)
+          printf '{"decision":"allow"}\n'
+          ;;
+        pre-shell|pre-edit|*)
+          printf '{"decision":"deny","reason":"BLOCKED: alt-harness build failed"}\n'
+          ;;
+      esac
+      exit 0
       ;;
     *)
       exit 1
@@ -44,10 +77,10 @@ ensure_writable_go_env() {
     local uid=""
     uid="$(id -u)"
     export GOCACHE="${TMPDIR:-/tmp}/alt-harness-gocache-${uid}"
-    mkdir -p "$GOCACHE"
+    mkdir -p "$GOCACHE" 2>/dev/null || return 1
     if [ -z "${GOPATH:-}" ] && [ ! -d "$HOME/go/pkg/mod" ]; then
       export GOPATH="${TMPDIR:-/tmp}/alt-harness-gopath-${uid}"
-      mkdir -p "$GOPATH"
+      mkdir -p "$GOPATH" 2>/dev/null || return 1
     fi
   fi
 }
@@ -57,7 +90,7 @@ do_build() {
   if is_fresh "$want"; then
     return 0
   fi
-  ensure_writable_go_env
+  ensure_writable_go_env || return 1
   local tmp="$bin_dir/.alt-harness.tmp.$$"
   local stamp_tmp="$bin_dir/.alt-harness.stamp.tmp.$$"
   rm -f "$tmp" "$stamp_tmp"
@@ -75,26 +108,35 @@ do_build() {
   if [ "$build_rc" -ne 0 ]; then
     rm -f "$tmp" "$stamp_tmp"
     echo "ERROR: alt-harness build failed (rc=$build_rc)" >&2
-    fail_exit
+    return 1
   fi
-  chmod 0755 "$tmp"
-  mv -f "$tmp" "$bin"
-  printf '%s\n' "$want" >"$stamp_tmp"
-  mv -f "$stamp_tmp" "$stamp_file"
+  chmod 0755 "$tmp" || { rm -f "$tmp" "$stamp_tmp"; return 1; }
+  mv -f "$tmp" "$bin" || { rm -f "$tmp" "$stamp_tmp"; return 1; }
+  printf '%s\n' "$want" >"$stamp_tmp" || { rm -f "$stamp_tmp"; return 1; }
+  mv -f "$stamp_tmp" "$stamp_file" || { rm -f "$stamp_tmp"; return 1; }
 }
 
-ensure_writable_go_env
+ensure_writable_go_env || fail_exit "$@"
 want_stamp="$(compute_stamp)"
 if ! is_fresh "$want_stamp"; then
-  mkdir -p "$bin_dir"
-  if command -v flock >/dev/null 2>&1; then
-    (
-      flock -x 9
-      want_locked="$(compute_stamp)"
-      do_build "$want_locked"
-    ) 9>"$lock_file" || fail_exit
-  else
-    do_build "$want_stamp"
+  if ! (mkdir -p "$bin_dir" && [ -w "$bin_dir" ]) 2>/dev/null; then
+    mod_hash="$(printf '%s' "$mod" | sha256sum | cut -c1-12)"
+    bin_dir="${TMPDIR:-/tmp}/alt-harness-bin-$(id -u)-${mod_hash}"
+    bin="$bin_dir/alt-harness"
+    stamp_file="$bin_dir/.alt-harness.stamp"
+    lock_file="$bin_dir/.alt-harness.lock"
+    mkdir -p "$bin_dir" 2>/dev/null || fail_exit "$@"
+  fi
+  if ! is_fresh "$want_stamp"; then
+    if command -v flock >/dev/null 2>&1; then
+      (
+        flock -x 9
+        want_locked="$(compute_stamp)"
+        do_build "$want_locked"
+      ) 9>"$lock_file" || fail_exit "$@"
+    else
+      do_build "$want_stamp" || fail_exit "$@"
+    fi
   fi
 fi
 

@@ -102,6 +102,42 @@ func TestCheckAgyHookFileSchema(t *testing.T) {
 	}
 }
 
+func TestCheckHookFileRejectsPreToolUseSwallow(t *testing.T) {
+	root := t.TempDir()
+	var findings []Finding
+	cfg := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"matcher": "Edit",
+					"hooks": []any{
+						map[string]any{
+							"type":      "command",
+							"onFailure": "block",
+							"command":   `[ -f "$s" ] || exit 0; python3 "$s"`,
+						},
+						map[string]any{
+							"type":      "command",
+							"onFailure": "block",
+							"command":   `python3 "$s" || true`,
+						},
+					},
+				},
+			},
+		},
+	}
+	checkHookFile(root, ".claude/settings.json", cfg, true, &findings)
+	swallows := 0
+	for _, f := range findings {
+		if f.ID == "H3" && strings.Contains(f.Message, "swallows failure") {
+			swallows++
+		}
+	}
+	if swallows != 2 {
+		t.Fatalf("expected 2 H3 swallow findings, got %d (%+v)", swallows, findings)
+	}
+}
+
 func findRepo(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

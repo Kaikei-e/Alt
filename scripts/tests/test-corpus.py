@@ -1732,6 +1732,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run CORPUS-01 unit tests and real repository corpus verification.",
     )
     parser.add_argument(
+        "--corpus-dir",
+        type=pathlib.Path,
+        default=None,
+        help="Override scripts/harness/corpus directory.",
+    )
+    parser.add_argument(
         "--allow-missing-corpus-dir",
         action="store_true",
         default=False,
@@ -1748,7 +1754,12 @@ def main(argv: list[str] | None = None) -> int:
         if spec is not None and spec.loader is not None:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-            delegated = mod.delegated(CORPUS_SCRIPT, ["./internal/corpus"], ["corpus"])
+            cli_args = ["corpus"]
+            if args.corpus_dir is not None:
+                cli_args.extend(["--corpus-dir", str(args.corpus_dir)])
+            if args.allow_missing_corpus_dir:
+                cli_args.append("--allow-missing-corpus-dir")
+            delegated = mod.delegated(CORPUS_SCRIPT, ["./internal/corpus"], cli_args)
             if delegated is not None:
                 return delegated
     if not CORPUS_SCRIPT.is_file():

@@ -183,29 +183,7 @@ func classifyDockerSegment(tokens []string, envVars map[string]string) string {
 }
 
 func extractShellCScript(tokens []Token, start int) (string, bool) {
-	i := start + 1
-	for i < len(tokens) {
-		tok := tokens[i].Text
-		if tok == "--" {
-			return "", false
-		}
-		if strings.HasPrefix(tok, "-") && !strings.HasPrefix(tok, "--") {
-			if strings.Contains(tok[1:], "c") {
-				if i+1 < len(tokens) {
-					return tokens[i+1].Text, true
-				}
-				return "", false
-			}
-			i++
-			continue
-		}
-		if strings.HasPrefix(tok, "--") {
-			i++
-			continue
-		}
-		return "", false
-	}
-	return "", false
+	return extractShellCScriptExec(tokens, start)
 }
 
 func classifyOpsTokens(tokens []Token, depth int) (string, error) {

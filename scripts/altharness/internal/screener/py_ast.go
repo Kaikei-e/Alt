@@ -660,7 +660,7 @@ func (p *pyParser) looksLikeMatch() bool {
 			}
 		case ":":
 			if depth == 0 {
-				return true
+				return i > p.pos+1 && i+1 < len(p.toks) && p.toks[i+1].kind == pyNL
 			}
 		}
 	}
@@ -671,7 +671,7 @@ func (p *pyParser) parseMatch() (pyStmt, error) {
 	if err := p.expectIdent("match"); err != nil {
 		return pyStmt{}, err
 	}
-	if _, err := p.parseExpr(); err != nil {
+	if _, err := p.parseExprList(); err != nil {
 		return pyStmt{}, err
 	}
 	if err := p.expectOp(":"); err != nil {

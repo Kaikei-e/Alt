@@ -704,3 +704,59 @@ func sampleValidPacket(id string) string {
 		"## 2. 実行・検証手順\n\n```bash\n" + verifyCmd + "\n```\n\n" +
 		"## 3. Hand-off 記述必須項目\n\n- Summary.\n"
 }
+
+func TestShellCombinedStrictFlagsCScriptBlocked(t *testing.T) {
+	// 1. CheckPushCommand / agy-hook pre-shell must catch bash -euo pipefail -c / sh -eo pipefail -c.
+	pushCmds := []string{
+		`bash -euo pipefail -c 'git push origin main'`,
+		`sh -eo pipefail -c 'gh pr merge 1'`,
+		`bash -cuo pipefail 'git push origin main'`,
+	}
+	for _, cmd := range pushCmds {
+		if msg, err := CheckPushCommand(cmd, 0); err != nil || msg == "" {
+			t.Errorf("CheckPushCommand(%q) = (%q, %v), want blocked", cmd, msg, err)
+		}
+	}
+
+	// 2. RunExec (E1/E2) must catch combined strict-mode flags.
+	var out, errBuf bytes.Buffer
+	e1Payload := `{"tool_name":"Bash","tool_input":{"command":"bash -euo pipefail -c 'golangci-lint run --fix'"}}`
+	if code := RunExec(context.Background(), nil, strings.NewReader(e1Payload), &out, &errBuf); code != 2 || !strings.Contains(errBuf.String(), "golangci-lint --fix") {
+		t.Errorf("RunExec(E1) code=%d stderr=%q, want 2 with golangci-lint --fix", code, errBuf.String())
+	}
+	out.Reset()
+	errBuf.Reset()
+	e2Payload := `{"tool_name":"Bash","tool_input":{"command":"bash -euo pipefail ./scripts/lint/run.sh all"}}`
+	t.Setenv("ALT_HARNESS_ROLE", "worker")
+	if code := RunExec(context.Background(), nil, strings.NewReader(e2Payload), &out, &errBuf); code != 2 || !strings.Contains(errBuf.String(), "全体検査") {
+		t.Errorf("RunExec(E2) code=%d stderr=%q, want 2 with 全体検査", code, errBuf.String())
+	}
+
+	// 3. ClassifyOps must catch bash -euo pipefail -c and bash -o pipefail -c.
+	opsCmds := []string{
+		`bash -euo pipefail -c 'docker rm prod-db'`,
+		`bash -o pipefail -c 'docker rm x'`,
+		`bash +euo pipefail -c 'docker rm x'`,
+	}
+	for _, cmd := range opsCmds {
+		if rule, err := ClassifyOps(cmd, 0); err != nil || rule != "O2" {
+			t.Errorf("ClassifyOps(%q) = (%q, %v), want O2", cmd, rule, err)
+		}
+	}
+}
+
+func TestProtectedBlocksDanglingSymlinkToEnv(t *testing.T) {
+	dir := t.TempDir()
+	dangling := filepath.Join(dir, "dangling.txt")
+	if err := os.Symlink(".env.local", dangling); err != nil {
+		t.Fatal(err)
+	}
+	if msg := CheckProtectedPathInCwd(dangling, dir); msg == "" {
+		t.Fatalf("expected CheckProtectedPathInCwd to block dangling symlink to .env.local")
+	}
+	payload := `{"cwd":"` + dir + `","tool_input":{"file_path":"dangling.txt"}}`
+	var out, errBuf bytes.Buffer
+	if code := RunProtected(context.Background(), nil, strings.NewReader(payload), &out, &errBuf); code != 2 {
+		t.Fatalf("RunProtected dangling symlink code=%d want 2 (stderr=%s)", code, errBuf.String())
+	}
+}

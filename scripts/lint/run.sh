@@ -44,6 +44,7 @@ esac
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [ -x "$repo_root/scripts/altharness/alt-harness" ]; then
+  cd "$repo_root"
   exec "$repo_root/scripts/altharness/alt-harness" lint "$@"
 fi
 

@@ -870,3 +870,42 @@ func pairsOf(cands []Candidate) []string {
 	}
 	return out
 }
+
+func TestPythonMatchSoftKeywordAndTupleSubject(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cases := []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{
+			name:   "annotated_var_with_init",
+			before: "def f(s: str) -> None:\n    match: str | None = None\n",
+			after:  "def f(s: str) -> None:\n    match: str | None = s\n",
+		},
+		{
+			name:   "bare_annotated_var",
+			before: "def f() -> None:\n    x: int\n",
+			after:  "def f() -> None:\n    match: int\n",
+		},
+		{
+			name:   "match_call_with_lambda",
+			before: "def f(match, cond):\n    match(0) if cond else lambda y: y\n",
+			after:  "def f(match, cond):\n    match(1) if cond else lambda y: y\n",
+		},
+		{
+			name:   "tuple_subject_match",
+			before: "def f(a, b):\n    match a, b:\n        case 1, 2:\n            return False\n",
+			after:  "def f(a, b):\n    match a, b:\n        case 1, 2:\n            return True\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _, stdout, stderr := runPair(t, dir, tc.name+".py", tc.before, tc.after, "")
+			if code != exitOK {
+				t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout, stderr)
+			}
+		})
+	}
+}

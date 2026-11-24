@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"alt/scripts/altharness/internal/canary"
@@ -38,8 +41,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	switch args[0] {
 	case "lint":
-		repo, err := os.Getwd()
+		repo, err := resolveRepoRoot()
 		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		if err := os.Chdir(repo); err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return 1
 		}
@@ -107,8 +114,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprintln(stderr, "usage: alt-harness gate <repo|harness|both>")
 			return 2
 		}
-		repo, err := os.Getwd()
+		repo, err := resolveRepoRoot()
 		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		if err := os.Chdir(repo); err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return 1
 		}
@@ -167,4 +178,54 @@ func runLang(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unknown language runner %q\n", args[0])
 		return 2
 	}
+}
+
+func resolveRepoRoot() (string, error) {
+	isReg := func(path string) bool {
+		st, err := os.Stat(path)
+		return err == nil && !st.IsDir()
+	}
+	hasRepoMarker := func(dir string) bool {
+		return isReg(filepath.Join(dir, "scripts", "lint", "run.sh")) ||
+			isReg(filepath.Join(dir, "scripts", "altharness", "alt-harness"))
+	}
+	walkUp := func(start string) string {
+		dir := start
+		for {
+			if hasRepoMarker(dir) {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return ""
+			}
+			dir = parent
+		}
+	}
+	wd, err := os.Getwd()
+	if err == nil {
+		if found := walkUp(wd); found != "" {
+			return found, nil
+		}
+		if out, gerr := exec.Command("git", "rev-parse", "--show-toplevel").Output(); gerr == nil {
+			top := strings.TrimSpace(string(out))
+			if top != "" && hasRepoMarker(top) {
+				return top, nil
+			}
+		}
+	}
+	if exe, eerr := os.Executable(); eerr == nil {
+		if found := walkUp(filepath.Dir(exe)); found != "" {
+			return found, nil
+		}
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			if found := walkUp(filepath.Dir(resolved)); found != "" {
+				return found, nil
+			}
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	return wd, nil
 }

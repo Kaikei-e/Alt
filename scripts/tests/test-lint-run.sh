@@ -212,10 +212,11 @@ assert_exact_stdout() {
   echo "PASS: $desc"
 }
 
-# 1. --list on a temporary non-git repository
+# 1. --list on a temporary non-git repository (staged with real Go alt-harness)
 tmp_list_repo="$tmp_repo/list-repo"
 mkdir -p "$tmp_list_repo/scripts/lint"
 cp "$RUN_SH" "$tmp_list_repo/scripts/lint/run.sh"
+stage_altharness "$tmp_list_repo"
 
 for runner in go rust python deno frontend check-link-vs-url-naming; do
   printf '#!/usr/bin/env bash\necho "ran:%s:$1"\n' "$runner" >"$tmp_list_repo/scripts/lint/$runner.sh"
@@ -287,6 +288,7 @@ mkdir -p "$tmp_list_git/scripts/lint" "$tmp_list_git/svc-go" "$tmp_list_git/prot
   "$tmp_list_git/scripts/harness/corpus/C-05" \
   "$tmp_list_git/alt-butterfly-facade/internal/gen/proto/v1"
 cp "$RUN_SH" "$tmp_list_git/scripts/lint/run.sh"
+stage_altharness "$tmp_list_git"
 printf '#!/usr/bin/env bash\necho "ran:go:$1"\n' >"$tmp_list_git/scripts/lint/go.sh"
 printf '#!/usr/bin/env bash\necho "ran:proto:$1"\n' >"$tmp_list_git/scripts/lint/proto.sh"
 printf '#!/usr/bin/env bash\necho "ran:repo:$1"\n' >"$tmp_list_git/scripts/lint/repo.sh"
@@ -647,5 +649,32 @@ assert_exit_and_err 0 "PASS: allowlist-drift" \
 assert_exit_and_err 0 "PASS: allowlist-drift" \
   "proto.sh passes in dirty git worktree with unrelated uncommitted files" \
   env PATH="$tmp_proto_bin:$PATH" bash "$tmp_dirty_git/scripts/lint/proto.sh" proto
+
+# 8. Production Go alt-harness non-root CWD, repo.sh/harness.sh arg handling, policy & disk checks
+cp "$REPO_ROOT/scripts/lint/repo.sh" "$tmp_git/scripts/lint/repo.sh"
+assert_exit_and_err 0 "alt-backend/app" \
+  "run.sh --list (Go alt-harness) works from /tmp" \
+  env -C /tmp bash "$RUN_SH" --list
+assert_exit_and_err 0 "alt-backend/app" \
+  "run.sh --list (Go alt-harness) works from service subdirectory" \
+  env -C "$REPO_ROOT/alt-backend/app" bash "$RUN_SH" --list
+assert_exit_and_err 1 "ディスク空き容量不足" \
+  "run.sh (Go alt-harness) enforces disk floor from /tmp" \
+  env -C /tmp ALT_LINT_FAKE_FREE_KB=1024 bash "$RUN_SH" repo
+assert_exit_and_err 2 "invalid lint policy" \
+  "run.sh (Go alt-harness) rejects invalid --policy from /tmp" \
+  env -C /tmp bash "$RUN_SH" --policy foo repo
+assert_exit_and_err 2 "cannot be resolved" \
+  "repo.sh repo (Go alt-harness) works from /tmp with redundant target arg" \
+  env -C /tmp LINT_BASE="does-not-exist-rev" bash "$tmp_git/scripts/lint/repo.sh" repo
+assert_exit_and_err 2 "cannot be resolved" \
+  "harness.sh harness (Go alt-harness) works from /tmp with redundant target arg" \
+  env -C /tmp LINT_BASE="does-not-exist-rev" bash "$tmp_git/scripts/lint/harness.sh" harness
+assert_exit_and_err 2 "usage:" \
+  "repo.sh rejects unexpected extra arg" \
+  env -C /tmp bash "$tmp_git/scripts/lint/repo.sh" unexpected
+assert_exit_and_err 2 "usage:" \
+  "harness.sh rejects unexpected extra arg" \
+  env -C /tmp bash "$tmp_git/scripts/lint/harness.sh" unexpected
 
 exit "$FAILS"

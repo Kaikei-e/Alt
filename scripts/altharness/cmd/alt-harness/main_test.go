@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -80,5 +82,26 @@ func TestWiredSubcommandsHelpAndErrors(t *testing.T) {
 				t.Errorf("stderr=%q missing %q", errb.String(), tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestResolveRepoRootFromSubdir(t *testing.T) {
+	// Walk up from package dir to repo root.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRoot := filepath.Clean(filepath.Join(wd, "..", "..", "..", ".."))
+	subdir := filepath.Join(wantRoot, "alt-backend", "app")
+	if _, err := os.Stat(subdir); err != nil {
+		t.Skipf("subdir %s absent", subdir)
+	}
+	t.Chdir(subdir)
+	got, err := resolveRepoRoot()
+	if err != nil {
+		t.Fatalf("resolveRepoRoot failed: %v", err)
+	}
+	if filepath.Clean(got) != wantRoot {
+		t.Fatalf("resolveRepoRoot()=%q, want %q", got, wantRoot)
 	}
 }

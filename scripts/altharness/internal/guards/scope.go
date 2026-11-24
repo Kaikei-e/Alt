@@ -143,6 +143,13 @@ func relativeBase(repoResolved, cwd string) string {
 }
 
 func resolveNonStrict(path string) (string, error) {
+	return resolveNonStrictDepth(path, 0)
+}
+
+func resolveNonStrictDepth(path string, depth int) (string, error) {
+	if depth > 40 {
+		return "", fmt.Errorf("too many symlink hops resolving %s", path)
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
@@ -162,11 +169,26 @@ func resolveNonStrict(path string) (string, error) {
 			if st, err := os.Lstat(next); err == nil {
 				if st.Mode()&os.ModeSymlink != 0 {
 					target, err := filepath.EvalSymlinks(next)
-					if err != nil {
-						return "", err
+					if err == nil {
+						cur = target
+						continue
 					}
-					cur = target
-					continue
+					if os.IsNotExist(err) {
+						linkTarget, lerr := os.Readlink(next)
+						if lerr != nil {
+							return "", lerr
+						}
+						if !filepath.IsAbs(linkTarget) {
+							linkTarget = filepath.Join(cur, linkTarget)
+						}
+						resolvedLink, rerr := resolveNonStrictDepth(linkTarget, depth+1)
+						if rerr != nil {
+							return "", rerr
+						}
+						cur = resolvedLink
+						continue
+					}
+					return "", err
 				}
 				cur = next
 				continue

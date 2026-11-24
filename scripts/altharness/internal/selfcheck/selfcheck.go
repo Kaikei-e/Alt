@@ -438,6 +438,9 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 				if isClaude && hook["onFailure"] != "block" {
 					*findings = append(*findings, Finding{"H3", label, `PreToolUse command hook lacks "onFailure": "block"`})
 				}
+				if strings.Contains(cmd, "|| exit 0") || strings.Contains(cmd, "|| true") {
+					*findings = append(*findings, Finding{"H3", label, `PreToolUse command hook swallows failure with "|| exit 0" or "|| true" (fail-open)`})
+				}
 				if strings.Contains(cmd, "guard_ops_commands.py") {
 					if !isClaude && !strings.Contains(cmd, "--on-match deny") {
 						*findings = append(*findings, Finding{"H4", label, `PreToolUse guard_ops_commands.py entry must pass "--on-match deny" because Codex does not support the ask decision and the call would go through`})

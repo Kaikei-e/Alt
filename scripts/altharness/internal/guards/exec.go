@@ -430,16 +430,27 @@ func extractShellCScriptExec(tokens []Token, start int) (string, bool) {
 			i += 2
 			continue
 		}
-		if strings.HasPrefix(tok, "--") || strings.HasPrefix(tok, "+") {
+		if strings.HasPrefix(tok, "--") {
 			i++
 			continue
 		}
-		if strings.HasPrefix(tok, "-") {
-			if strings.Contains(tok[1:], "c") {
-				if i+1 < n {
-					return tokens[i+1].Text, true
+		if len(tok) >= 2 && (tok[0] == '-' || tok[0] == '+') {
+			flags := tok[1:]
+			hasC := tok[0] == '-' && strings.ContainsRune(flags, 'c')
+			hasO := strings.ContainsRune(flags, 'o')
+			if hasC {
+				argIdx := i + 1
+				if hasO {
+					argIdx = i + 2
+				}
+				if argIdx < n {
+					return tokens[argIdx].Text, true
 				}
 				return "", false
+			}
+			if hasO {
+				i += 2
+				continue
 			}
 			i++
 			continue
@@ -468,7 +479,15 @@ func checkE2Command(cmd []string, envVars map[string]string) string {
 				i += 2
 				continue
 			}
-			if strings.HasPrefix(tok, "-") || strings.HasPrefix(tok, "+") {
+			if strings.HasPrefix(tok, "--") {
+				i++
+				continue
+			}
+			if len(tok) >= 2 && (tok[0] == '-' || tok[0] == '+') {
+				if strings.ContainsRune(tok[1:], 'o') {
+					i += 2
+					continue
+				}
 				i++
 				continue
 			}
