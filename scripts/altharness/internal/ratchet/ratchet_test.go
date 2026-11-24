@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -32,6 +31,24 @@ func TestSuppressionCounts(t *testing.T) {
 			path: "svc/app.py",
 			src:  "# ruff: noqa\nx = 1\n# flake8: noqa\n",
 			want: nil,
+		},
+		{
+			name: "python f-string and raw-string even backslashes do not zero inline noqa",
+			path: "svc/app.py",
+			src:  "a = f\"\\\\\"\nb = rf\"\\\\\"\nc = r\"\\\\\"\nx = 1  # noqa: S603 -- reason\ny = 2  # nosec B603 -- reason\n",
+			want: map[string]int{"python_noqa": 1, "python_nosec": 1},
+		},
+		{
+			name: "python fallback recovery preserves inline noqa and nosec",
+			path: "svc/broken.py",
+			src:  "broken = \"unterminated string\nx = 1  # noqa: S603 -- reason\ny = \"# noqa: S101\"  # nosec B310 -- reason\n",
+			want: map[string]int{"python_noqa": 1, "python_nosec": 1},
+		},
+		{
+			name: "python raw escaped quote and pep701 multiline f-string",
+			path: "svc/pep701.py",
+			src:  "p = r'don\\'t'  # noqa: S603 -- reason\nq = f\"{\n    x\n}\"  # noqa: S608 -- identifier\n",
+			want: map[string]int{"python_noqa": 2},
 		},
 		{
 			name: "go nolint and nosec ignore strings",
@@ -83,6 +100,7 @@ func TestSuppressionCounts(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countFileSuppressions(tc.path, tc.src)
@@ -114,29 +132,42 @@ func TestResolveTargetLongestPrefix(t *testing.T) {
 
 func TestCLIUsage(t *testing.T) {
 	t.Parallel()
-	cases := [][]string{
-		{"--help"},
-		{"-h"},
-		{"--bogus"},
-		{"--repo-root"},
-		{"--max-judgment-rules", "abc"},
-		{"--max-judgment-rules", "1_2"},
-		{"--up"},
-		{"--up=1"},
-		{"--update=true"},
-		{"-h=foo"},
-		{"-help"},
-		{"extra"},
-		{"check-fingerprints"},
-		{"--update-fingerprints"},
-		{"--findings-json", "a", "--ruff-json", "b"},
-		{"--", "--update"},
+	cases := []struct {
+		args       []string
+		wantCode   int
+		wantOutSub string
+		wantErrSub string
+	}{
+		{[]string{"--help"}, exitClean, "Enforce inline suppression ratchet", ""},
+		{[]string{"-h"}, exitClean, "usage: check_ratchet.py", ""},
+		{[]string{"--bogus"}, exitUsage, "", "unrecognized arguments: --bogus"},
+		{[]string{"--repo-root"}, exitUsage, "", "expected one argument"},
+		{[]string{"--max-judgment-rules", "abc"}, exitUsage, "", "invalid int value"},
+		{[]string{"--up"}, exitUsage, "", "ambiguous option"},
+		{[]string{"--up=1"}, exitUsage, "", "ambiguous option"},
+		{[]string{"--update=true"}, exitUsage, "", "ignored explicit argument"},
+		{[]string{"-h=foo"}, exitUsage, "", "ignored explicit argument"},
+		{[]string{"-help"}, exitClean, "usage: check_ratchet.py", ""},
+		{[]string{"extra"}, exitUsage, "", "unrecognized arguments: extra"},
+		{[]string{"check-fingerprints"}, exitUsage, "", "is required for fingerprint mode"},
+		{[]string{"--update-fingerprints"}, exitUsage, "", "is required for fingerprint mode"},
+		{[]string{"--findings-json", "a", "--ruff-json", "b"}, exitUsage, "", "specify at most one findings input flag"},
+		{[]string{"--", "--update"}, exitUsage, "", "unrecognized arguments"},
 	}
-	for _, args := range cases {
-		args := args
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
+	for _, tc := range cases {
+		tc := tc
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			t.Parallel()
-			assertParity(t, args, nil)
+			code, stdout, stderr := runRatchet(tc.args...)
+			if code != tc.wantCode {
+				t.Fatalf("args %q: code=%d want %d\nstdout:\n%s\nstderr:\n%s", tc.args, code, tc.wantCode, stdout, stderr)
+			}
+			if tc.wantOutSub != "" && !strings.Contains(stdout, tc.wantOutSub) {
+				t.Fatalf("args %q: stdout missing %q:\n%s", tc.args, tc.wantOutSub, stdout)
+			}
+			if tc.wantErrSub != "" && !strings.Contains(stderr, tc.wantErrSub) {
+				t.Fatalf("args %q: stderr missing %q:\n%s", tc.args, tc.wantErrSub, stderr)
+			}
 		})
 	}
 }
@@ -163,15 +194,98 @@ func TestSampleRepoRatchet(t *testing.T) {
 	write(t, repo, "scripts/harness/corpus/C-99/after.py", "x = 1  # noqa: F401\n")
 	write(t, repo, "svc-go/foo.pb.go", "package main\n//nolint:errcheck\n")
 	write(t, repo, "svc-go/gen/x.py", "x = 1  # noqa: F401\n")
+
 	sup := filepath.Join(repo, "scripts", "lint", "ratchet", "suppressions.toml")
 	base := []string{"--repo-root", repo, "--suppressions-file", sup}
-	assertParity(t, append(append([]string{}, base...), "--update", "--max-judgment-rules", "12"), []string{sup})
-	assertParity(t, base, []string{sup})
+
+	// 1. --update generates suppressions.toml with exact target counts and max_judgment_rules.
+	code, stdout, stderr := runRatchet(append(append([]string{}, base...), "--update", "--max-judgment-rules", "12")...)
+	if code != exitClean {
+		t.Fatalf("update failed: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	supText := readFile(t, sup)
+	for _, want := range []string{
+		"max_judgment_rules = 12",
+		`[targets.svc-py]`,
+		"python_noqa = 2",
+		`[targets.svc-go]`,
+		"go_nolint = 1",
+		"go_nosec = 1",
+		`[targets."svc-go/cmd/tool"]`,
+		`[targets.svc-rs]`,
+		"rust_allow = 1",
+		`[targets.web]`,
+		"ts_biome_ignore = 1",
+		`[targets.deno-svc]`,
+		"ts_deno_ignore = 1",
+		`[targets.repo-root]`,
+	} {
+		if !strings.Contains(supText, want) {
+			t.Fatalf("suppressions.toml missing %q:\n%s", want, supText)
+		}
+	}
+	for _, excluded := range []string{"stopped-using-k8s", "corpus", "foo.pb.go", "generated_client"} {
+		if strings.Contains(supText, excluded) {
+			t.Fatalf("suppressions.toml should exclude %q:\n%s", excluded, supText)
+		}
+	}
+
+	// 2. Clean check passes.
+	code, stdout, stderr = runRatchet(base...)
+	if code != exitClean {
+		t.Fatalf("clean check failed: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+
+	// 3. Adding a suppression fails ratchet (increase forbidden).
 	write(t, repo, "svc-py/app.py", "a = 1  # noqa: F401 -- keep symbol\nb = \"# noqa: S101\"\nc = 2  # noqa: S603 -- fixed argv\nd = 3  # noqa: F401 -- extra\n")
-	assertParity(t, base, []string{sup})
+	code, _, stderr = runRatchet(base...)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.increase") {
+		t.Fatalf("increased suppression should fail: code=%d stderr=%s", code, stderr)
+	}
+
+	// 4. Reducing a suppression without --update requires lowering the floor.
 	write(t, repo, "svc-py/app.py", "a = 1  # noqa: F401 -- keep symbol\n")
-	assertParity(t, base, []string{sup})
-	assertParity(t, append(append([]string{}, base...), "--update"), []string{sup})
+	code, _, stderr = runRatchet(base...)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.decrease-update-required") {
+		t.Fatalf("decreased suppression should require --update: code=%d stderr=%s", code, stderr)
+	}
+
+	// 5. Re-running --update preserves max_judgment_rules = 12 and lowers svc-py count to 1.
+	code, _, stderr = runRatchet(append(append([]string{}, base...), "--update")...)
+	if code != exitClean {
+		t.Fatalf("second update failed: code=%d stderr=%s", code, stderr)
+	}
+	supText = readFile(t, sup)
+	if !strings.Contains(supText, "max_judgment_rules = 12") {
+		t.Fatalf("second update lost max_judgment_rules:\n%s", supText)
+	}
+	if strings.Contains(supText, "python_noqa = 2") {
+		t.Fatalf("second update did not lower svc-py python_noqa:\n%s", supText)
+	}
+}
+
+func TestInProcessTargetDiscovery(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	gitInit(t, repo)
+	write(t, repo, "scripts/lint/run.sh", "#!/usr/bin/env bash\nexit 99\n")
+	write(t, repo, "svc-py/pyproject.toml", "[project]\nname = \"svc-py\"\n")
+	write(t, repo, "svc-py/app.py", "x = 1  # noqa: S603 -- reason\n")
+
+	// Even though scripts/lint/run.sh exits 99 if exec'd, in-process discovery must succeed without running bash.
+	targets, err := discoverDirectoryTargets(context.Background(), repo, []string{"svc-py/pyproject.toml", "svc-py/app.py"})
+	if err != nil {
+		t.Fatalf("discoverDirectoryTargets failed: %v", err)
+	}
+	found := false
+	for _, tgt := range targets {
+		if tgt == "svc-py" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected svc-py in targets %v", targets)
+	}
 }
 
 func TestFingerprintModes(t *testing.T) {
@@ -185,42 +299,102 @@ func TestFingerprintModes(t *testing.T) {
 	absBody, _ := json.Marshal([]map[string]any{{
 		"code": "TRY003", "filename": src, "location": map[string]int{"row": 2, "column": 5},
 	}})
-	os.WriteFile(findings, absBody, fsperm.File)
+	if err := os.WriteFile(findings, absBody, fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	args := func(extra ...string) []string {
 		a := []string{"check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", findings}
 		return append(a, extra...)
 	}
-	assertParity(t, args("--update-fingerprints"), []string{baselines})
+
+	// Record initial baseline.
+	code, _, stderr := runRatchet(args("--update-fingerprints")...)
+	if code != exitClean {
+		t.Fatalf("update fingerprints: code=%d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(readFile(t, baselines), `rule = "TRY003"`) {
+		t.Fatalf("baselines missing TRY003:\n%s", readFile(t, baselines))
+	}
+
+	// Line-shift + whitespace change matches existing fingerprint.
 	write(t, repo, srcRel, "# shifted header\n\ndef f() -> None:\n        raise   ValueError('old violation')\n    return\n")
-	os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4}]`), fsperm.File)
-	assertParity(t, args(), []string{baselines})
+	if err := os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet(args()...)
+	if code != exitClean {
+		t.Fatalf("shifted line should pass: code=%d stderr=%s", code, stderr)
+	}
+
+	// Brand-new finding fails block-new check.
 	write(t, repo, srcRel, "# shifted header\n\ndef f() -> None:\n        raise   ValueError('old violation')\n    raise ValueError('brand new violation')\n")
-	os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4},{"rule":"TRY003","file":"pkg/mod.py","line":5}]`), fsperm.File)
-	assertParity(t, args(), []string{baselines})
-	os.WriteFile(findings, []byte(`[]`), fsperm.File)
-	assertParity(t, args("--update-fingerprints"), []string{baselines})
-	os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4}]`), fsperm.File)
-	assertParity(t, args(), []string{baselines})
-	assertParity(t, append(args(), "--require-findings"), []string{baselines})
-	os.WriteFile(findings, []byte(`[]`), fsperm.File)
-	assertParity(t, append(args(), "--require-findings"), []string{baselines})
+	if err := os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4},{"rule":"TRY003","file":"pkg/mod.py","line":5}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet(args()...)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.new-fingerprint") {
+		t.Fatalf("new finding should fail: code=%d stderr=%s", code, stderr)
+	}
+
+	// Clearing findings via --update-fingerprints lowers baseline so old finding is now rejected.
+	if err := os.WriteFile(findings, []byte(`[]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet(args("--update-fingerprints")...)
+	if code != exitClean {
+		t.Fatalf("empty update: code=%d stderr=%s", code, stderr)
+	}
+	if err := os.WriteFile(findings, []byte(`[{"rule":"TRY003","file":"pkg/mod.py","line":4}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet(args()...)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.new-fingerprint") {
+		t.Fatalf("reintroduced finding should fail: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runRatchet(args("--require-findings")...)
+	if code != exitViolations {
+		t.Fatalf("require-findings with 1 new finding: code=%d stderr=%s", code, stderr)
+	}
+	if err := os.WriteFile(findings, []byte(`[]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet(args("--require-findings")...)
+	if code != exitUsage || !strings.Contains(stderr, "0 parsed findings") {
+		t.Fatalf("require-findings with 0 findings must fail closed (exit 2): code=%d stderr=%s", code, stderr)
+	}
 }
 
 func TestSymlinkAndLineFailures(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	outside := filepath.Join(root, "outside.py")
-	os.WriteFile(outside, []byte("SECRET_LINE = 'leaked'\n"), fsperm.File)
+	if err := os.WriteFile(outside, []byte("SECRET_LINE = 'leaked'\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	repo := filepath.Join(root, "repo")
-	os.MkdirAll(filepath.Join(repo, "sub"), fsperm.Dir)
-	os.Symlink(outside, filepath.Join(repo, "sub", "link.py"))
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "sub", "link.py")); err != nil {
+		t.Fatal(err)
+	}
 	baselines := filepath.Join(repo, "rule_baselines.toml")
-	os.WriteFile(baselines, []byte("version = 1\nfingerprints = []\n"), fsperm.File)
+	if err := os.WriteFile(baselines, []byte("version = 1\nfingerprints = []\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	findings := filepath.Join(repo, "bad.json")
 	for _, bad := range []string{outside, "sub/../../outside.py", "sub/link.py"} {
 		body, _ := json.Marshal([]map[string]any{{"rule": "TRY003", "file": bad, "line": 1}})
-		os.WriteFile(findings, body, fsperm.File)
-		assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", findings}, []string{baselines})
+		if err := os.WriteFile(findings, body, fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr := runRatchet("check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", findings)
+		if code != exitUsage {
+			t.Fatalf("path escape %q must fail closed (exit 2): code=%d stderr=%s", bad, code, stderr)
+		}
+		if strings.Contains(stderr, "leaked") {
+			t.Fatalf("outside file content leaked for %q: %s", bad, stderr)
+		}
 	}
 }
 
@@ -233,47 +407,93 @@ func TestProjectDirAndScopedBaselines(t *testing.T) {
 	write(t, repo, "svc-py/app.py", "x = 1\ny = 2\n")
 	write(t, repo, "svc-fe/src/a.ts", "export const a=1;\n")
 	baselines := filepath.Join(repo, "scripts", "lint", "ratchet", "rule_baselines.toml")
+
+	// Go SARIF with project-dir
 	sarif := filepath.Join(root, "go.sarif")
 	sarifBody := `{
 	  "version": "2.1.0",
 	  "runs": [{"results": [{"ruleId": "gosec", "message": {"text": "G402: TLS InsecureSkipVerify"},
 	    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "main.go"}, "region": {"startLine": 2}}}]}]}]
 	}`
-	os.WriteFile(sarif, []byte(sarifBody), fsperm.File)
+	if err := os.WriteFile(sarif, []byte(sarifBody), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	goProj := filepath.Join(repo, "svc-go")
 	write(t, repo, "svc-go/main.go", "package main\nfunc f() { _ = 1 }\n")
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", goProj, "--baselines-file", baselines, "--golangci-sarif", sarif, "--update-fingerprints"}, []string{baselines})
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", goProj, "--baselines-file", baselines, "--golangci-sarif", sarif}, []string{baselines})
+	code, _, stderr := runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", goProj, "--baselines-file", baselines, "--golangci-sarif", sarif, "--update-fingerprints")
+	if code != exitClean {
+		t.Fatalf("sarif update: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", goProj, "--baselines-file", baselines, "--golangci-sarif", sarif)
+	if code != exitClean {
+		t.Fatalf("sarif check: code=%d stderr=%s", code, stderr)
+	}
 
+	// Dedup repo-relative path inside project-dir and catch swapped new bug
 	dedup := filepath.Join(root, "dedup.sarif")
-	os.WriteFile(dedup, []byte(`{"version":"2.1.0","runs":[{"results":[{"ruleId":"ineffassign","message":{"text":"ineffectual assignment to firstVar"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"docker/otel-relay/main.go"},"region":{"startLine":3}}}]}]}]}`), fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", goDir, "--baselines-file", baselines, "--golangci-sarif", dedup, "--update-fingerprints"}, []string{baselines})
+	if err := os.WriteFile(dedup, []byte(`{"version":"2.1.0","runs":[{"results":[{"ruleId":"ineffassign","message":{"text":"ineffectual assignment to firstVar"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"docker/otel-relay/main.go"},"region":{"startLine":3}}}]}]}]}`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", goDir, "--baselines-file", baselines, "--golangci-sarif", dedup, "--update-fingerprints")
+	if code != exitClean {
+		t.Fatalf("dedup update: code=%d stderr=%s", code, stderr)
+	}
 	swap := filepath.Join(root, "swap.sarif")
-	os.WriteFile(swap, []byte(`{"version":"2.1.0","runs":[{"results":[{"ruleId":"ineffassign","message":{"text":"ineffectual assignment to secondBrandNewBug"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"docker/otel-relay/main.go"},"region":{"startLine":7}}}]}]}]}`), fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", goDir, "--baselines-file", baselines, "--golangci-sarif", swap}, []string{baselines})
+	if err := os.WriteFile(swap, []byte(`{"version":"2.1.0","runs":[{"results":[{"ruleId":"ineffassign","message":{"text":"ineffectual assignment to secondBrandNewBug"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"docker/otel-relay/main.go"},"region":{"startLine":7}}}]}]}]}`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", goDir, "--baselines-file", baselines, "--golangci-sarif", swap)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.new-fingerprint") {
+		t.Fatalf("swapped bug must fail: code=%d stderr=%s", code, stderr)
+	}
 
+	// Nonexistent file or out-of-range lines fail closed (exit 2)
 	bad := filepath.Join(root, "bad.json")
 	for _, body := range []string{
 		`[{"rule":"F841","file":"svc-py/nonexistent.py","line":1}]`,
 		`[{"rule":"F841","file":"svc-py/app.py","line":0}]`,
 		`[{"rule":"F841","file":"svc-py/app.py","line":99}]`,
 	} {
-		os.WriteFile(bad, []byte(body), fsperm.File)
-		assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", bad}, []string{baselines})
+		if err := os.WriteFile(bad, []byte(body), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", bad)
+		if code != exitUsage {
+			t.Fatalf("bad finding %s must fail closed (exit 2): code=%d stderr=%s", body, code, stderr)
+		}
 	}
 
+	// Python findings with project-dir
 	pyJSON := filepath.Join(root, "py.json")
-	os.WriteFile(pyJSON, []byte(`[{"rule":"F841","file":"app.py","line":1}]`), fsperm.File)
+	if err := os.WriteFile(pyJSON, []byte(`[{"rule":"F841","file":"app.py","line":1}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	pyDir := filepath.Join(repo, "svc-py")
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", pyDir, "--baselines-file", baselines, "--findings-json", pyJSON, "--update-fingerprints"}, []string{baselines})
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", pyDir, "--baselines-file", baselines, "--findings-json", pyJSON}, []string{baselines})
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", pyDir, "--baselines-file", baselines, "--findings-json", pyJSON, "--update-fingerprints")
+	if code != exitClean {
+		t.Fatalf("py update: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", pyDir, "--baselines-file", baselines, "--findings-json", pyJSON)
+	if code != exitClean {
+		t.Fatalf("py check: code=%d stderr=%s", code, stderr)
+	}
 
+	// Clippy NDJSON
 	clippy := filepath.Join(root, "clippy.json")
-	os.WriteFile(clippy, []byte("{\"reason\":\"compiler-message\",\"message\":{\"code\":{\"code\":\"clippy::eq_op\"},\"level\":\"error\",\"spans\":[{\"file_name\":\"src/lib.rs\",\"line_start\":1,\"is_primary\":true}]}}\n{\"reason\":\"compiler-message\",\"message\":{\"code\":null,\"level\":\"error\",\"spans\":[]}}\n"), fsperm.File)
+	if err := os.WriteFile(clippy, []byte("{\"reason\":\"compiler-message\",\"message\":{\"code\":{\"code\":\"clippy::eq_op\"},\"level\":\"error\",\"spans\":[{\"file_name\":\"src/lib.rs\",\"line_start\":1,\"is_primary\":true}]}}\n{\"reason\":\"compiler-message\",\"message\":{\"code\":null,\"level\":\"error\",\"spans\":[]}}\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
 	write(t, repo, "svc-rs/src/lib.rs", "pub fn f(x: i32) -> bool { x == x }\n")
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-rs"), "--baselines-file", baselines, "--clippy-json", clippy, "--update-fingerprints"}, []string{baselines})
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-rs"), "--baselines-file", baselines, "--clippy-json", clippy}, []string{baselines})
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-rs"), "--baselines-file", baselines, "--clippy-json", clippy, "--update-fingerprints")
+	if code != exitClean {
+		t.Fatalf("clippy update: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-rs"), "--baselines-file", baselines, "--clippy-json", clippy)
+	if code != exitClean {
+		t.Fatalf("clippy check: code=%d stderr=%s", code, stderr)
+	}
 
+	// Deno JSON
 	deno := filepath.Join(root, "deno.json")
 	mod := filepath.Join(repo, "svc-deno", "mod.ts")
 	write(t, repo, "svc-deno/mod.ts", "export const x: any = 1;\n")
@@ -282,9 +502,19 @@ func TestProjectDirAndScopedBaselines(t *testing.T) {
 		"diagnostics": []any{map[string]any{"code": "no-explicit-any", "filename": uri, "range": map[string]any{"start": map[string]int{"line": 1, "col": 16}}}},
 		"errors":      []any{},
 	})
-	os.WriteFile(deno, body, fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-deno"), "--baselines-file", baselines, "--deno-json", deno, "--update-fingerprints"}, []string{baselines})
+	if err := os.WriteFile(deno, body, fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-deno"), "--baselines-file", baselines, "--deno-json", deno, "--update-fingerprints")
+	if code != exitClean {
+		t.Fatalf("deno update: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-deno"), "--baselines-file", baselines, "--deno-json", deno)
+	if code != exitClean {
+		t.Fatalf("deno check: code=%d stderr=%s", code, stderr)
+	}
 
+	// Biome JSON (unbaselined lint finding fails; format diagnostic ignored or handled)
 	fe := filepath.Join(repo, "svc-fe", "src", "a.ts")
 	srcBytes, _ := os.ReadFile(fe)
 	idx := strings.Index(string(srcBytes), "a")
@@ -293,20 +523,41 @@ func TestProjectDirAndScopedBaselines(t *testing.T) {
 		"location": map[string]any{"path": map[string]any{"file": "src/a.ts"}, "span": []int{idx, idx + 1}, "sourceCode": string(srcBytes)},
 	}}})
 	biomePath := filepath.Join(root, "biome.json")
-	os.WriteFile(biomePath, biome, fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-fe"), "--baselines-file", baselines, "--biome-json", biomePath}, []string{baselines})
+	if err := os.WriteFile(biomePath, biome, fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-fe"), "--baselines-file", baselines, "--biome-json", biomePath)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.new-fingerprint") {
+		t.Fatalf("unbaselined biome finding should fail: code=%d stderr=%s", code, stderr)
+	}
 
 	fmtJSON := filepath.Join(root, "fmt.json")
-	os.WriteFile(fmtJSON, []byte(`{"diagnostics":[{"category":"format","location":{"path":{"file":"src/a.ts"},"start":{"line":0,"column":0},"span":null}}]}`), fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-fe"), "--baselines-file", baselines, "--biome-json", fmtJSON}, []string{baselines})
+	if err := os.WriteFile(fmtJSON, []byte(`{"diagnostics":[{"category":"format","location":{"path":{"file":"src/a.ts"},"start":{"line":0,"column":0},"span":null}}]}`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--project-dir", filepath.Join(repo, "svc-fe"), "--baselines-file", baselines, "--biome-json", fmtJSON)
+	if code != exitViolations || !strings.Contains(stderr, "new format violation") {
+		t.Fatalf("biome format diagnostic with line 0 should clamp to line 1 and flag unbaselined: code=%d stderr=%s", code, stderr)
+	}
 
+	// Empty __init__.py: line 1 is valid (unbaselined -> exit 1), line 2 is out of range (exit 2).
 	write(t, repo, "svc-py/__init__.py", "")
 	empty1 := filepath.Join(root, "e1.json")
-	os.WriteFile(empty1, []byte(`[{"rule":"D104","file":"svc-py/__init__.py","line":1}]`), fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", empty1}, []string{baselines})
+	if err := os.WriteFile(empty1, []byte(`[{"rule":"D104","file":"svc-py/__init__.py","line":1}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", empty1)
+	if code != exitViolations || !strings.Contains(stderr, "ratchet.new-fingerprint") {
+		t.Fatalf("empty file line 1 should emit new-fingerprint: code=%d stderr=%s", code, stderr)
+	}
 	empty2 := filepath.Join(root, "e2.json")
-	os.WriteFile(empty2, []byte(`[{"rule":"D104","file":"svc-py/__init__.py","line":2}]`), fsperm.File)
-	assertParity(t, []string{"check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", empty2}, []string{baselines})
+	if err := os.WriteFile(empty2, []byte(`[{"rule":"D104","file":"svc-py/__init__.py","line":2}]`), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRatchet("check-fingerprints", "--repo-root", repo, "--baselines-file", baselines, "--findings-json", empty2)
+	if code != exitUsage {
+		t.Fatalf("empty file line 2 must fail closed (exit 2): code=%d stderr=%s", code, stderr)
+	}
 }
 
 func TestTOMLEscapesRoundTrip(t *testing.T) {
@@ -319,6 +570,21 @@ func TestTOMLEscapesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tomllib: %v %s\nrendered:\n%s", err, out, rendered)
 	}
+}
+
+func runRatchet(args ...string) (int, string, string) {
+	var out, errBuf bytes.Buffer
+	code := Run(context.Background(), args, &out, &errBuf)
+	return code, out.String(), errBuf.String()
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func sameCounts(got, want map[string]int) bool {
@@ -354,86 +620,4 @@ func gitInit(t *testing.T, root string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
-}
-
-func scriptPath(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("caller")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", ".."))
-	return filepath.Join(root, "scripts", "lint", "check_ratchet.py")
-}
-
-func assertParity(t *testing.T, args []string, watch []string) {
-	t.Helper()
-	before := map[string]*[]byte{}
-	for _, p := range watch {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			before[p] = nil
-			continue
-		}
-		cp := append([]byte(nil), b...)
-		before[p] = &cp
-	}
-	pyCmd := exec.Command("python3", append([]string{scriptPath(t)}, args...)...)
-	var pyOut, pyErr bytes.Buffer
-	pyCmd.Stdout = &pyOut
-	pyCmd.Stderr = &pyErr
-	err := pyCmd.Run()
-	pyCode := 0
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			pyCode = ee.ExitCode()
-		} else {
-			t.Fatalf("python: %v", err)
-		}
-	}
-	pyFiles := snap(watch)
-	restore(before)
-	var goOut, goErr bytes.Buffer
-	goCode := Run(context.Background(), args, &goOut, &goErr)
-	goFiles := snap(watch)
-	if goCode != pyCode || goOut.String() != pyOut.String() || goErr.String() != pyErr.String() || !sameFiles(pyFiles, goFiles) {
-		t.Fatalf("args %q\npython rc=%d\ngo rc=%d\n--- python stdout ---\n%s\n--- go stdout ---\n%s\n--- python stderr ---\n%s\n--- go stderr ---\n%s\nfile mismatch=%v",
-			args, pyCode, goCode, pyOut.String(), goOut.String(), pyErr.String(), goErr.String(), !sameFiles(pyFiles, goFiles))
-	}
-}
-
-func snap(paths []string) map[string]string {
-	out := map[string]string{}
-	for _, p := range paths {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			out[p] = "<missing>"
-			continue
-		}
-		out[p] = string(b)
-	}
-	return out
-}
-
-func restore(before map[string]*[]byte) {
-	for p, b := range before {
-		if b == nil {
-			os.Remove(p)
-			continue
-		}
-		os.MkdirAll(filepath.Dir(p), fsperm.Dir)
-		os.WriteFile(p, *b, fsperm.File)
-	}
-}
-
-func sameFiles(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }

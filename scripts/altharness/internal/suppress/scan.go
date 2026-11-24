@@ -26,101 +26,271 @@ type rustToken struct {
 }
 
 func scanPyComments(text string) []lineComment {
-	var out []lineComment
-	n := len(text)
-	i := 0
-	line := 1
-	for i < n {
-		if text[i] == '\n' {
-			line++
-			i++
-			continue
-		}
-		if text[i] == '#' {
-			start := i
-			for i < n && text[i] != '\n' {
-				i++
-			}
-			out = append(out, lineComment{line: line, raw: text[start:i]})
-			continue
-		}
-		if ni, nl, ok := trySkipPyString(text, i); ok {
-			i = ni
-			line += nl
-			continue
-		}
-		i++
-	}
-	return out
+	s := &pyCommentScanner{text: text, line: 1}
+	s.scan()
+	return s.out
 }
 
-func trySkipPyString(text string, i int) (int, int, bool) {
-	prefixes := []string{
-		"rb", "rB", "Rb", "RB", "br", "bR", "Br", "BR",
-		"rf", "rF", "Rf", "RF", "fr", "fR", "Fr", "FR",
-		"b", "B", "r", "R", "u", "U", "f", "F",
+type pyCommentScanner struct {
+	text string
+	i    int
+	line int
+	out  []lineComment
+}
+
+func (s *pyCommentScanner) scan() {
+	n := len(s.text)
+	for s.i < n {
+		if s.text[s.i] == '\n' {
+			s.line++
+			s.i++
+			continue
+		}
+		if s.text[s.i] == '#' {
+			s.consumeComment()
+			continue
+		}
+		if s.tryString() {
+			continue
+		}
+		s.i++
 	}
-	rest := text[i:]
-	for _, p := range prefixes {
-		if strings.HasPrefix(rest, p) {
-			j := i + len(p)
-			if j < len(text) && (text[j] == '\'' || text[j] == '"') {
-				raw := strings.ContainsAny(p, "rR")
-				return skipPyStringAt(text, j, raw)
+}
+
+func (s *pyCommentScanner) consumeComment() {
+	start := s.i
+	n := len(s.text)
+	for s.i < n && s.text[s.i] != '\n' {
+		s.i++
+	}
+	s.out = append(s.out, lineComment{line: s.line, raw: s.text[start:s.i]})
+}
+
+func isPyIdentCont(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func isPyStrPrefix(p string) bool {
+	if p == "" || len(p) > 2 {
+		return false
+	}
+	lower := strings.ToLower(p)
+	if len(lower) == 1 {
+		switch lower[0] {
+		case 'r', 'f', 'b', 'u', 't':
+			return true
+		default:
+			return false
+		}
+	}
+	switch lower {
+	case "rb", "br", "rf", "fr", "rt", "tr":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *pyCommentScanner) tryString() bool {
+	n := len(s.text)
+	if s.i >= n {
+		return false
+	}
+	if s.text[s.i] == '\'' || s.text[s.i] == '"' {
+		s.scanString(s.text[s.i], false, false)
+		return true
+	}
+	// Do not misread the trailing letter of an identifier (e.g. `if"x"`, `or'a'`)
+	// as a string prefix.
+	if s.i > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(s.text[:s.i])
+		if isPyIdentCont(prev) {
+			return false
+		}
+	}
+	for plen := 2; plen >= 1; plen-- {
+		j := s.i + plen
+		if j < n && (s.text[j] == '\'' || s.text[j] == '"') {
+			pref := s.text[s.i:j]
+			if isPyStrPrefix(pref) {
+				raw := strings.ContainsAny(pref, "rR")
+				fstr := strings.ContainsAny(pref, "fFtT")
+				s.i = j
+				s.scanString(s.text[j], raw, fstr)
+				return true
 			}
 		}
 	}
-	if text[i] == '\'' || text[i] == '"' {
-		return skipPyStringAt(text, i, false)
-	}
-	return 0, 0, false
+	return false
 }
 
-func skipPyStringAt(text string, i int, raw bool) (int, int, bool) {
-	q := text[i]
-	n := len(text)
-	newlines := 0
-	triple := i+2 < n && text[i+1] == q && text[i+2] == q
+func (s *pyCommentScanner) scanString(q byte, raw, fstr bool) {
+	n := len(s.text)
+	triple := s.i+2 < n && s.text[s.i+1] == q && s.text[s.i+2] == q
 	if triple {
-		i += 3
-		for i < n {
-			if text[i] == '\n' {
-				newlines++
-				i++
-				continue
-			}
-			if !raw && text[i] == '\\' && i+1 < n {
-				if text[i+1] == '\n' {
-					newlines++
-				}
-				i += 2
-				continue
-			}
-			if i+2 < n && text[i] == q && text[i+1] == q && text[i+2] == q {
-				return i + 3, newlines, true
-			}
-			i++
-		}
-		return n, newlines, true
+		s.i += 3
+	} else {
+		s.i++
 	}
-	i++
-	for i < n {
-		if text[i] == '\n' {
-			return i, newlines, true
+	for s.i < n {
+		ch := s.text[s.i]
+		if !triple && ch == '\n' {
+			return
 		}
-		if !raw && text[i] == '\\' && i+1 < n {
-			if text[i+1] == '\n' {
-				newlines++
+		if triple {
+			if s.i+2 < n && ch == q && s.text[s.i+1] == q && s.text[s.i+2] == q {
+				s.i += 3
+				return
 			}
-			i += 2
+		} else if ch == q {
+			s.i++
+			return
+		}
+		if ch == '\n' {
+			s.line++
+			s.i++
 			continue
 		}
-		if text[i] == q {
-			return i + 1, newlines, true
+		if ch == '\\' {
+			if s.i+1 >= n {
+				s.i++
+				return
+			}
+			next := s.text[s.i+1]
+			// Non-raw f/t-string \N{...} is a Unicode name escape, not an interpolation.
+			if !raw && fstr && next == 'N' && s.i+2 < n && s.text[s.i+2] == '{' {
+				j := s.i + 3
+				for j < n && s.text[j] != '}' && s.text[j] != '\n' {
+					j++
+				}
+				if j < n && s.text[j] == '}' {
+					s.i = j + 1
+					continue
+				}
+			}
+			if next == '\r' && s.i+2 < n && s.text[s.i+2] == '\n' {
+				s.line++
+				s.i += 3
+				continue
+			}
+			if next == '\n' {
+				s.line++
+				s.i += 2
+				continue
+			}
+			// Both raw and non-raw strings obey backslash-run parity for quotes
+			// and backslashes: \\ consumes 2 bytes, \' or \" consumes 2 bytes.
+			if next == '\\' || next == q || !fstr {
+				s.i += 2
+				continue
+			}
+			s.i++
+			continue
 		}
-		i++
+		if fstr && ch == '{' {
+			if s.i+1 < n && s.text[s.i+1] == '{' {
+				s.i += 2
+				continue
+			}
+			s.i++
+			s.scanFExpr(triple)
+			continue
+		}
+		if fstr && ch == '}' && s.i+1 < n && s.text[s.i+1] == '}' {
+			s.i += 2
+			continue
+		}
+		s.i++
 	}
-	return n, newlines, true
+}
+
+func (s *pyCommentScanner) scanFExpr(outerTriple bool) {
+	n := len(s.text)
+	depth := 0
+	for s.i < n {
+		if s.tryString() {
+			continue
+		}
+		ch := s.text[s.i]
+		switch ch {
+		case '\n':
+			s.line++
+			s.i++
+		case '#':
+			s.consumeComment()
+		case '(', '[', '{':
+			depth++
+			s.i++
+		case ')', ']':
+			if depth > 0 {
+				depth--
+			}
+			s.i++
+		case '}':
+			if depth == 0 {
+				s.i++
+				return
+			}
+			depth--
+			s.i++
+		case ':':
+			if depth == 0 {
+				s.i++
+				s.scanFFormatSpec(outerTriple)
+				return
+			}
+			s.i++
+		case '!':
+			if s.i+1 < n && s.text[s.i+1] == '=' {
+				s.i += 2
+				continue
+			}
+			s.i++
+		case '\\':
+			if s.i+1 < n {
+				if s.text[s.i+1] == '\n' {
+					s.line++
+				}
+				s.i += 2
+			} else {
+				s.i++
+			}
+		default:
+			s.i++
+		}
+	}
+}
+
+func (s *pyCommentScanner) scanFFormatSpec(outerTriple bool) {
+	n := len(s.text)
+	for s.i < n {
+		ch := s.text[s.i]
+		if !outerTriple && ch == '\n' {
+			return
+		}
+		if ch == '\n' {
+			s.line++
+			s.i++
+			continue
+		}
+		if ch == '{' {
+			s.i++
+			s.scanFExpr(outerTriple)
+			continue
+		}
+		if ch == '}' {
+			s.i++
+			return
+		}
+		if ch == '\\' && s.i+1 < n {
+			if s.text[s.i+1] == '\n' {
+				s.line++
+			}
+			s.i += 2
+			continue
+		}
+		s.i++
+	}
 }
 
 func skipQuoted(text string, pos int, quote byte) (int, int) {

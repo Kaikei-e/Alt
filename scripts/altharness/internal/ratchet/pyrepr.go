@@ -55,13 +55,7 @@ func pyPrintable(r rune) bool {
 	if r < 0x20 || r == 0x7f {
 		return false
 	}
-	if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Cs, r) || unicode.Is(unicode.Co, r) || unicode.Is(unicode.Cn, r) {
-		return false
-	}
-	if r != ' ' && (unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) || unicode.Is(unicode.Zs, r)) {
-		return false
-	}
-	return true
+	return unicode.IsPrint(r)
 }
 
 // decodeWTF8 returns a Unicode scalar, preserving lone surrogates encoded as WTF-8.

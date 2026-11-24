@@ -386,10 +386,13 @@ func (p *pyParser) parseFor(async bool) (pyStmt, error) {
 	if err := p.expectIdent("for"); err != nil {
 		return pyStmt{}, err
 	}
-	if err := p.skipUntilIdent(0, "in"); err != nil {
+	targetToks, err := p.collectUntilIdent(0, "in")
+	if err != nil {
 		return pyStmt{}, err
 	}
-	if _, err := p.parseExpr(); err != nil {
+	target := parseForTargetTokens(targetToks)
+	iter, err := p.parseExprList()
+	if err != nil {
 		return pyStmt{}, err
 	}
 	if err := p.expectOp(":"); err != nil {
@@ -403,7 +406,24 @@ func (p *pyParser) parseFor(async bool) (pyStmt, error) {
 	if err != nil {
 		return pyStmt{}, err
 	}
-	return pyStmt{kind: skFor, async: async, body: body, orelse: orelse}, nil
+	return pyStmt{kind: skFor, async: async, test: target, value: iter, body: body, orelse: orelse}, nil
+}
+
+func parseForTargetTokens(toks []pyTok) *px {
+	if len(toks) == 0 {
+		return nil
+	}
+	sub := &pyParser{toks: append(append([]pyTok(nil), toks...), pyTok{kind: pyEOF})}
+	if e, err := sub.parseExprList(); err == nil && sub.peek().kind == pyEOF {
+		return e
+	}
+	parts := make([]string, 0, len(toks))
+	for _, tk := range toks {
+		if tk.val != "" {
+			parts = append(parts, tk.val)
+		}
+	}
+	return &px{op: "name", lit: strings.Join(parts, " ")}
 }
 
 func (p *pyParser) parseOptionalElse() ([]pyStmt, error) {
@@ -422,22 +442,29 @@ func (p *pyParser) parseWith(async bool) (pyStmt, error) {
 		return pyStmt{}, err
 	}
 	var exprs []*px
-	for {
-		e, err := p.parseExpr()
-		if err != nil {
-			return pyStmt{}, err
+	if p.peekOp("(") {
+		if parenExprs, ok := p.tryParseParenWithItems(); ok {
+			exprs = parenExprs
 		}
-		exprs = append(exprs, e)
-		if p.peekIdent("as") {
-			p.next()
-			if _, err := p.parseExpr(); err != nil {
+	}
+	if exprs == nil {
+		for {
+			e, err := p.parseExpr()
+			if err != nil {
 				return pyStmt{}, err
 			}
+			exprs = append(exprs, e)
+			if p.peekIdent("as") {
+				p.next()
+				if _, err := p.parseExpr(); err != nil {
+					return pyStmt{}, err
+				}
+			}
+			if !p.peekOp(",") {
+				break
+			}
+			p.next()
 		}
-		if !p.peekOp(",") {
-			break
-		}
-		p.next()
 	}
 	if err := p.expectOp(":"); err != nil {
 		return pyStmt{}, err
@@ -447,6 +474,52 @@ func (p *pyParser) parseWith(async bool) (pyStmt, error) {
 		return pyStmt{}, err
 	}
 	return pyStmt{kind: skWith, async: async, withExprs: exprs, body: body}, nil
+}
+
+// tryParseParenWithItems implements CPython's Python 3.9+ PEG alternative:
+// 'with' '(' with_item (',' with_item)* ','? ')' ':'
+// Backtracks if the parenthesized construct is not immediately followed by ':'.
+func (p *pyParser) tryParseParenWithItems() ([]*px, bool) {
+	saved := p.pos
+	p.next() // consume '('
+	if p.peekOp(")") {
+		p.pos = saved
+		return nil, false
+	}
+	var exprs []*px
+	for {
+		e, err := p.parseExpr()
+		if err != nil {
+			p.pos = saved
+			return nil, false
+		}
+		exprs = append(exprs, e)
+		if p.peekIdent("as") {
+			p.next()
+			if _, err := p.parseExpr(); err != nil {
+				p.pos = saved
+				return nil, false
+			}
+		}
+		if p.peekOp(",") {
+			p.next()
+			if p.peekOp(")") {
+				break
+			}
+			continue
+		}
+		break
+	}
+	if !p.peekOp(")") {
+		p.pos = saved
+		return nil, false
+	}
+	p.next() // consume ')'
+	if !p.peekOp(":") {
+		p.pos = saved
+		return nil, false
+	}
+	return exprs, true
 }
 
 func (p *pyParser) parseTry() (pyStmt, error) {
@@ -521,12 +594,14 @@ func (p *pyParser) parseExcept() (pyHandler, error) {
 		if !p.peekOp(",") {
 			break
 		}
-		// Python 3 rejects `except A, B:` (PEP 758 needs parentheses). CPython's
-		// message is what the CHECK-01 CLI reports for C-05.
-		line := p.peek().line
-		return pyHandler{}, fmt.Errorf("multiple exception types must be parenthesized (<unknown>, line %d)", line)
+		// Python 3.14 PEP 758 allows unparenthesized `except A, B:` without `as`.
+		p.next()
 	}
 	if p.peekIdent("as") {
+		if len(types) > 1 {
+			line := p.peek().line
+			return pyHandler{}, fmt.Errorf("multiple exception types must be parenthesized when using 'as' (<unknown>, line %d)", line)
+		}
 		p.next()
 		if _, err := p.parseExpr(); err != nil {
 			return pyHandler{}, err
@@ -687,13 +762,16 @@ func (p *pyParser) parseSimpleLine() ([]pyStmt, error) {
 func (p *pyParser) parseSmall() (pyStmt, error) {
 	switch {
 	case p.peekIdent("pass"), p.peekIdent("break"), p.peekIdent("continue"):
-		p.next()
-		return pyStmt{kind: skOther}, nil
+		kw := p.next().val
+		return pyStmt{kind: skOther, name: kw}, nil
 	case p.peekIdent("import"), p.peekIdent("from"), p.peekIdent("global"), p.peekIdent("nonlocal"), p.peekIdent("del"):
-		if err := p.skipRest(); err != nil {
+		raw, err := p.collectRest()
+		if err != nil {
 			return pyStmt{}, err
 		}
-		return pyStmt{kind: skOther}, nil
+		return pyStmt{kind: skOther, name: raw}, nil
+	case p.looksLikeTypeAlias():
+		return p.parseTypeAlias()
 	case p.peekIdent("assert"):
 		return p.parseAssert()
 	case p.peekIdent("return"):
@@ -719,28 +797,110 @@ func (p *pyParser) parseSmall() (pyStmt, error) {
 				return pyStmt{}, err
 			}
 		}
-		return pyStmt{kind: skAnn, value: val, ann: ann}, nil
+		return pyStmt{kind: skAnn, test: e, value: val, ann: ann}, nil
 	}
 	if p.peek().kind == pyOp && isAug(p.peek().val) {
-		p.next()
+		op := p.next().val
 		val, err := p.parseExprList()
 		if err != nil {
 			return pyStmt{}, err
 		}
-		return pyStmt{kind: skAug, value: val}, nil
+		return pyStmt{kind: skAug, name: op, test: e, value: val}, nil
 	}
 	if p.peekOp("=") {
+		targets := []*px{e}
 		var val *px
 		for p.peekOp("=") {
 			p.next()
-			val, err = p.parseExprList()
+			rhs, err := p.parseExprList()
 			if err != nil {
 				return pyStmt{}, err
 			}
+			if p.peekOp("=") {
+				targets = append(targets, rhs)
+			} else {
+				val = rhs
+			}
 		}
-		return pyStmt{kind: skAssign, value: val}, nil
+		target := targets[0]
+		if len(targets) > 1 {
+			target = &px{op: "assign_targets", kids: targets}
+		}
+		return pyStmt{kind: skAssign, test: target, value: val}, nil
 	}
 	return pyStmt{kind: skExpr, value: e}, nil
+}
+
+func (p *pyParser) looksLikeTypeAlias() bool {
+	if !p.peekIdent("type") {
+		return false
+	}
+	if p.peekN(1).kind != pyIdent {
+		return false
+	}
+	idx := p.pos + 2
+	if idx < len(p.toks) && p.toks[idx].kind == pyOp && p.toks[idx].val == "[" {
+		depth := 0
+		for idx < len(p.toks) {
+			tk := p.toks[idx]
+			if tk.kind == pyNL || tk.kind == pyDedent || tk.kind == pyEOF {
+				return false
+			}
+			if tk.kind == pyOp {
+				switch tk.val {
+				case "[", "(", "{":
+					depth++
+				case "]", ")", "}":
+					depth--
+					if depth == 0 {
+						idx++
+						goto afterParams
+					}
+				}
+			}
+			idx++
+		}
+		return false
+	}
+afterParams:
+	return idx < len(p.toks) && p.toks[idx].kind == pyOp && p.toks[idx].val == "="
+}
+
+func (p *pyParser) parseTypeAlias() (pyStmt, error) {
+	p.next() // consume soft keyword 'type'
+	name := p.next().val
+	var params []string
+	if p.peekOp("[") {
+		depth := 0
+		for p.peek().kind != pyEOF {
+			tk := p.next()
+			params = append(params, tk.val)
+			if tk.kind == pyOp {
+				switch tk.val {
+				case "[", "(", "{":
+					depth++
+				case "]", ")", "}":
+					depth--
+					if depth == 0 {
+						goto expectEq
+					}
+				}
+			}
+		}
+	}
+expectEq:
+	if err := p.expectOp("="); err != nil {
+		return pyStmt{}, err
+	}
+	val, err := p.parseExpr()
+	if err != nil {
+		return pyStmt{}, err
+	}
+	label := "type " + name
+	if len(params) > 0 {
+		label += " " + strings.Join(params, " ")
+	}
+	return pyStmt{kind: skOther, name: label, value: val}, nil
 }
 
 func isAug(v string) bool {
@@ -786,26 +946,31 @@ func (p *pyParser) parseRaise() (pyStmt, error) {
 	if p.atStmtEnd() {
 		return pyStmt{kind: skRaise}, nil
 	}
-	if _, err := p.parseExpr(); err != nil {
+	exc, err := p.parseExpr()
+	if err != nil {
 		return pyStmt{}, err
 	}
+	var cause *px
 	if p.peekIdent("from") {
 		p.next()
-		if _, err := p.parseExpr(); err != nil {
+		cause, err = p.parseExpr()
+		if err != nil {
 			return pyStmt{}, err
 		}
 	}
-	return pyStmt{kind: skRaise}, nil
+	return pyStmt{kind: skRaise, value: exc, test: cause}, nil
 }
 
-func (p *pyParser) skipRest() error {
+func (p *pyParser) collectRest() (string, error) {
 	depth := 0
+	var parts []string
 	for p.peek().kind != pyEOF {
 		if depth == 0 && p.atStmtEnd() {
-			return nil
+			return strings.Join(parts, " "), nil
 		}
-		if p.peek().kind == pyOp {
-			switch p.peek().val {
+		tk := p.peek()
+		if tk.kind == pyOp {
+			switch tk.val {
 			case "(", "[", "{":
 				depth++
 			case ")", "]", "}":
@@ -815,25 +980,30 @@ func (p *pyParser) skipRest() error {
 			}
 		}
 		prev := p.pos
-		p.next()
+		consumed := p.next()
+		if consumed.val != "" {
+			parts = append(parts, consumed.val)
+		}
 		if p.pos == prev {
-			return p.errorf("stuck while skipping statement")
+			return "", p.errorf("stuck while skipping statement")
 		}
 	}
-	return nil
+	return strings.Join(parts, " "), nil
 }
 
-func (p *pyParser) skipUntilIdent(depth int, name string) error {
+func (p *pyParser) collectUntilIdent(depth int, name string) ([]pyTok, error) {
+	var out []pyTok
 	for {
 		if p.peek().kind == pyEOF {
-			return p.errorf("expected %s", name)
+			return nil, p.errorf("expected %s", name)
 		}
 		if depth == 0 && p.peekIdent(name) {
 			p.next()
-			return nil
+			return out, nil
 		}
-		if p.peek().kind == pyOp {
-			switch p.peek().val {
+		tk := p.peek()
+		if tk.kind == pyOp {
+			switch tk.val {
 			case "(", "[", "{":
 				depth++
 			case ")", "]", "}":
@@ -842,8 +1012,13 @@ func (p *pyParser) skipUntilIdent(depth int, name string) error {
 				}
 			}
 		}
-		p.next()
+		out = append(out, p.next())
 	}
+}
+
+func (p *pyParser) skipUntilIdent(depth int, name string) error {
+	_, err := p.collectUntilIdent(depth, name)
+	return err
 }
 
 func (p *pyParser) parseExprList() (*px, error) {
@@ -1217,8 +1392,10 @@ func (p *pyParser) parseStringAtom() (*px, error) {
 	tok := p.next()
 	raw := tok.val
 	exprs := append([]string{}, tok.exprs...)
-	for p.peek().kind == pyStr && len(p.peek().exprs) == 0 && len(exprs) == 0 {
-		raw += p.next().val
+	for p.peek().kind == pyStr {
+		nxt := p.next()
+		raw += nxt.val
+		exprs = append(exprs, nxt.exprs...)
 	}
 	if len(exprs) == 0 {
 		return &px{op: "str", lit: raw}, nil
@@ -1235,7 +1412,7 @@ func (p *pyParser) parseStringAtom() (*px, error) {
 }
 
 func parsePythonExpr(src string) (*px, error) {
-	toks, err := tokenizePy(src)
+	toks, err := tokenizePyExpr(src)
 	if err != nil {
 		return nil, err
 	}
@@ -1250,6 +1427,7 @@ func parsePythonExpr(src string) (*px, error) {
 func (p *pyParser) parseLambda() (*px, error) {
 	p.next()
 	depth := 0
+	var paramParts []string
 	for {
 		tk := p.peek()
 		if tk.kind == pyEOF {
@@ -1266,14 +1444,18 @@ func (p *pyParser) parseLambda() (*px, error) {
 			case ":":
 				if depth == 0 {
 					p.next()
-					if _, err := p.parseIfExpr(); err != nil {
+					body, err := p.parseIfExpr()
+					if err != nil {
 						return nil, err
 					}
-					return &px{op: "lambda"}, nil
+					return &px{op: "lambda", lit: strings.Join(paramParts, " "), kids: []*px{body}}, nil
 				}
 			}
 		}
-		p.next()
+		consumed := p.next()
+		if consumed.val != "" {
+			paramParts = append(paramParts, consumed.val)
+		}
 	}
 }
 
@@ -1436,6 +1618,15 @@ func (p *pyParser) parseBrace() (*px, error) {
 			if p.peekOp("}") {
 				break
 			}
+			if p.peekOp("**") {
+				p.next()
+				unpack, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				kids = append(kids, &px{op: "star", lit: "**", kids: []*px{unpack}})
+				continue
+			}
 			k, err := p.parseExpr()
 			if err != nil {
 				return nil, err
@@ -1582,7 +1773,7 @@ func (p *pyParser) parseSubContents() ([]*px, error) {
 		if err != nil {
 			return nil, err
 		}
-		kids = append(kids, part...)
+		kids = append(kids, part)
 		if !p.peekOp(",") {
 			break
 		}
@@ -1594,39 +1785,42 @@ func (p *pyParser) parseSubContents() ([]*px, error) {
 	return kids, nil
 }
 
-func (p *pyParser) parseSlice() ([]*px, error) {
-	var kids []*px
+func (p *pyParser) parseSlice() (*px, error) {
+	var lower *px
 	if !p.peekOp(":") {
-		e, err := p.parseExpr()
+		e, err := p.parseStarItem()
 		if err != nil {
 			return nil, err
 		}
-		kids = append(kids, e)
 		if !p.peekOp(":") {
-			return kids, nil
+			return e, nil
 		}
+		lower = e
 	}
 	if err := p.expectOp(":"); err != nil {
 		return nil, err
 	}
+	var upper *px
 	if !p.peekOp(":") && !p.peekOp(",") && !p.peekOp("]") {
 		e, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
-		kids = append(kids, e)
+		upper = e
 	}
 	if p.peekOp(":") {
 		p.next()
+		var step *px
 		if !p.peekOp(",") && !p.peekOp("]") {
 			e, err := p.parseExpr()
 			if err != nil {
 				return nil, err
 			}
-			kids = append(kids, e)
+			step = e
 		}
+		return &px{op: "slice", kids: []*px{lower, upper, step}}, nil
 	}
-	return kids, nil
+	return &px{op: "slice", kids: []*px{lower, upper}}, nil
 }
 
 func unparse(e *px) string {
@@ -1730,14 +1924,27 @@ func unparse(e *px) string {
 		for _, k := range e.kids[1:] {
 			inner = append(inner, unparse(k))
 		}
-		return unparse(e.kids[0]) + "[" + strings.Join(inner, ":") + "]"
+		return unparse(e.kids[0]) + "[" + strings.Join(inner, ", ") + "]"
+	case "slice":
+		parts := make([]string, len(e.kids))
+		for i, k := range e.kids {
+			parts[i] = unparse(k)
+		}
+		return strings.Join(parts, ":")
 	case "yield":
 		if len(e.kids) == 0 {
 			return "yield"
 		}
 		return "yield " + unparse(e.kids[0])
 	case "lambda":
-		return "lambda"
+		body := ""
+		if len(e.kids) > 0 {
+			body = unparse(e.kids[0])
+		}
+		if e.lit != "" {
+			return "lambda " + e.lit + ": " + body
+		}
+		return "lambda: " + body
 	case "joined":
 		return e.lit
 	default:
@@ -1954,6 +2161,10 @@ func collectCond(e *px, counts map[string]int) {
 			if i == 0 {
 				continue
 			}
+			collectCond(k, counts)
+		}
+	case "kw", "star", "tuple", "list":
+		for _, k := range e.kids {
 			collectCond(k, counts)
 		}
 	case "ifexp":

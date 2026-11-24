@@ -1559,6 +1559,16 @@ def test_real_repository() -> None:
     )
 
 
+def _safe_delegate_base() -> str:
+    if GIT_BIN is None:
+        return "HEAD"
+    try:
+        run_git(ROOT, "rev-parse", "--verify", "--quiet", "HEAD~1")
+    except subprocess.CalledProcessError:
+        return "HEAD"
+    return "HEAD~1"
+
+
 def main() -> int:
     bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
     if bridge.is_file():
@@ -1567,7 +1577,7 @@ def main() -> int:
             bridge_mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(bridge_mod)
             delegated = bridge_mod.delegated(
-                SCRIPT, ["./internal/suppress"], ["suppressions", "--base", "HEAD~1"]
+                SCRIPT, ["./internal/suppress"], ["suppressions", "--base", _safe_delegate_base()]
             )
             if delegated is not None:
                 return delegated

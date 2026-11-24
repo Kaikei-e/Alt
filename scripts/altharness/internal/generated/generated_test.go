@@ -457,13 +457,14 @@ func TestSymlinkAndDashRev(t *testing.T) {
 	if _, err := os.Stat(clobber); !os.IsNotExist(err) {
 		t.Fatalf("clobber created: %v", err)
 	}
-	vs, err := (&checker{}).checkGitDiff(context.Background(), repo, "--output=/tmp/nope", nil)
+	nope := filepath.Join(t.TempDir(), "nope")
+	vs, err := (&checker{}).checkGitDiff(context.Background(), repo, "--output="+nope, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertViolations(t, vs, 1, "codegen.invalid-git-rev")
-	if _, statErr := os.Stat("/tmp/nope"); !os.IsNotExist(statErr) {
-		t.Fatal("git option injection created /tmp/nope")
+	if _, statErr := os.Stat(nope); !os.IsNotExist(statErr) {
+		t.Fatalf("git option injection created %s", nope)
 	}
 
 	outside := filepath.Join(filepath.Dir(repo), "outside.go")

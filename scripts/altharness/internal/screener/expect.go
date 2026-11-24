@@ -31,6 +31,10 @@ func screenTestExpectations(beforeSrc, afterSrc, logical, language string) ([]Ca
 	if !isTestFile(logical, language, beforeSrc) {
 		return nil, nil
 	}
+	if language == "typescript" {
+		beforeSrc = prepareSvelte(logical, beforeSrc)
+		afterSrc = prepareSvelte(logical, afterSrc)
+	}
 	beforeCounts, err := expectationCounts(beforeSrc, language)
 	if err != nil {
 		return nil, err

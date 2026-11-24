@@ -262,6 +262,286 @@ func TestDiffReport(t *testing.T) {
 	}
 }
 
+func TestPythonScannerRawAndPEP701Strings(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		py        string
+		wantCode  int
+		wantRules []string
+	}{
+		{
+			name:      "raw string escaped single quote before noqa S608",
+			py:        "pat = r'don\\'t'  # noqa: S608\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:      "raw string escaped double quote before noqa S608",
+			py:        "pat = r\"\\\"\"  # noqa: S608\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:      "raw string even backslashes before noqa S608",
+			py:        "pat = r\"\\\\\"  # noqa: S608\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:      "raw triple-quoted escaped quotes do not desync",
+			py:        "pat = r\"\"\"\\\"\\\"\\\"\"\"\"\nq = f\"SELECT {x}\"  # noqa: S608\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:      "pep701 multiline single-quoted f-string before noqa S608",
+			py:        "q = f\"{\n    x\n}\"  # noqa: S608\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:     "pep701 nested quotes with hash inside f-string is not a comment",
+			py:       "x = f\"{u.split('# noqa: S608')[0]}\"\ny = f\"{u.split(f'# noqa: S608')[0]}\"\nz = f\"{u.split(\"# noqa: S608\")[0]}\"\n",
+			wantCode: 0,
+		},
+		{
+			name:      "rf-string backslash before expression and trailing noqa",
+			py:        "s = rf\"\\\\{name}\"  # noqa: S603\n",
+			wantCode:  1,
+			wantRules: []string{"source.python.noqa-missing-reason"},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newGitRepo(t)
+			al := filepath.Join(repo, "scripts", "lint", "suppression_allowlist.toml")
+			writeFile(t, al, minimalAllowlist)
+			writeFile(t, filepath.Join(repo, "app", "sample.py"), tc.py)
+			runGit(t, repo, "add", ".")
+			code, out, errText := runCheck(t, repo, al)
+			if code != tc.wantCode {
+				t.Fatalf("exit %d want %d\nstdout:\n%s\nstderr:\n%s", code, tc.wantCode, out, errText)
+			}
+			for _, r := range tc.wantRules {
+				if !strings.Contains(errText, r) {
+					t.Fatalf("missing rule %q in stderr:\n%s", r, errText)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigAllowlistDrift(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		rel       string
+		body      string
+		wantCode  int
+		wantRules []string
+	}{
+		{
+			name:     "pyproject allowed ruff ignore and test per-file-ignores pass",
+			rel:      "svc/pyproject.toml",
+			body:     "[tool.ruff.lint]\nignore = [\"E501\"]\n[tool.ruff.lint.per-file-ignores]\n\"tests/**/*.py\" = [\"S101\"]\n",
+			wantCode: 0,
+		},
+		{
+			name:      "pyproject legacy ruff key and extend-ignore and disallowed code",
+			rel:       "svc/pyproject.toml",
+			body:      "[tool.ruff]\nignore = [\"E501\"]\n[tool.ruff.lint]\nextend-ignore = [\"S603\"]\nignore = [\"S608\"]\n[tool.ruff.lint.per-file-ignores]\n\"src/**/*.py\" = [\"S603\"]\n",
+			wantCode:  1,
+			wantRules: []string{"config.pyproject.legacy-ruff-key", "config.pyproject.ruff-extend-ignore", "config.pyproject.ruff-ignore-disallowed", "config.pyproject.ruff-per-file-ignores-path", "config.pyproject.ruff-per-file-ignores-rule"},
+		},
+		{
+			name:      "pyproject unallowlisted bandit section",
+			rel:       "other/pyproject.toml",
+			body:      "[tool.bandit]\nskips = [\"B101\"]\n",
+			wantCode:  1,
+			wantRules: []string{"config.pyproject.bandit-unallowlisted"},
+		},
+		{
+			name:      "pyproject allowlisted bandit adds extra skip and exclude dir",
+			rel:       "tag-generator/app/pyproject.toml",
+			body:      "[tool.bandit]\nexclude_dirs = [\"tests\", \"extra_dir\"]\nskips = [\"B101\", \"B608\"]\n",
+			wantCode:  1,
+			wantRules: []string{"config.pyproject.bandit-skip-disallowed", "config.pyproject.bandit-exclude-dir-disallowed"},
+		},
+		{
+			name:     "golangci allowlisted exclusion passes",
+			rel:      ".golangci.yml",
+			body:     "version: \"2\"\nlinters:\n  exclusions:\n    rules:\n      - path: '_test\\.go$'\n        linters:\n          - gosec\n        text: G101\n",
+			wantCode: 0,
+		},
+		{
+			name:      "golangci disable and unallowlisted exclusion and legacy exclude-rules fail",
+			rel:       ".golangci.yml",
+			body:      "version: \"2\"\nlinters:\n  disable:\n    - gosec\n  exclusions:\n    paths:\n      - vendor\n    rules:\n      - path: '.*'\n        linters:\n          - errcheck\nissues:\n  exclude-rules:\n    - path: _test.go\n",
+			wantCode:  1,
+			wantRules: []string{"config.golangci.disable-forbidden", "config.golangci.exclusion-unallowlisted"},
+		},
+		{
+			name:     "cargo allowlisted clippy allow passes",
+			rel:      "recap-worker/recap-worker/Cargo.toml",
+			body:     "[lints.clippy]\ndoc_markdown = \"allow\"\nmodule_name_repetitions = { level = \"allow\", priority = -1 }\n",
+			wantCode: 0,
+		},
+		{
+			name:      "cargo unallowlisted clippy allow fails",
+			rel:       "recap-worker/recap-worker/Cargo.toml",
+			body:      "[lints.clippy]\nunwrap_used = \"allow\"\n[workspace.lints.clippy]\ntoo_many_arguments = { level = \"allow\" }\n",
+			wantCode:  1,
+			wantRules: []string{"config.cargo.lint-allow-unallowlisted"},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newGitRepo(t)
+			al := filepath.Join(repo, "scripts", "lint", "suppression_allowlist.toml")
+			writeFile(t, al, minimalAllowlist)
+			writeFile(t, filepath.Join(repo, filepath.FromSlash(tc.rel)), tc.body)
+			runGit(t, repo, "add", ".")
+			code, out, errText := runCheck(t, repo, al)
+			if code != tc.wantCode {
+				t.Fatalf("exit %d want %d\nstdout:\n%s\nstderr:\n%s", code, tc.wantCode, out, errText)
+			}
+			for _, r := range tc.wantRules {
+				if !strings.Contains(errText, r) {
+					t.Fatalf("missing rule %q in stderr:\n%s", r, errText)
+				}
+			}
+		})
+	}
+}
+
+func TestPythonNoqaBaselineMultiplicityAndUpdate(t *testing.T) {
+	t.Parallel()
+	repo := newGitRepo(t)
+	al := filepath.Join(repo, "scripts", "lint", "suppression_allowlist.toml")
+	bl := filepath.Join(repo, "scripts", "lint", "ratchet", "python_noqa_baseline.toml")
+	writeFile(t, al, minimalAllowlist)
+	writeFile(t, filepath.Join(repo, "svc", "app.py"), "x = 1  # noqa: S603\ny = 2  # noqa: F401 -- has sufficient reason\n")
+	runGit(t, repo, "add", ".")
+
+	var out, errBuf bytes.Buffer
+	code := RunCheck(context.Background(), []string{
+		"--repo-root", repo, "--python-noqa-baseline", bl, "--update-python-noqa-baseline",
+	}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("update baseline exit %d\n%s%s", code, out.String(), errBuf.String())
+	}
+	if !strings.Contains(readText(t, bl), "svc/app.py") {
+		t.Fatalf("baseline missing svc/app.py:\n%s", readText(t, bl))
+	}
+
+	// Matching baseline count passes.
+	out.Reset()
+	errBuf.Reset()
+	code = RunCheck(context.Background(), []string{
+		"--repo-root", repo, "--allowlist", al, "--today", "2026-11-22", "--python-noqa-baseline", bl,
+	}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("matching baseline exit %d\n%s%s", code, out.String(), errBuf.String())
+	}
+
+	// Duplicating the identical reasonless line exceeds baseline multiplicity (count=1) and must fail!
+	writeFile(t, filepath.Join(repo, "svc", "app.py"), "x = 1  # noqa: S603\nx = 1  # noqa: S603\ny = 2  # noqa: F401 -- has sufficient reason\n")
+	out.Reset()
+	errBuf.Reset()
+	code = RunCheck(context.Background(), []string{
+		"--repo-root", repo, "--allowlist", al, "--today", "2026-11-22", "--python-noqa-baseline", bl,
+	}, &out, &errBuf)
+	if code != 1 || !strings.Contains(errBuf.String(), "source.python.noqa-missing-reason") {
+		t.Fatalf("duplicate reasonless line should exceed baseline multiplicity: exit %d\n%s", code, errBuf.String())
+	}
+}
+
+func TestInlineSourceRulesMultiLanguage(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		rel       string
+		body      string
+		wantCode  int
+		wantRules []string
+	}{
+		{
+			name:      "go nolint missing reason and nosec missing rule/reason/sql",
+			rel:       "svc/main.go",
+			body:      "package main\nfunc f() {\n\t_ = a() //nolint:noctx\n\t_ = b() // #nosec\n\t_ = c() // #nosec G201 -- dynamic query\n}\n",
+			wantCode:  1,
+			wantRules: []string{"source.go.nolint-missing-reason", "source.go.nosec-missing-rule", "source.sql.missing-kind", "source.sql.missing-trust-boundary"},
+		},
+		{
+			name:     "go valid nolint and nosec G201 with sql classification pass",
+			rel:      "svc/main.go",
+			body:     "package main\nfunc f() {\n\t_ = a() //nolint:noctx // test helper invokes local server\n\t_ = b() // #nosec G201 -- identifier from trusted constant allowlist\n}\n",
+			wantCode: 0,
+		},
+		{
+			name:      "rust inner allow missing adr",
+			rel:       "crate/src/lib.rs",
+			body:      "#![allow(dead_code)]\npub fn f() {}\n",
+			wantCode:  1,
+			wantRules: []string{"source.broad.missing-adr"},
+		},
+		{
+			name:      "ts biome missing rule/reason and deno missing rule and broad biome-ignore-all",
+			rel:       "web/src/a.ts",
+			body:      "// biome-ignore-all lint/style: broad without adr\n// biome-ignore\n// biome-ignore lint/suspicious/noExplicitAny: x\n// deno-lint-ignore\nexport const x = 1;\n",
+			wantCode:  1,
+			wantRules: []string{"source.broad.missing-adr", "source.biome.ignore-missing-rule", "source.biome.ignore-missing-reason", "source.deno.ignore-missing-rule"},
+		},
+		{
+			name:     "svelte valid biome-ignore passes",
+			rel:      "web/src/card.svelte",
+			body:     "<script>\n// biome-ignore lint/suspicious/noExplicitAny: legacy prop adapter\nexport let x: any;\n</script>\n<!-- biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handler on parent -->\n<div />\n",
+			wantCode: 0,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newGitRepo(t)
+			al := filepath.Join(repo, "scripts", "lint", "suppression_allowlist.toml")
+			writeFile(t, al, minimalAllowlist)
+			writeFile(t, filepath.Join(repo, filepath.FromSlash(tc.rel)), tc.body)
+			runGit(t, repo, "add", ".")
+			code, out, errText := runCheck(t, repo, al)
+			if code != tc.wantCode {
+				t.Fatalf("exit %d want %d\nstdout:\n%s\nstderr:\n%s", code, tc.wantCode, out, errText)
+			}
+			for _, r := range tc.wantRules {
+				if !strings.Contains(errText, r) {
+					t.Fatalf("missing rule %q in stderr:\n%s", r, errText)
+				}
+			}
+		})
+	}
+}
+
+func TestRealRepoExpirySweep(t *testing.T) {
+	t.Parallel()
+	root := repoRootFromHere(t)
+	var out, errBuf bytes.Buffer
+	// Real repo with future date 2027-05-23 must surface expired frozen-baseline entries.
+	code := RunCheck(context.Background(), []string{
+		"--repo-root", root, "--today", "2027-05-23",
+	}, &out, &errBuf)
+	if code != 1 {
+		t.Fatalf("expected exit 1 on 2027-05-23 expiry sweep, got %d\nstdout:\n%s\nstderr:\n%s", code, out.String(), errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "expired") {
+		t.Fatalf("expected expired diagnostics on 2027-05-23, got:\n%s", errBuf.String())
+	}
+}
+
 const allowlistV1 = `version = 1
 
 [ruff]

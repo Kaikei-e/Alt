@@ -459,6 +459,246 @@ func TestWave2RustPyTS(t *testing.T) {
 	}
 }
 
+func TestParseAllTrackedPythonFiles(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	cmd := exec.Command("git", "-C", root, "ls-files", "--", "*.py")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v", err)
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	if len(files) < 1000 {
+		t.Fatalf("expected >= 1000 tracked .py files, got %d", len(files))
+	}
+	var failures []string
+	for _, rel := range files {
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		src, err := readText(full)
+		if err != nil {
+			failures = append(failures, rel+": read error: "+err.Error())
+			continue
+		}
+		if _, err := parsePython(src); err != nil {
+			failures = append(failures, rel+": "+err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		limit := len(failures)
+		if limit > 30 {
+			limit = 30
+		}
+		t.Fatalf("failed to parse %d / %d tracked .py files (first %d):\n%s",
+			len(failures), len(files), limit, strings.Join(failures[:limit], "\n"))
+	}
+}
+
+func TestPythonLexerAndParserEdgeCases(t *testing.T) {
+	t.Parallel()
+	validSnippets := []struct {
+		name string
+		src  string
+	}{
+		{"implicit concat str + fstr", "def f(version):\n    return (\"FIX: \" f\"{version}\" \"!\")\n"},
+		{"implicit concat fstr + fstr", "def f(a, b):\n    return (f\"{a}\" f\"{b}\")\n"},
+		{"implicit concat tstr", "def f(x):\n    return (t\"a={x}\" \" b=\" t\"{x}\")\n"},
+		{"rf-string backslash before brace and unicode escape", "def f(x):\n    return (rf\"\\{x}\", f\"\\N{GREEK SMALL LETTER ALPHA}{x}\", f\"{x if'a' else 'b'}\")\n"},
+		{"parenthesized with as", "def f(a, b):\n    with (\n        aclosing(a) as s,\n        open(b) as t,\n    ):\n        return s, t\n"},
+		{"parenthesized with no as", "def f(a, b):\n    with (\n        ctx1(a),\n        ctx2(b),\n    ):\n        pass\n"},
+		{"pep758 except no as", "def f(x):\n    try:\n        return int(x)\n    except TypeError, ValueError:\n        return 0\n"},
+		{"pep758 except star no as", "def f(x):\n    try:\n        return int(x)\n    except* TypeError, ValueError:\n        return 0\n"},
+		{"dict unpacking after kv", "def f(prompt, kwargs):\n    return {\"prompt\": prompt, **kwargs, \"x\": 1}\n"},
+		{"fstr leading whitespace dict", "def f(n, u):\n    return f\"{ {n: u} }\"\n"},
+		{"fstr neq operator", "def f(a, b):\n    return f\"{a != b} {a != b!r} {a != b:10} {a=}\"\n"},
+		{"raw string backslash parity", "def f():\n    a = r\"\\\\\"\n    b = r'\\\\'\n    c = r\"\\\\\\\"\"\n    d = r'don\\'t'\n    e = r\"\"\"\\\\\"\"\"\n    return (a, b, c, d, e)\n"},
+		{"for tuple iterable", "def f(a, b):\n    for x in a, b:\n        print(x)\n"},
+		{"pep695 type alias", "type Alias = list[int]\ntype Box[T] = dict[str, T]\ndef f(x: Alias) -> Alias:\n    return x\n"},
+		{"pep750 tstring", "def f(name):\n    return t\"hello {name!r}\" + rt\"\\\\{name}\"\n"},
+		{"pep701 multiline fstr comment", "def f(x):\n    return f\"{\n        x + 1  # comment with } and '\n    }\"\n"},
+	}
+	for _, tc := range validSnippets {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := parsePython(tc.src); err != nil {
+				t.Fatalf("parsePython failed: %v\nsrc:\n%s", err, tc.src)
+			}
+		})
+	}
+
+	// PEP 758: unparenthesized multiple exceptions WITH `as` target remains invalid syntax.
+	for _, bad := range []string{
+		"try:\n    x()\nexcept TypeError, ValueError as e:\n    pass\n",
+		"try:\n    x()\nexcept* TypeError, ValueError as e:\n    pass\n",
+	} {
+		if _, err := parsePython(bad); err == nil {
+			t.Fatalf("expected parse error for PEP 758 invalid `as` form:\n%s", bad)
+		}
+	}
+
+	// Parenthesized with formatting equivalence: ruff format wrapping parens must not cause false positive.
+	dir := t.TempDir()
+	beforeWith := "def f():\n    with ctx1(), ctx2():\n        work()\n"
+	afterWithParen := "def f():\n    with (\n        ctx1(),\n        ctx2(),\n    ):\n        work()\n"
+	code, cands, _, stderr := runPair(t, dir, "py_with_paren_eq.py", beforeWith, afterWithParen, "")
+	if code != exitOK || len(cands) != 0 {
+		t.Fatalf("ruff-formatted parenthesized with should emit 0 candidates: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+	afterWithDropped := "def f():\n    with (\n        ctx1(),\n    ):\n        work()\n"
+	code, cands, _, stderr = runPair(t, dir, "py_with_paren_drop.py", afterWithParen, afterWithDropped, "")
+	if code != exitOK || !hasKind(cands, "python.context_manager_change") {
+		t.Fatalf("dropping ctx2 from parenthesized with must emit context_manager_change: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+	// PEP 758 except equivalence: (A, B) vs A, B has identical exception set.
+	beforeExc := "def f(x):\n    try:\n        return int(x)\n    except (TypeError, ValueError):\n        return 0\n"
+	afterExc := "def f(x):\n    try:\n        return int(x)\n    except TypeError, ValueError:\n        return 0\n"
+	code, cands, _, stderr = runPair(t, dir, "py_pep758_eq.py", beforeExc, afterExc, "")
+	if code != exitOK || len(cands) != 0 {
+		t.Fatalf("PEP 758 same exception types should emit 0 candidates: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+}
+
+func TestPythonFinallyBodyPrecision(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cases := []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{
+			name:   "del replaced with pass",
+			before: "def f(self, sid):\n    try:\n        work()\n    finally:\n        del self._active[sid]\n",
+			after:  "def f(self, sid):\n    try:\n        work()\n    finally:\n        pass\n",
+		},
+		{
+			name:   "break inserted in finally",
+			before: "def f(xs):\n    for x in xs:\n        try:\n            work(x)\n        finally:\n            pass\n",
+			after:  "def f(xs):\n    for x in xs:\n        try:\n            work(x)\n        finally:\n            break\n",
+		},
+		{
+			name:   "continue vs break in finally",
+			before: "def f(xs):\n    for x in xs:\n        try:\n            work(x)\n        finally:\n            continue\n",
+			after:  "def f(xs):\n    for x in xs:\n        try:\n            work(x)\n        finally:\n            break\n",
+		},
+		{
+			name:   "aug assign operator flip",
+			before: "def f(self):\n    try:\n        work()\n    finally:\n        self._inflight -= 1\n",
+			after:  "def f(self):\n    try:\n        work()\n    finally:\n        self._inflight += 1\n",
+		},
+		{
+			name:   "assign lhs target changed",
+			before: "def f(self):\n    try:\n        work()\n    finally:\n        self._closed = True\n",
+			after:  "def f(self):\n    try:\n        work()\n    finally:\n        unused = True\n",
+		},
+		{
+			name:   "annotated assign lhs target changed",
+			before: "def f():\n    try:\n        work()\n    finally:\n        done: bool = True\n",
+			after:  "def f():\n    try:\n        work()\n    finally:\n        other: bool = True\n",
+		},
+		{
+			name:   "raise exception changed",
+			before: "def f(x):\n    try:\n        work()\n    finally:\n        raise CleanupError(x)\n",
+			after:  "def f(x):\n    try:\n        work()\n    finally:\n        raise OtherError(x)\n",
+		},
+		{
+			name:   "raise cause changed",
+			before: "def f(x, y):\n    try:\n        work()\n    finally:\n        raise CleanupError(x) from y\n",
+			after:  "def f(x, y):\n    try:\n        work()\n    finally:\n        raise CleanupError(x) from None\n",
+		},
+		{
+			name:   "for loop iterable changed in finally",
+			before: "def f(a, b):\n    try:\n        work()\n    finally:\n        for item in a:\n            close(item)\n",
+			after:  "def f(a, b):\n    try:\n        work()\n    finally:\n        for item in b:\n            close(item)\n",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			safe := strings.ReplaceAll(tc.name, " ", "_")
+			code, cands, _, stderr := runPair(t, dir, "fin_"+safe+".py", tc.before, tc.after, "")
+			if code != exitOK || !hasKind(cands, "python.finally_body_change") {
+				t.Fatalf("%s: expected python.finally_body_change, got code=%d kinds=%v stderr=%s", tc.name, code, kindsOf(cands), stderr)
+			}
+		})
+	}
+}
+
+func TestExpectationAndConditionPrecision(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Slice bounds: res[1:] vs res[:1] and res[1:2:3] vs res[1:2]
+	code, cands, _, stderr := runPair(t, dir, "py_slice.py",
+		"def test_s(res, x):\n    assert res[1:] == x\n",
+		"def test_s(res, x):\n    assert res[:1] == x\n",
+		"tests/test_slice.py",
+	)
+	if code != exitOK || !hasKind(cands, "test.expectation_change") {
+		t.Fatalf("slice lower/upper swap: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+	code, cands, _, stderr = runPair(t, dir, "py_slice_step.py",
+		"def test_s(res, x):\n    assert res[1:2:3] == x\n",
+		"def test_s(res, x):\n    assert res[1:2] == x\n",
+		"tests/test_slice_step.py",
+	)
+	if code != exitOK || !hasKind(cands, "test.expectation_change") {
+		t.Fatalf("slice step drop: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+
+	// Lambda body and parameter changes inside assertion
+	code, cands, _, stderr = runPair(t, dir, "py_lambda_body.py",
+		"def test_l(fn):\n    assert fn(lambda x: x + 1) == 2\n",
+		"def test_l(fn):\n    assert fn(lambda x: x - 1) == 2\n",
+		"tests/test_lambda.py",
+	)
+	if code != exitOK || !hasKind(cands, "test.expectation_change") {
+		t.Fatalf("lambda body mutation: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+	code, cands, _, stderr = runPair(t, dir, "py_lambda_param.py",
+		"def test_l(fn):\n    assert fn(lambda x: x + 1) == 2\n",
+		"def test_l(fn):\n    assert fn(lambda x, y=0: x + 1) == 2\n",
+		"tests/test_lambda_param.py",
+	)
+	if code != exitOK || !hasKind(cands, "test.expectation_change") {
+		t.Fatalf("lambda param mutation: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+
+	// Svelte test file with apostrophe in markup before <script> expect(...)
+	beforeSvelte := "<div>don't break the scanner</div>\n<script lang=\"ts\">\n  expect(value).toBe(42);\n</script>\n"
+	afterSvelte := "<div>don't break the scanner</div>\n<script lang=\"ts\">\n  expect(value).toBeTruthy();\n</script>\n"
+	for _, logical := range []string{"alt-frontend-sv/src/card.spec.svelte", "alt-frontend-sv/src/card.test.svelte"} {
+		code, cands, _, stderr = runPair(t, dir, filepath.Base(logical), beforeSvelte, afterSvelte, logical)
+		if code != exitOK || !hasKind(cands, "test.expectation_change") {
+			t.Fatalf("%s: expected test.expectation_change, got code=%d cands=%+v stderr=%s", logical, code, cands, stderr)
+		}
+	}
+
+	// collectCond traverses keyword args and star args inside if-condition calls
+	code, cands, _, stderr = runPair(t, dir, "py_cond_kw.py",
+		"def f(a, b):\n    if check(strict=a and b):\n        return 1\n    return 0\n",
+		"def f(a, b):\n    if check(strict=a):\n        return 1\n    return 0\n",
+		"",
+	)
+	if code != exitOK || !hasKind(cands, "python.condition_operator_change") {
+		t.Fatalf("kwarg condition operator drop: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+	code, cands, _, stderr = runPair(t, dir, "py_cond_star.py",
+		"def f(a, b):\n    if check(*(a and b,)):\n        return 1\n    return 0\n",
+		"def f(a, b):\n    if check(*(a,)):\n        return 1\n    return 0\n",
+		"",
+	)
+	if code != exitOK || !hasKind(cands, "python.condition_operator_change") {
+		t.Fatalf("star-arg condition operator drop: code=%d cands=%+v stderr=%s", code, cands, stderr)
+	}
+}
+
 func TestContextAndUsage(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())

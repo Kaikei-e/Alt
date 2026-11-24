@@ -17,7 +17,6 @@ from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCREENER_PATH = ROOT / "scripts" / "lint" / "behavior_screener.py"
-GOAST_MAIN_PATH = ROOT / "scripts" / "lint" / "screener" / "goast" / "main.go"
 CORPUS_DIR = ROOT / "scripts" / "harness" / "corpus"
 
 EXIT_OK = 0
@@ -105,7 +104,6 @@ def run_pair(
 def test_layout_invariants() -> None:
     sys.stdout.write("\n[1] File layout & go.mod-free invariant\n")
     check("behavior_screener.py exists", SCREENER_PATH.is_file(), str(SCREENER_PATH))
-    check("goast/main.go exists", GOAST_MAIN_PATH.is_file(), str(GOAST_MAIN_PATH))
     screener_dir = ROOT / "scripts" / "lint" / "screener"
     go_mods = list(screener_dir.rglob("go.mod")) if screener_dir.is_dir() else []
     check("no go.mod inside scripts/lint/screener/", len(go_mods) == 0, str(go_mods))

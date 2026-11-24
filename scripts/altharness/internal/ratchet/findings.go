@@ -1,10 +1,13 @@
 package ratchet
 
 import (
+	"alt/scripts/altharness/internal/lint"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -91,16 +94,13 @@ func cmdFail(argv []string, err error) error {
 
 func discoverDirectoryTargets(ctx context.Context, repoRoot string, tracked []string) ([]string, error) {
 	runSh := filepath.Join(repoRoot, "scripts", "lint", "run.sh")
-	bash, bashErr := exec.LookPath("bash")
-	if isRegularFile(runSh) && bashErr == nil {
-		argv := []string{bash, runSh, "--list"}
-		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		out, err := cmd.Output()
-		if err != nil {
-			return nil, cmdFail(argv, err)
+	if isRegularFile(runSh) {
+		var out bytes.Buffer
+		if code := lint.Run(ctx, repoRoot, []string{"--list"}, &out, io.Discard); code != 0 {
+			return nil, fmt.Errorf("in-process lint target discovery failed with exit status %d", code)
 		}
 		set := map[string]struct{}{}
-		for _, t := range strings.Split(string(out), "\n") {
+		for _, t := range strings.Split(out.String(), "\n") {
 			if strings.TrimSpace(t) == "" {
 				continue
 			}

@@ -27,13 +27,16 @@ var markerNames = map[string]struct{}{
 	"go.mod": {}, "Cargo.toml": {}, "pyproject.toml": {}, "deno.json": {}, "bun.lock": {}, "buf.yaml": {},
 }
 
-type prefixInfo struct{ isF bool }
+type prefixInfo struct {
+	isF   bool
+	isRaw bool
+}
 
 var stringPrefixes map[string]prefixInfo
 
 func init() {
-	bases := []string{"", "b", "r", "u", "f", "br", "rb", "fr", "rf"}
-	stringPrefixes = make(map[string]prefixInfo, 64)
+	bases := []string{"", "b", "r", "u", "f", "t", "br", "rb", "fr", "rf", "tr", "rt"}
+	stringPrefixes = make(map[string]prefixInfo, 80)
 	for _, b := range bases {
 		n := len(b)
 		for mask := 0; mask < 1<<n; mask++ {
@@ -46,7 +49,10 @@ func init() {
 				sb.WriteRune(c)
 			}
 			pref := sb.String()
-			stringPrefixes[pref] = prefixInfo{isF: strings.ContainsAny(pref, "fF")}
+			stringPrefixes[pref] = prefixInfo{
+				isF:   strings.ContainsAny(pref, "fFtT"),
+				isRaw: strings.ContainsAny(pref, "rR"),
+			}
 		}
 	}
 }
@@ -195,12 +201,42 @@ func countPythonSuppressions(text string) (int, int) {
 func fallbackComments(text string) []string {
 	var comments []string
 	for _, line := range splitLines(text) {
-		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
-		if strings.HasPrefix(trimmed, "#") {
-			comments = append(comments, trimmed)
+		if c, ok := extractLineCommentFallback(line); ok {
+			comments = append(comments, c)
 		}
 	}
 	return comments
+}
+
+// extractLineCommentFallback scans a single line for an unquoted '#' comment so
+// lexical recovery on a malformed file still counts inline # noqa / # nosec
+// directives instead of silently zeroing the file.
+func extractLineCommentFallback(line string) (string, bool) {
+	n := len(line)
+	for i := 0; i < n; {
+		c := line[i]
+		if c == '#' {
+			return line[i:], true
+		}
+		if c == '\'' || c == '"' {
+			q := c
+			i++
+			for i < n {
+				if line[i] == '\\' && i+1 < n {
+					i += 2
+					continue
+				}
+				if line[i] == q {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		i++
+	}
+	return "", false
 }
 
 type pyscan struct {
@@ -272,7 +308,20 @@ func (p *pyscan) consumeLineCont() bool {
 
 func (p *pyscan) tryString() bool {
 	rest := p.s[p.i:]
-	for n := 2; n >= 0; n-- {
+	// Do not misread the trailing letter of an identifier (e.g. `if"x"`, `or'a'`)
+	// as a string prefix.
+	prefixAllowed := true
+	if p.i > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(p.s[:p.i])
+		if prev == '_' || unicode.IsLetter(prev) || unicode.IsDigit(prev) {
+			prefixAllowed = false
+		}
+	}
+	maxPref := 2
+	if !prefixAllowed {
+		maxPref = 0
+	}
+	for n := maxPref; n >= 0; n-- {
 		if n > len(rest) {
 			continue
 		}
@@ -293,7 +342,7 @@ func (p *pyscan) tryString() bool {
 		info := stringPrefixes[pref]
 		p.i += n + len(quote)
 		if info.isF {
-			p.scanFString(quote)
+			p.scanFString(quote, info.isRaw)
 		} else {
 			p.scanPlain(quote)
 		}
@@ -331,7 +380,7 @@ func (p *pyscan) scanPlain(quote string) {
 	p.failed = true
 }
 
-func (p *pyscan) scanFString(quote string) {
+func (p *pyscan) scanFString(quote string, raw bool) {
 	triple := len(quote) == 3
 	qch := quote[0]
 	prev := p.triple
@@ -339,14 +388,31 @@ func (p *pyscan) scanFString(quote string) {
 	defer func() { p.triple = prev }()
 	for p.i < len(p.s) && !p.failed {
 		if p.s[p.i] == '\\' {
-			if p.i+1 < len(p.s) && (p.s[p.i+1] == '\n' || p.s[p.i+1] == '\r') {
+			if p.i+1 >= len(p.s) {
+				p.failed = true
+				return
+			}
+			next := p.s[p.i+1]
+			if !raw && next == 'N' && p.i+2 < len(p.s) && p.s[p.i+2] == '{' {
+				j := p.i + 3
+				for j < len(p.s) && p.s[j] != '}' && p.s[j] != '\n' {
+					j++
+				}
+				if j < len(p.s) && p.s[j] == '}' {
+					p.i = j + 1
+					continue
+				}
+			}
+			if next == '\n' || next == '\r' {
 				p.i += 2
-				if p.i <= len(p.s) && p.i > 0 && p.s[p.i-1] == '\r' && p.i < len(p.s) && p.s[p.i] == '\n' {
+				if next == '\r' && p.i < len(p.s) && p.s[p.i] == '\n' {
 					p.i++
 				}
 				continue
 			}
-			if p.i+1 < len(p.s) && p.s[p.i+1] == qch {
+			// Consume \\ pairs and escaped quotes \' / \" together so even
+			// backslash runs (f"\\", rf"\\") close cleanly at the quote.
+			if next == '\\' || next == qch {
 				p.i += 2
 				continue
 			}

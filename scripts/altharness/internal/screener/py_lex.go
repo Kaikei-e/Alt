@@ -28,6 +28,14 @@ type pyTok struct {
 }
 
 func tokenizePy(src string) ([]pyTok, error) {
+	return tokenizePyMode(src, false)
+}
+
+func tokenizePyExpr(src string) ([]pyTok, error) {
+	return tokenizePyMode(src, true)
+}
+
+func tokenizePyMode(src string, exprMode bool) ([]pyTok, error) {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	src = strings.ReplaceAll(src, "\r", "\n")
 	src = strings.TrimPrefix(src, "\uFEFF")
@@ -35,11 +43,11 @@ func tokenizePy(src string) ([]pyTok, error) {
 	indent := []int{0}
 	var out []pyTok
 	paren := 0
-	atStart := true
+	atStart := !exprMode
 	line := 1
 	i := 0
 	for i < n {
-		if atStart && paren == 0 {
+		if !exprMode && atStart && paren == 0 {
 			col := 0
 			j := i
 			for j < n {
@@ -107,7 +115,7 @@ func tokenizePy(src string) ([]pyTok, error) {
 			i += 2
 			line++
 		case r == '\n':
-			if paren == 0 {
+			if !exprMode && paren == 0 {
 				out = append(out, pyTok{kind: pyNL, val: "\n", line: line})
 				atStart = true
 			}
@@ -171,7 +179,7 @@ func tokenizePy(src string) ([]pyTok, error) {
 			return nil, fmt.Errorf("line %d: tokenizer stuck", line)
 		}
 	}
-	if !atStart && paren == 0 {
+	if !exprMode && !atStart && paren == 0 {
 		out = append(out, pyTok{kind: pyNL, val: "\n", line: line})
 	}
 	for len(indent) > 1 {
@@ -191,14 +199,14 @@ func isIdentCont(r rune) bool {
 }
 
 func isStrPrefix(s string) bool {
-	if s == "" || len(s) > 3 {
+	if s == "" || len(s) > 2 {
 		return false
 	}
 	lower := strings.ToLower(s)
 	seen := map[byte]bool{}
 	for i := 0; i < len(lower); i++ {
 		c := lower[i]
-		if c != 'r' && c != 'f' && c != 'b' && c != 'u' {
+		if c != 'r' && c != 'f' && c != 'b' && c != 'u' && c != 't' {
 			return false
 		}
 		if seen[c] {
@@ -206,10 +214,13 @@ func isStrPrefix(s string) bool {
 		}
 		seen[c] = true
 	}
-	if seen['u'] && (seen['b'] || seen['f']) {
+	if seen['u'] && (seen['b'] || seen['f'] || seen['r'] || seen['t']) {
 		return false
 	}
-	if seen['b'] && seen['f'] {
+	if seen['b'] && (seen['f'] || seen['t']) {
+		return false
+	}
+	if seen['f'] && seen['t'] {
 		return false
 	}
 	return true
@@ -289,8 +300,9 @@ func scanPyString(src string, i int, prefix string) (int, []string, error) {
 	if i >= len(src) {
 		return 0, nil, fmt.Errorf("unterminated string")
 	}
-	raw := strings.Contains(strings.ToLower(prefix), "r")
-	fstr := strings.Contains(strings.ToLower(prefix), "f")
+	lowerPrefix := strings.ToLower(prefix)
+	raw := strings.Contains(lowerPrefix, "r")
+	fstr := strings.ContainsAny(lowerPrefix, "ft")
 	quote := src[i]
 	triple := false
 	if i+2 < len(src) && src[i+1] == quote && src[i+2] == quote {
@@ -312,14 +324,29 @@ func scanPyString(src string, i int, prefix string) (int, []string, error) {
 			return i + len(endMark), exprs, nil
 		}
 		if src[i] == '\\' {
-			if raw && i+1 < len(src) && src[i+1] != quote && !(triple && strings.HasPrefix(src[i+1:], endMark)) {
-				i++
+			if i+1 >= len(src) {
+				return 0, nil, fmt.Errorf("unterminated string")
+			}
+			// In both raw and non-raw strings, pairs of backslashes (\\),
+			// escaped quotes (\' or \"), and line continuations (\<newline>)
+			// consume two bytes. For f/t-strings, a single backslash before '{'
+			// or '}' does NOT escape the brace (except \N{...} in non-raw).
+			next := src[i+1]
+			if !raw && fstr && next == 'N' && i+2 < len(src) && src[i+2] == '{' {
+				j := i + 3
+				for j < len(src) && src[j] != '}' && src[j] != '\n' {
+					j++
+				}
+				if j < len(src) && src[j] == '}' {
+					i = j + 1
+					continue
+				}
+			}
+			if next == '\\' || next == quote || next == '\n' || !fstr {
+				i += 2
 				continue
 			}
-			i += 2
-			if i > len(src) {
-				i = len(src)
-			}
+			i++
 			continue
 		}
 		if fstr && src[i] == '{' {
@@ -342,19 +369,47 @@ func scanPyString(src string, i int, prefix string) (int, []string, error) {
 			}
 			if i < len(src) && src[i] == ':' {
 				i++
-				depth := 0
 				for i < len(src) {
+					if !triple && src[i] == '\n' {
+						return 0, nil, fmt.Errorf("unterminated f-string expression")
+					}
 					if src[i] == '{' {
-						depth++
+						nestedStart := i + 1
+						nestedEnd, err := scanFExpr(src, nestedStart)
+						if err != nil {
+							return 0, nil, err
+						}
+						exprs = append(exprs, src[nestedStart:nestedEnd])
+						i = nestedEnd
+						if i < len(src) && src[i] == '!' {
+							i += 2
+						}
+						if i < len(src) && src[i] == ':' {
+							i++
+							nestedDepth := 0
+							for i < len(src) {
+								if src[i] == '{' {
+									nestedDepth++
+								} else if src[i] == '}' {
+									if nestedDepth == 0 {
+										break
+									}
+									nestedDepth--
+								}
+								i++
+							}
+						}
+						if i >= len(src) || src[i] != '}' {
+							return 0, nil, fmt.Errorf("unterminated f-string expression")
+						}
 						i++
 						continue
 					}
 					if src[i] == '}' {
-						if depth == 0 {
-							break
-						}
-						depth--
-						i++
+						break
+					}
+					if src[i] == '\\' && i+1 < len(src) {
+						i += 2
 						continue
 					}
 					i++
@@ -387,6 +442,10 @@ func scanFExpr(src string, i int) (int, error) {
 		}
 		c := src[i]
 		switch c {
+		case '#':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
 		case '(', '[', '{':
 			depth++
 			i++
@@ -399,7 +458,16 @@ func scanFExpr(src string, i int) (int, error) {
 			}
 			depth--
 			i++
-		case '!', ':':
+		case '!':
+			if i+1 < len(src) && src[i+1] == '=' {
+				i += 2
+				continue
+			}
+			if depth == 0 {
+				return i, nil
+			}
+			i++
+		case ':':
 			if depth == 0 {
 				return i, nil
 			}
@@ -421,8 +489,23 @@ func atPyString(src string, i int) (int, bool, error) {
 	if i >= len(src) {
 		return 0, false, nil
 	}
+	if src[i] == '"' || src[i] == '\'' {
+		end, _, err := scanPyString(src, i, "")
+		if err != nil {
+			return 0, false, err
+		}
+		return end, true, nil
+	}
+	// Do not misread the trailing letter of an identifier (e.g. `if"x"`, `or'a'`)
+	// as a string prefix.
+	if i > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(src[:i])
+		if isIdentCont(prev) {
+			return 0, false, nil
+		}
+	}
 	j := i
-	for k := 0; k < 3 && j < len(src) && isPrefixByte(src[j]); k++ {
+	for k := 0; k < 2 && j < len(src) && isPrefixByte(src[j]); k++ {
 		j++
 	}
 	for ; j > i; j-- {
@@ -434,19 +517,12 @@ func atPyString(src string, i int) (int, bool, error) {
 			return end, true, nil
 		}
 	}
-	if src[i] == '"' || src[i] == '\'' {
-		end, _, err := scanPyString(src, i, "")
-		if err != nil {
-			return 0, false, err
-		}
-		return end, true, nil
-	}
 	return 0, false, nil
 }
 
 func isPrefixByte(b byte) bool {
 	switch b {
-	case 'r', 'R', 'f', 'F', 'b', 'B', 'u', 'U':
+	case 'r', 'R', 'f', 'F', 'b', 'B', 'u', 'U', 't', 'T':
 		return true
 	default:
 		return false
