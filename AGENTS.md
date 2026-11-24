@@ -96,7 +96,7 @@
 - **rask-log-aggregator** – Rust Axum API ingesting logs into ClickHouse. Uses mock traits for unit tests, `axum-test` for handlers, `criterion` for hot paths.
 
 ## Critical Rules
-These rules and the invariants below are the same text as root `CLAUDE.md`; `scripts/agent-harness/harness_selfcheck.py` fails when the two copies differ.
+These rules and the invariants below are the same text as root `CLAUDE.md`; `./scripts/altharness/alt-harness selfcheck` fails when the two copies differ.
 
 <!-- shared:critical-rules:start -->
 1. **IMPORTANT: TDD First** — Write the failing test BEFORE writing implementation code. RED → GREEN → REFACTOR.
@@ -121,7 +121,7 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `scr
 <!-- shared:immutable-invariants:end -->
 
 ## ADR Preflight Guardrail
-- Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (the same files as `.claude/skills/adr-preflight/`). Before changing code without edit hooks, run `python3 .agents/skills/adr-preflight/scripts/adr_preflight.py <paths you will change>`.
+- Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (the same files as `.claude/skills/adr-preflight/`). Before changing code without edit hooks, run `./scripts/altharness/alt-harness preflight <paths you will change>`.
 - Exit `1` means the ADR graph is unsound (`docdag validate` failed or `docdag` is missing from `PATH`) and must be fixed first. Read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`) before editing; a change that contradicts one stops and goes through a superseding ADR (`alt-adr-writer`).
 
 ## Clean Architecture Guardrail
@@ -130,8 +130,8 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `scr
 
 ## Rule Ledger (CHECK-07)
 - Every engineering rule in this playbook, `CLAUDE.md`, and `.agents/rules/` is paired with its concrete mechanical check (or marked `判断`) in [`.agents/rules/rule-ledger.md`](.agents/rules/rule-ledger.md).
-- `python3 scripts/agent-harness/harness_selfcheck.py` (H11) validates all referenced scripts, `ast-grep:<id>` rules, corpus/ADR citations, and enforces a monotonic `max_judgment_rules` ratchet so prose rules migrate toward mechanical checks rather than accumulating unchecked.
-- Worktree hygiene (`scripts/lint/check_worktree_hygiene.py`) and disk-space / policy guards (`scripts/lint/run.sh`) are enforced mechanically; prefer updating the ledger over duplicating prose rules here.
+- `./scripts/altharness/alt-harness selfcheck` (H11) validates all referenced scripts, `ast-grep:<id>` rules, corpus/ADR citations, and enforces a monotonic `max_judgment_rules` ratchet so prose rules migrate toward mechanical checks rather than accumulating unchecked.
+- Worktree hygiene (`./scripts/altharness/alt-harness hygiene`) and disk-space / policy guards (`scripts/lint/run.sh`) are enforced mechanically; prefer updating the ledger over duplicating prose rules here.
 
 ## Testing Matrix
 - Frontend unit/component – `cd alt-frontend-sv && bun run test`
@@ -142,10 +142,10 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `scr
 - Rust / Deno services – `cargo test` / `deno test`
 
 ## Security & Secrets
-- Never commit credentials (`.env` / `secrets` / keys are guarded by `guard_protected_paths.py`); preserve structured JSON log redaction in `auth-hub`, `pre-processor`, and `news-creator`, sanitize LLM outputs, and use `make dev-ssl-setup` for local TLS.
+- Never commit credentials (`.env` / `secrets` / keys are guarded by `./scripts/altharness/alt-harness guard-protected`); preserve structured JSON log redaction in `auth-hub`, `pre-processor`, and `news-creator`, sanitize LLM outputs, and use `make dev-ssl-setup` for local TLS.
 
 ## Delivery Checklist
-- Plan updated; changes minimal and verified via `./scripts/lint/run.sh <target>`, `python3 scripts/lint/check_worktree_hygiene.py`, and affected tests.
+- Plan updated; changes minimal and verified via `./scripts/lint/run.sh <target>`, `./scripts/altharness/alt-harness hygiene`, and affected tests.
 - `stopped-using-k8s/` untouched; final report includes rationale, file references, test evidence, and next steps.
 
 ## Quick References

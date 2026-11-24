@@ -2,8 +2,7 @@
 name: adr-preflight
 description: コード変更の前に DocDag の ADR グラフ健全性を検証し、変更先ディレクトリに効く現行契約（binding ADR）を提示して既存決定との無自覚な衝突を防ぐ。新機能実装・バグ修正・リファクタリング・改善の着手時（starting any feature, bug fix, refactor, or improvement）、編集フックが `ADR PREFLIGHT` または `ADR PREFLIGHT BLOCKED` で編集を保留したとき、あるいはユーザが「ADR 確認して」「preflight 回して」「check binding ADRs」と言ったときに、ユーザが「ADR」と言及しなくても起動する。設計前の横断的な vault 文脈収集には plan-context-loader、既存決定を置換する新規 ADR 執筆には alt-adr-writer を使用する。
 allowed-tools:
-  - "Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/adr_preflight.py *)"
-  - "Bash(python3 .claude/skills/adr-preflight/scripts/adr_preflight.py *)"
+  - "Bash(./scripts/altharness/alt-harness preflight *)"
   - Read
   - Grep
   - Glob
@@ -35,10 +34,10 @@ allowed-tools:
 
 ```bash
 # 変更予定パスまたは変更済みファイルからブリーフを stdout に出力（exit 0、docdag validate 失敗または docdag 不在時は exit 1）
-python3 .claude/skills/adr-preflight/scripts/adr_preflight.py <path>...
-python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --changed
+./scripts/altharness/alt-harness preflight <path>...
+./scripts/altharness/alt-harness preflight --changed
 # 指定サービスを affected_services に持つ全 binding ADR を新しい順に出力（id<TAB>title<TAB>path）
-python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --service <name>
+./scripts/altharness/alt-harness preflight --service <name>
 ```
 
 ## 5. 緊急停止スイッチ・既知の制約・関連スキル
@@ -59,7 +58,7 @@ python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --service <name>
         "hooks": [
           {
             "type": "command",
-            "command": "s=\"$CLAUDE_PROJECT_DIR/.claude/skills/adr-preflight/scripts/adr_preflight.py\"; [ -f \"$s\" ] || { echo \"adr_preflight_disabled: $s not found in this checkout; code edits are not gated.\"; exit 0; }; python3 \"$s\" --hook",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || { echo \"adr_preflight_disabled: $s not found in this checkout; code edits are not gated.\"; exit 0; }; \"$s\" preflight --hook",
             "timeout": 30
           }
         ]
@@ -71,7 +70,7 @@ python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --service <name>
         "hooks": [
           {
             "type": "command",
-            "command": "s=\"$CLAUDE_PROJECT_DIR/.claude/skills/adr-preflight/scripts/adr_preflight.py\"; [ -f \"$s\" ] || exit 0; python3 \"$s\" --hook",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || exit 0; \"$s\" preflight --hook",
             "timeout": 30
           }
         ]

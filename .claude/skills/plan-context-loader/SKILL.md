@@ -78,13 +78,13 @@ docdag validate         # status / stub / cycle（supersedes+depends-on の和�
 
 ```bash
 # 影響サービスから現行契約（binding ADR）を引く（インライン・ブロックリスト両表記を解釈、id<TAB>title<TAB>path、新しい順）
-python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --service <name>
+./scripts/altharness/alt-harness preflight --service <name>
 
 # キーワードで全文検索するときだけテキスト検索を使う
 grep -rl "<keyword>" docs/ADR/ | sort | tail -10
 ```
 
-サービス名での探索に `grep` は使わない（`adr_preflight.py --service <name>` が `docdag` の binding 集合を読み、`affected_services` のインライン表記とブロックリスト表記の両方を解釈する）。
+サービス名での探索に `grep` は使わない（`alt-harness preflight --service <name>` が `docdag` の binding 集合を読み、`affected_services` のインライン表記とブロックリスト表記の両方を解釈する）。
 
 各 ADR から拾うのは 3 点だけ — なぜその判断が必要だったか / 何を固定したか / 今回の計画に効く制約。
 

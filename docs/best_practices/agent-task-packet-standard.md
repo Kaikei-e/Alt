@@ -10,12 +10,12 @@ tags:
 Alt リポジトリにおいてコーディングエージェントへ作業を委譲する際の**機械検証可能な契約仕様（TaskPacket / TaskHandoff）**と、**GUARD-01（危険な一括 `--fix` の原則禁止）**の正規定義。
 
 - JSON Schema (Draft 2020-12): `scripts/agent-harness/task_packet.schema.json`
-- バリデータ / テンプレート CLI: `scripts/agent-harness/task_packet.py`
+- バリデータ / テンプレート CLI: `./scripts/altharness/alt-harness packet` (`scripts/altharness/internal/packet/`)
 - 標準テンプレート:
   - `scripts/agent-harness/templates/task-packet.md.tmpl`
   - `scripts/agent-harness/templates/task-handoff.md.tmpl`
 - 実行時エージェントルール: `.agents/rules/task-packet.md`
-- ユニットテスト: `scripts/tests/test-task-packet.py`
+- ユニットテスト: `scripts/altharness/internal/packet/packet_test.go`
 
 ## 1. 設計原則（Alt の内部不変条件）
 
@@ -33,7 +33,7 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 
 ## 2. JSON Schema 要約 (`task_packet.schema.json`)
 
-スキーマは JSON Schema Draft 2020-12 (`$defs` 構造) で `TaskPacket` と `TaskHandoff` を定義し、全オブジェクトに `additionalProperties: false` を設定している。Python 標準ライブラリのみで検証可能。
+スキーマは JSON Schema Draft 2020-12 (`$defs` 構造) で `TaskPacket` と `TaskHandoff` を定義し、全オブジェクトに `additionalProperties: false` を設定している。Go 標準ライブラリのみで検証可能。
 
 ### 2.1 `TaskPacket` フィールド定義
 
@@ -90,7 +90,7 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 
 ## 4. Markdown 形式と必須見出し
 
-`scripts/agent-harness/task_packet.py` は純粋な JSON ファイルに加え、**YAML フロントマター** または **フェンス付き ```` ```json ```` コードブロック** を持つ Markdown ファイルを検証できる。
+`./scripts/altharness/alt-harness packet` は純粋な JSON ファイルに加え、**YAML フロントマター** または **フェンス付き ```` ```json ```` コードブロック** を持つ Markdown ファイルを検証できる。
 
 - **TaskPacket Markdown 必須見出し（順序厳守）**:
   1. `## 1. 範囲と作業量制約`
@@ -106,29 +106,29 @@ Alt リポジトリにおいてコーディングエージェントへ作業を�
 
 ```bash
 # 標準テンプレートの出力（packet / handoff）
-python3 scripts/agent-harness/task_packet.py render-template --kind packet --packet-id TASK-001 --target scripts
-python3 scripts/agent-harness/task_packet.py render-template --kind handoff --packet-id TASK-001
+./scripts/altharness/alt-harness packet render-template --kind packet --packet-id TASK-001 --target scripts
+./scripts/altharness/alt-harness packet render-template --kind handoff --packet-id TASK-001
 
 # LOOP-02: パケットの検証コマンドをホスト実測して execution_policy.measured へ記録
-python3 scripts/agent-harness/task_packet.py measure path/to/task-packet.md
+./scripts/altharness/alt-harness packet measure path/to/task-packet.md
 
 # パケット単体検証（JSON / Markdown 両対応、--format json 可。未計測・予算超過・コマンド乖離を拒否）
-python3 scripts/agent-harness/task_packet.py validate-packet path/to/task-packet.md
+./scripts/altharness/alt-harness packet validate-packet path/to/task-packet.md
 
 # Hand-off 単体検証およびパケットとのクロス検証（max_files / max_functions / allowed_paths / packet_id）
-python3 scripts/agent-harness/task_packet.py validate-handoff path/to/handoff.md --packet path/to/task-packet.md
+./scripts/altharness/alt-harness packet validate-handoff path/to/handoff.md --packet path/to/task-packet.md
 
 # LOOP-01: Git 実差分・AST 変更関数数・検証コマンド再実行・CHECK-01・lint-fix 厳格検査による実地検証
-python3 scripts/agent-harness/task_packet.py verify-handoff path/to/handoff.md --packet path/to/task-packet.md --base-commit <sha>
+./scripts/altharness/alt-harness packet verify-handoff path/to/handoff.md --packet path/to/task-packet.md --base-commit <sha>
 
 # VERIFY-01: テスト先行コミット順検証（behavior-preserving 既定、--bugfix で RED→GREEN 検証）
-python3 scripts/agent-harness/task_packet.py verify-sequence --base-commit <sha> --test-command "<cmd>"
+./scripts/altharness/alt-harness packet verify-sequence --base-commit <sha> --test-command "<cmd>"
 
 # ホスト最終統合ゲート（worktree hygiene + 対象 lint + repo lint + 任意テスト + verify-handoff + git status）
 ./scripts/verify/host-final-check.sh --target scripts --handoff path/to/handoff.md --packet path/to/task-packet.md --base-commit <sha>
 
 # スキーマと同梱テンプレートの自己検証
-python3 scripts/agent-harness/task_packet.py check-templates
+./scripts/altharness/alt-harness packet check-templates
 ```
 
-CI では `scripts/lint/harness.sh`（`./scripts/lint/run.sh harness`）が `task_packet.py check-templates` と `scripts/tests/test-task-packet.py` を自動実行し、スキーマ・テンプレート・バリデータの整合性を継続検証する。
+CI では `./scripts/lint/run.sh harness`（`./scripts/altharness/alt-harness gate harness`）が `./scripts/altharness/alt-harness packet check-templates` と `go -C scripts/altharness test -race ./internal/packet` を自動実行し、スキーマ・テンプレート・バリデータの整合性を継続検証する。
