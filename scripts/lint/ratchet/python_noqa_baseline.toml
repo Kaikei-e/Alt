@@ -305,30 +305,6 @@ line_sha256 = "9f990747939120f5003087a3f3588b8812b6f48da3b44e144311523035d78c3f"
 count = 2
 
 [[entries]]
-path = "scripts/agent-harness/guard_event_time.py"
-codes = ["E402"]
-line_sha256 = "90cba893677365b5fc4d43acb989c944dccdaacb5c4f9f41c0cccd57339ec617"
-count = 1
-
-[[entries]]
-path = "scripts/agent-harness/guard_ops_commands.py"
-codes = ["E402"]
-line_sha256 = "cb4bbc0293629e0fc4cac3fcdbe3776cd485a220bdde0509a1a4321203775f8f"
-count = 1
-
-[[entries]]
-path = "scripts/agent-harness/guard_protected_paths.py"
-codes = ["E402"]
-line_sha256 = "90cba893677365b5fc4d43acb989c944dccdaacb5c4f9f41c0cccd57339ec617"
-count = 1
-
-[[entries]]
-path = "scripts/agent-harness/harness_selfcheck.py"
-codes = ["E402"]
-line_sha256 = "82529400d539c43c6d1dd953963632c04e7df368eb64e0c50473b62e4a2ad93b"
-count = 1
-
-[[entries]]
 path = "scripts/compose-file-bind-audit.py"
 codes = ["E402"]
 line_sha256 = "357a71eca6c1ad81b5de92cbc2d6373d444597d4536855a4dd57882e33c45358"
@@ -495,3 +471,4 @@ path = "tts-speaker/tts_speaker/infra/inbound_server.py"
 codes = ["S104"]
 line_sha256 = "128df706ffb0d83ec9191655876ad156b54c0f89c6808d9bc76d9d115df1eb4f"
 count = 1
+

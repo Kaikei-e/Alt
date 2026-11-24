@@ -1,6 +1,7 @@
 package pytestrand
 
 import (
+	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -35,11 +36,11 @@ func pytestCmdForTest(t *testing.T) string {
 func writeOrderRecordingSuite(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, "pyproject.toml"),
-		[]byte("[project]\nname = \"rand-fixture\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n"), 0o644); err != nil {
+		[]byte("[project]\nname = \"rand-fixture\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n"), fsperm.File); err != nil {
 		t.Fatal(err)
 	}
 	testsDir := filepath.Join(root, "tests")
-	if err := os.MkdirAll(testsDir, 0o755); err != nil {
+	if err := os.MkdirAll(testsDir, fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
 	var lines []string
@@ -54,7 +55,7 @@ func writeOrderRecordingSuite(t *testing.T, root string) {
 			"",
 		)
 	}
-	if err := os.WriteFile(filepath.Join(testsDir, "test_order.py"), []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(testsDir, "test_order.py"), []byte(strings.Join(lines, "\n")), fsperm.File); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -166,11 +167,11 @@ func TestGeneratedSeedAndFailureExitCode(t *testing.T) {
 	pytestCmd := pytestCmdForTest(t)
 	root := t.TempDir()
 	testsDir := filepath.Join(root, "tests")
-	if err := os.MkdirAll(testsDir, 0o755); err != nil {
+	if err := os.MkdirAll(testsDir, fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(testsDir, "test_fail.py"),
-		[]byte("def test_always_fails() -> None:\n    assert False\n"), 0o644); err != nil {
+		[]byte("def test_always_fails() -> None:\n    assert False\n"), fsperm.File); err != nil {
 		t.Fatal(err)
 	}
 	seedLog := filepath.Join(root, "seeds.jsonl")

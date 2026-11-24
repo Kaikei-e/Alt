@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -180,7 +181,7 @@ func newFixture(t *testing.T) *preflightFixture {
 		docdagConfig: filepath.Join(tmpRoot, "docdag_config.json"),
 	}
 	for _, d := range []string{f.repo, f.binDir, f.outsideDir, filepath.Join(f.repo, "docs", "ADR")} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, fsperm.Dir); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -216,10 +217,10 @@ func newFixture(t *testing.T) *preflightFixture {
 
 func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), fsperm.File); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -248,7 +249,7 @@ func (f *preflightFixture) configureDocdag(cfg stubConfig) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	if err := os.WriteFile(f.docdagConfig, raw, 0o644); err != nil {
+	if err := os.WriteFile(f.docdagConfig, raw, fsperm.File); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -262,7 +263,7 @@ func (f *preflightFixture) writeDocdagStub() {
 	stubPath := filepath.Join(f.binDir, "docdag")
 	script := fmt.Sprintf("#!/bin/sh\nALT_DOCDAG_STUB_MODE=1 ALT_DOCDAG_STUB_CONFIG=%q ALT_DOCDAG_STUB_LOG=%q exec %q \"$@\"\n",
 		f.docdagConfig, f.docdagLog, exe)
-	if err := os.WriteFile(stubPath, []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(stubPath, []byte(script), fsperm.Dir); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -302,7 +303,7 @@ func (f *preflightFixture) docdagInvocations() []stubInvocation {
 func (f *preflightFixture) buildPathWithoutDocdag() string {
 	f.t.Helper()
 	essentialDir := filepath.Join(f.tmpRoot, "essential_bin")
-	if err := os.MkdirAll(essentialDir, 0o755); err != nil {
+	if err := os.MkdirAll(essentialDir, fsperm.Dir); err != nil {
 		f.t.Fatal(err)
 	}
 	gitBin, err := exec.LookPath("git")
@@ -1202,7 +1203,7 @@ func Test32RelativeFilePathResolvesAgainstPayloadCwd(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	subCwd := filepath.Join(f.repo, "alt-backend")
-	if err := os.MkdirAll(subCwd, 0o755); err != nil {
+	if err := os.MkdirAll(subCwd, fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(map[string]any{

@@ -63,7 +63,7 @@ func repoSteps(repo, base string) ([]Step, error) {
 		{Name: "workflow-forbidden-triggers-grep", Key: "forbidden-triggers:" + repo, Parallel: true, Cache: true, Run: func(ctx context.Context) (string, int, error) {
 			return ForbiddenTriggers(ctx, repo)
 		}},
-		inProc("workflow-safety-check", "workflow:"+repo, true, workflow.Run),
+		inProc("workflow-safety-check", "workflow:"+repo, true, workflow.Run, "--repo-root", repo),
 		{Name: "lint-run-tests", Parallel: true, Cache: true, Args: []string{"bash", "scripts/tests/test-lint-run.sh"}},
 		inProc("suppression-governance", "suppressions:"+repo+":"+base, true, suppress.RunCheck, "--repo-root", repo, "--base", base),
 		inProc("suppression-ratchet", "ratchet:"+repo, true, ratchet.Run, "--repo-root", repo),

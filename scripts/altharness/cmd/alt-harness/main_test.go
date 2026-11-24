@@ -1,6 +1,7 @@
 package main
 
 import (
+	"alt/scripts/altharness/internal/guards"
 	"bytes"
 	"context"
 	"os"
@@ -40,13 +41,16 @@ func TestHelpListsAllSubcommands(t *testing.T) {
 		"generated", "screener", "packet", "corpus", "selfcheck",
 		"canary", "entrypoint-canary", "postmortem", "migration-gate", "adr-gate",
 		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time",
-		"harness-run", "agy-hook", "gate",
+		"harness-run", "agy-hook", "preflight", "pytest-rand", "gate",
 	}
 	help := out.String()
 	for _, cmd := range want {
 		if !strings.Contains(help, cmd) {
 			t.Errorf("--help missing subcommand %q in %q", cmd, help)
 		}
+	}
+	if guards.PreflightRunner == nil {
+		t.Error("expected guards.PreflightRunner to be wired in-process by main init")
 	}
 }
 
@@ -63,6 +67,7 @@ func TestWiredSubcommandsHelpAndErrors(t *testing.T) {
 		{"sync-go help", []string{"sync-go", "--help"}, 0, "sync-go", ""},
 		{"hygiene help", []string{"hygiene", "--help"}, 0, "hygiene", ""},
 		{"entrypoint-canary help", []string{"entrypoint-canary", "--help"}, 0, "entrypoint canary", ""},
+		{"pytest-rand help", []string{"pytest-rand", "--help"}, 0, "pytest", ""},
 		{"lang missing", []string{"lang"}, 2, "", "usage: alt-harness lang"},
 		{"lang unknown", []string{"lang", "bogus"}, 2, "", "unknown language runner"},
 		{"gate bad arity", []string{"gate"}, 2, "", "usage: alt-harness gate"},

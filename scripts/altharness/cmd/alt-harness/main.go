@@ -32,6 +32,10 @@ import (
 	"alt/scripts/altharness/internal/workflow"
 )
 
+func init() {
+	guards.PreflightRunner = preflight.Run
+}
+
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -56,7 +60,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case "lang":
 		return runLang(ctx, args[1:], stdout, stderr)
 	case "layers":
-		return lang.RunLayers(ctx, args[1:], stdout, stderr)
+		return lang.RunLayersWithStdin(ctx, args[1:], stdin, stdout, stderr)
 	case "host-final":
 		return lang.RunHostFinal(ctx, args[1:], stdout, stderr)
 	case "link-naming":

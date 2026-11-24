@@ -3,6 +3,7 @@
 package preflight
 
 import (
+	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -839,10 +840,10 @@ func (r *runner) hasValidReceipt(sessionID, agentID, root, scope, expectedFP str
 
 func (r *runner) writeReceipt(sessionID, agentID, root, scope, fp string) error {
 	path := r.receiptPathFor(sessionID, agentID, root, scope)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), fsperm.Dir); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(fp+"\n"), 0o644)
+	return os.WriteFile(path, []byte(fp+"\n"), fsperm.File)
 }
 
 func (r *runner) cleanupSessionState(sessionID string) {

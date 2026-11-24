@@ -3,6 +3,7 @@
 package pytestrand
 
 import (
+	"alt/scripts/altharness/internal/fsperm"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -128,7 +129,7 @@ func RunWithOptions(ctx context.Context, args []string, opts Options) int {
 	defer func() { _ = os.RemoveAll(pluginDir) }()
 
 	pluginPath := filepath.Join(pluginDir, pluginModuleName+".py")
-	if err := os.WriteFile(pluginPath, []byte(pluginSource), 0o600); err != nil {
+	if err := os.WriteFile(pluginPath, []byte(pluginSource), fsperm.Secret); err != nil {
 		fmt.Fprintf(stderr, "ERROR: failed to write pytest plugin: %v\n", err)
 		return 1
 	}
@@ -266,7 +267,7 @@ func cryptoRandSeed32() (int64, error) {
 }
 
 func appendSeedLog(seedLog, targetDir string, seed int64, exitCode int) error {
-	if err := os.MkdirAll(filepath.Dir(seedLog), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(seedLog), fsperm.Dir); err != nil {
 		return err
 	}
 	rec := seedLogRecord{
