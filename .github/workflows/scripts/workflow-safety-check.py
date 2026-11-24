@@ -1325,5 +1325,5 @@ if __name__ == "__main__":
         / "alt-harness"
     )
     if _launcher.is_file():
-        os.execv(_launcher, [str(_launcher), "workflow", *sys.argv[1:]])  # noqa: S606 -- delegates CLI execution to the Go harness
+        os.execv(_launcher, [str(_launcher), "workflow", *sys.argv[1:]])
     sys.exit(main())

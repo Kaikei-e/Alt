@@ -35,20 +35,33 @@ func initTestRepo(t *testing.T) string {
 
 func TestParallelFasterAndOrdered(t *testing.T) {
 	repo := initTestRepo(t)
+	s1Started := make(chan struct{})
+	s2Started := make(chan struct{})
 	steps := []Step{
-		{Name: "s1", Parallel: true, Args: []string{"sleep", "0.3"}},
-		{Name: "s2", Parallel: true, Args: []string{"sleep", "0.3"}},
+		{Name: "s1", Parallel: true, Run: func(ctx context.Context) (string, int, error) {
+			close(s1Started)
+			select {
+			case <-s2Started:
+				return "first\n", 0, nil
+			case <-time.After(3 * time.Second):
+				return "", 1, fmt.Errorf("s1 timed out waiting for concurrent s2")
+			}
+		}},
+		{Name: "s2", Parallel: true, Run: func(ctx context.Context) (string, int, error) {
+			close(s2Started)
+			select {
+			case <-s1Started:
+				return "second\n", 0, nil
+			case <-time.After(3 * time.Second):
+				return "", 1, fmt.Errorf("s2 timed out waiting for concurrent s1")
+			}
+		}},
 		{Name: "s3", Parallel: true, Args: []string{"echo", "third"}},
 	}
 	var out bytes.Buffer
-	start := time.Now()
 	code, err := Run(context.Background(), steps, Options{Repo: repo, Workers: 2, Stdout: &out, Stderr: &out, NoCache: true})
-	elapsed := time.Since(start)
 	if err != nil || code != 0 {
 		t.Fatalf("code=%d err=%v out=%s", code, err, out.String())
-	}
-	if elapsed > 550*time.Millisecond {
-		t.Fatalf("parallel steps took %s, want well under 600ms", elapsed)
 	}
 	text := out.String()
 	i1 := strings.Index(text, "==> [s1]")
@@ -80,6 +93,7 @@ func TestEmptyCommandFailsClosed(t *testing.T) {
 func TestCacheHitAndDirtyContentInvalidation(t *testing.T) {
 	repo := initTestRepo(t)
 	cache := t.TempDir()
+	t.Setenv("ALT_HARNESS_NO_CACHE", "")
 	t.Setenv("ALT_HARNESS_CACHE_DIR", cache)
 
 	// Make tracked file dirty with content "dirty1".
@@ -137,6 +151,7 @@ func TestCacheHitAndDirtyContentInvalidation(t *testing.T) {
 func TestCacheInvalidatesOnEnvAndHitsForCustomRun(t *testing.T) {
 	repo := initTestRepo(t)
 	cache := t.TempDir()
+	t.Setenv("ALT_HARNESS_NO_CACHE", "")
 	t.Setenv("ALT_HARNESS_CACHE_DIR", cache)
 	t.Setenv("LINT_POLICY", "block-new")
 

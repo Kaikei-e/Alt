@@ -1,6 +1,7 @@
 package selfcheck
 
 import (
+	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
 	"os"
@@ -67,10 +68,10 @@ func TestStdlibGovernanceTOMLParser(t *testing.T) {
 func TestCheckAgyHookFileSchema(t *testing.T) {
 	root := t.TempDir()
 	script := filepath.Join(root, "scripts", "agent-harness", "agy_hook.py")
-	if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(script), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(script, []byte("#!/usr/bin/env python3\n"), 0o755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env python3\n"), fsperm.File); err != nil {
 		t.Fatal(err)
 	}
 

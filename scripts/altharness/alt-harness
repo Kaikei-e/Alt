@@ -44,8 +44,11 @@ ensure_writable_go_env() {
     local uid=""
     uid="$(id -u)"
     export GOCACHE="${TMPDIR:-/tmp}/alt-harness-gocache-${uid}"
-    export GOPATH="${TMPDIR:-/tmp}/alt-harness-gopath-${uid}"
-    mkdir -p "$GOCACHE" "$GOPATH"
+    mkdir -p "$GOCACHE"
+    if [ -z "${GOPATH:-}" ] && [ ! -d "$HOME/go/pkg/mod" ]; then
+      export GOPATH="${TMPDIR:-/tmp}/alt-harness-gopath-${uid}"
+      mkdir -p "$GOPATH"
+    fi
   fi
 }
 
