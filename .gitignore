@@ -16,6 +16,7 @@ secrets
 # Go
 # ============================================
 # Binary output (anchored to each Go module root so directories of the same name are never matched)
+/scripts/altharness/bin/
 /alt-backend/app/alt
 /alt-backend/app/alt-backend
 /alt-backend/app/alt-backend-optimized

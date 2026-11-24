@@ -1742,6 +1742,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
+    if bridge.is_file():
+        spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
+        if spec is not None and spec.loader is not None:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            delegated = mod.delegated(CORPUS_SCRIPT, ["./internal/corpus"], ["corpus"])
+            if delegated is not None:
+                return delegated
     if not CORPUS_SCRIPT.is_file():
         sys.stderr.write(f"FAIL: corpus engine missing: {CORPUS_SCRIPT}\n")
         return EXIT_FAIL

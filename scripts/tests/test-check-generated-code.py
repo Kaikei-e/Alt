@@ -953,6 +953,17 @@ def test_wave4_pins_and_security(mod: types.ModuleType) -> None:
 
 
 def main() -> int:
+    bridge = ROOT / "scripts" / "tests" / "harness_go_bridge.py"
+    if bridge.is_file():
+        spec = importlib.util.spec_from_file_location("harness_go_bridge", bridge)
+        if spec is not None and spec.loader is not None:
+            bridge_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bridge_mod)
+            delegated = bridge_mod.delegated(
+                SCRIPT, ["./internal/generated"], ["generated", "--base", "HEAD~1"]
+            )
+            if delegated is not None:
+                return delegated
     mod = load_checker()
     test_dynamic_discovery(mod)
     test_pin_and_latest_audit(mod)

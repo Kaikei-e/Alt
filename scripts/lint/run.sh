@@ -43,6 +43,10 @@ esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+if [ -x "$repo_root/scripts/altharness/alt-harness" ]; then
+  exec "$repo_root/scripts/altharness/alt-harness" lint "$@"
+fi
+
 check_disk_space() {
   local min_kb="${ALT_LINT_MIN_FREE_KB:-10485760}"
   local avail_kb=""
@@ -129,7 +133,7 @@ list_targets() {
     rel_dir="$(dirname "$marker_rel")"
     [ "$rel_dir" != "." ] || continue
     case "$rel_dir" in
-      stopped-using-k8s|stopped-using-k8s/*|scripts/harness/corpus|scripts/harness/corpus/*)
+      stopped-using-k8s|stopped-using-k8s/*|scripts/harness/corpus|scripts/harness/corpus/*|scripts/altharness|scripts/altharness/*)
         continue
         ;;
     esac
