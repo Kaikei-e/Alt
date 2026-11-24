@@ -1739,6 +1739,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--allow-missing-corpus-dir",
+        "--allow-empty-corpus",
+        dest="allow_missing_corpus_dir",
         action="store_true",
         default=False,
         help="Allow missing/empty scripts/harness/corpus during isolated engine development.",
@@ -1758,7 +1760,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.corpus_dir is not None:
                 cli_args.extend(["--corpus-dir", str(args.corpus_dir)])
             if args.allow_missing_corpus_dir:
-                cli_args.append("--allow-missing-corpus-dir")
+                cli_args.append("--allow-empty-corpus")
             delegated = mod.delegated(CORPUS_SCRIPT, ["./internal/corpus"], cli_args)
             if delegated is not None:
                 return delegated
