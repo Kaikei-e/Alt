@@ -153,7 +153,7 @@ func RunWithOptions(ctx context.Context, args []string, opts Options) int {
 		env["PYTHONPATH"] = pluginDir
 	}
 
-	bin, err := lookPathInEnv(baseCmd[0], env)
+	bin, err := lookPathInEnv(baseCmd[0], parsed.targetDir, env)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: command not found: %s\n", baseCmd[0])
 		return 127
@@ -280,7 +280,7 @@ func appendSeedLog(seedLog, targetDir string, seed int64, exitCode int) error {
 	if err != nil {
 		return err
 	}
-	fh, err := os.OpenFile(seedLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	fh, err := os.OpenFile(seedLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, fsperm.File)
 	if err != nil {
 		return err
 	}
@@ -354,22 +354,44 @@ func splitShellWords(input string) ([]string, error) {
 	return words, nil
 }
 
-func lookPathInEnv(name string, env map[string]string) (string, error) {
-	if strings.ContainsRune(name, os.PathSeparator) {
-		st, err := os.Stat(name)
-		if err != nil || st.IsDir() || st.Mode()&0o111 == 0 {
+func isExecutableFile(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir() && st.Mode()&0o111 != 0
+}
+
+func absOrClean(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return filepath.Clean(path)
+}
+
+func lookPathInEnv(name, targetDir string, env map[string]string) (string, error) {
+	if strings.ContainsRune(name, os.PathSeparator) || strings.ContainsRune(name, '/') {
+		if filepath.IsAbs(name) {
+			if isExecutableFile(name) {
+				return name, nil
+			}
 			return "", exec.ErrNotFound
 		}
-		return name, nil
+		if targetDir != "" {
+			inTarget := filepath.Join(targetDir, name)
+			if isExecutableFile(inTarget) {
+				return absOrClean(inTarget), nil
+			}
+		}
+		if isExecutableFile(name) {
+			return absOrClean(name), nil
+		}
+		return "", exec.ErrNotFound
 	}
 	for _, dir := range filepath.SplitList(env["PATH"]) {
 		if dir == "" {
 			dir = "."
 		}
 		candidate := filepath.Join(dir, name)
-		st, err := os.Stat(candidate)
-		if err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
-			return candidate, nil
+		if isExecutableFile(candidate) {
+			return absOrClean(candidate), nil
 		}
 	}
 	return "", exec.ErrNotFound

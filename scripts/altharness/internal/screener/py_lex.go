@@ -42,12 +42,12 @@ func tokenizePyMode(src string, exprMode bool) ([]pyTok, error) {
 	n := len(src)
 	indent := []int{0}
 	var out []pyTok
-	paren := 0
+	var bracketStack []byte
 	atStart := !exprMode
 	line := 1
 	i := 0
 	for i < n {
-		if !exprMode && atStart && paren == 0 {
+		if !exprMode && atStart && len(bracketStack) == 0 {
 			col := 0
 			j := i
 			for j < n {
@@ -115,7 +115,7 @@ func tokenizePyMode(src string, exprMode bool) ([]pyTok, error) {
 			i += 2
 			line++
 		case r == '\n':
-			if !exprMode && paren == 0 {
+			if !exprMode && len(bracketStack) == 0 {
 				out = append(out, pyTok{kind: pyNL, val: "\n", line: line})
 				atStart = true
 			}
@@ -164,11 +164,16 @@ func tokenizePyMode(src string, exprMode bool) ([]pyTok, error) {
 				out = append(out, pyTok{kind: pyOp, val: op, line: line})
 				switch op {
 				case "(", "[", "{":
-					paren++
+					bracketStack = append(bracketStack, op[0])
 				case ")", "]", "}":
-					if paren > 0 {
-						paren--
+					if len(bracketStack) == 0 {
+						return nil, fmt.Errorf("line %d: unmatched closing bracket %q", line, op)
 					}
+					open := bracketStack[len(bracketStack)-1]
+					if matchingPyBracket(open) != op[0] {
+						return nil, fmt.Errorf("line %d: mismatched bracket %q closed by %q", line, string(open), op)
+					}
+					bracketStack = bracketStack[:len(bracketStack)-1]
 				}
 				i += len(op)
 				break
@@ -179,7 +184,10 @@ func tokenizePyMode(src string, exprMode bool) ([]pyTok, error) {
 			return nil, fmt.Errorf("line %d: tokenizer stuck", line)
 		}
 	}
-	if !exprMode && !atStart && paren == 0 {
+	if len(bracketStack) > 0 {
+		return nil, fmt.Errorf("line %d: unclosed bracket %q", line, string(bracketStack[len(bracketStack)-1]))
+	}
+	if !exprMode && !atStart {
 		out = append(out, pyTok{kind: pyNL, val: "\n", line: line})
 	}
 	for len(indent) > 1 {
@@ -430,8 +438,21 @@ func scanPyString(src string, i int, prefix string) (int, []string, error) {
 	return 0, nil, fmt.Errorf("unterminated string")
 }
 
+func matchingPyBracket(open byte) byte {
+	switch open {
+	case '(':
+		return ')'
+	case '[':
+		return ']'
+	case '{':
+		return '}'
+	default:
+		return 0
+	}
+}
+
 func scanFExpr(src string, i int) (int, error) {
-	depth := 0
+	var stack []byte
 	for i < len(src) {
 		if end, ok, err := atPyString(src, i); ok || err != nil {
 			if err != nil {
@@ -447,28 +468,32 @@ func scanFExpr(src string, i int) (int, error) {
 				i++
 			}
 		case '(', '[', '{':
-			depth++
+			stack = append(stack, c)
 			i++
 		case ')', ']', '}':
-			if c == '}' && depth == 0 {
+			if c == '}' && len(stack) == 0 {
 				return i, nil
 			}
-			if depth == 0 {
-				return 0, fmt.Errorf("f-string expression")
+			if len(stack) == 0 {
+				return 0, fmt.Errorf("unmatched closing bracket %q in f-string expression", string(c))
 			}
-			depth--
+			open := stack[len(stack)-1]
+			if matchingPyBracket(open) != c {
+				return 0, fmt.Errorf("mismatched bracket %q closed by %q in f-string expression", string(open), string(c))
+			}
+			stack = stack[:len(stack)-1]
 			i++
 		case '!':
 			if i+1 < len(src) && src[i+1] == '=' {
 				i += 2
 				continue
 			}
-			if depth == 0 {
+			if len(stack) == 0 {
 				return i, nil
 			}
 			i++
 		case ':':
-			if depth == 0 {
+			if len(stack) == 0 {
 				return i, nil
 			}
 			i++

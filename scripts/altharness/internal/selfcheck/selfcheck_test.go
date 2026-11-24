@@ -4,8 +4,10 @@ import (
 	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -136,6 +138,99 @@ func TestCheckHookFileRejectsPreToolUseSwallow(t *testing.T) {
 	}
 	if swallows != 2 {
 		t.Fatalf("expected 2 H3 swallow findings, got %d (%+v)", swallows, findings)
+	}
+}
+
+func TestAdrPreflightSkillWiringPassesSelfcheck(t *testing.T) {
+	t.Parallel()
+	root := findRepo(t)
+	raw, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "adr-preflight", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile("(?s)```json\\s*(\\{.*?\\})\\s*```")
+	m := re.FindSubmatch(raw)
+	if len(m) < 2 {
+		t.Fatalf("adr-preflight SKILL.md missing JSON wiring snippet")
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(m[1], &cfg); err != nil {
+		t.Fatalf("adr-preflight SKILL.md JSON invalid: %v", err)
+	}
+	hooksMap, ok := cfg["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("SKILL.md snippet missing hooks object")
+	}
+
+	var findings []Finding
+	sawPreToolUsePreflight := false
+	for event, entries := range hooksMap {
+		for _, pair := range iterHooks(entries) {
+			cmd, _ := pair.hook["command"].(string)
+			checkHookCommandRefs(root, "SKILL.md", cmd, &findings)
+			if event == "PreToolUse" {
+				if pair.hook["onFailure"] != "block" {
+					findings = append(findings, Finding{"H3", "SKILL.md", `PreToolUse command hook lacks "onFailure": "block"`})
+				}
+				if strings.Contains(cmd, "|| exit 0") || strings.Contains(cmd, "|| true") {
+					findings = append(findings, Finding{"H3", "SKILL.md", `PreToolUse command hook swallows failure`})
+				}
+				if sub, _, ok := extractAltHarnessCall(cmd); ok && sub == "preflight" {
+					sawPreToolUsePreflight = true
+				}
+			}
+		}
+	}
+	if len(findings) != 0 {
+		t.Fatalf("SKILL.md wiring snippet produced selfcheck findings: %+v", findings)
+	}
+	if !sawPreToolUsePreflight {
+		t.Fatalf("SKILL.md PreToolUse snippet did not wire alt-harness preflight")
+	}
+}
+
+func TestExtractAltHarnessCallDirectAndVarIndirection(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		cmd     string
+		wantSub string
+		wantOK  bool
+	}{
+		{
+			name:    "direct quoted invocation",
+			cmd:     `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" preflight --hook`,
+			wantSub: "preflight",
+			wantOK:  true,
+		},
+		{
+			name:    "shell variable indirection",
+			cmd:     `s="$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness"; [ -x "$s" ] && "$s" preflight --hook`,
+			wantSub: "preflight",
+			wantOK:  true,
+		},
+		{
+			name:    "bare invocation without subcommand",
+			cmd:     `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness"`,
+			wantSub: "",
+			wantOK:  true,
+		},
+		{
+			name:    "unrelated command",
+			cmd:     `echo hello`,
+			wantSub: "",
+			wantOK:  false,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sub, _, ok := extractAltHarnessCall(tc.cmd)
+			if ok != tc.wantOK || sub != tc.wantSub {
+				t.Fatalf("got (%q, %v), want (%q, %v)", sub, ok, tc.wantSub, tc.wantOK)
+			}
+		})
 	}
 }
 

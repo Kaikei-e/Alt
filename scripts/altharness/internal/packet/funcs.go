@@ -1,9 +1,13 @@
 package packet
 
 import (
+	"alt/scripts/altharness/internal/screener"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"regexp"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 func normalizeGoReceiver(raw string) string {
@@ -77,7 +81,7 @@ func extractGoFuncBodies(source string) map[string]string {
 		if start > end {
 			start = end
 		}
-		funcs[key] = hashNormalized(keep[start:end])
+		funcs[key] = hashNormalizedLang(keep[start:end], "go")
 		if bodyClose > absEnd {
 			pos = bodyClose
 		} else {
@@ -164,7 +168,7 @@ func extractRustFuncBodies(source string) map[string]string {
 		if declStart > end {
 			declStart = end
 		}
-		funcs[key] = hashNormalized(keep[declStart:end])
+		funcs[key] = hashNormalizedLang(keep[declStart:end], "rust")
 	}
 	return funcs
 }
@@ -186,7 +190,7 @@ func recordTSFunc(funcs map[string]string, counts map[string]int, base, span str
 	if counts[base] > 1 {
 		key = fmt.Sprintf("%s#%d", base, counts[base])
 	}
-	funcs[key] = hashNormalized(span)
+	funcs[key] = hashNormalizedLang(span, "typescript")
 }
 
 func extractTSFuncBodies(source string, svelte bool) map[string]string {
@@ -361,58 +365,6 @@ func countActualModifiedFunctions(ctxRel func(rel string) (string, string, error
 	return total, nil
 }
 
-var (
-	pyFuncHeadRe  = regexp.MustCompile(`^(?:(async)\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
-	pyClassHeadRe = regexp.MustCompile(`^class\s+([A-Za-z_][A-Za-z0-9_]*)\b`)
-)
-
-type logicalLine struct {
-	indent int
-	text   string
-}
-
-func countIndent(line string) int {
-	i := 0
-	for i < len(line) {
-		switch line[i] {
-		case ' ':
-			i++
-		case '\t':
-			i++
-		default:
-			return i
-		}
-	}
-	return i
-}
-
-func firstContent(line logicalLine) string {
-	raw := line.text
-	if i := strings.IndexByte(raw, '\n'); i >= 0 {
-		raw = raw[:i]
-	}
-	return strings.TrimSpace(raw)
-}
-
-func isPyDecorator(line logicalLine) bool {
-	return strings.HasPrefix(firstContent(line), "@")
-}
-
-func pyHeader(line logicalLine) (kind, name string, ok bool) {
-	s := firstContent(line)
-	if m := pyFuncHeadRe.FindStringSubmatch(s); m != nil {
-		kind = "FunctionDef"
-		if m[1] == "async" {
-			kind = "AsyncFunctionDef"
-		}
-		return kind, m[2], true
-	}
-	if m := pyClassHeadRe.FindStringSubmatch(s); m != nil {
-		return "class", m[1], true
-	}
-	return "", "", false
-}
-
 func extractPythonFuncBodies(source string) (map[string]string, error) {
 	if strings.TrimSpace(source) == "" {
 		return map[string]string{}, nil
@@ -420,158 +372,378 @@ func extractPythonFuncBodies(source string) (map[string]string, error) {
 	return extractPythonFuncBodiesPureGo(source)
 }
 
-func pythonLogicalLinesStrict(src string) ([]logicalLine, error) {
-	phys := splitLines(src)
-	var out []logicalLine
-	var buf strings.Builder
-	baseIndent := 0
-	started := false
-	var stack []byte
-	var quote byte
-	triple := false
-	escaped := false
-	for lineNo, line := range phys {
-		if !started && quote == 0 && len(stack) == 0 {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-				continue
-			}
-		}
-		if !started {
-			baseIndent = countIndent(line)
-			started = true
-		}
-		if buf.Len() > 0 {
-			buf.WriteByte('\n')
-		}
-		buf.WriteString(line)
-		var scanErr error
-		stack, quote, triple, escaped, scanErr = scanPyLineStateStrict(line, lineNo+1, stack, quote, triple, escaped)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		if quote != 0 && !triple && !strings.HasSuffix(strings.TrimRight(line, " \t"), `\`) {
-			return nil, pErr("unterminated string literal at line %d", lineNo+1)
-		}
-		cont := len(stack) > 0 || quote != 0 || strings.HasSuffix(strings.TrimRight(line, " \t"), `\`)
-		if cont {
-			continue
-		}
-		out = append(out, logicalLine{indent: baseIndent, text: strings.TrimRight(buf.String(), "\n")})
-		buf.Reset()
-		started = false
-		escaped = false
-	}
-	if quote != 0 {
-		return nil, pErr("unterminated string literal at EOF")
-	}
-	if len(stack) != 0 {
-		return nil, pErr("unclosed bracket/parenthesis %q at EOF", string(stack[len(stack)-1]))
-	}
-	if buf.Len() > 0 {
-		out = append(out, logicalLine{indent: baseIndent, text: strings.TrimRight(buf.String(), "\n")})
-	}
-	return out, nil
+// --- Pure-Go Python 3.12-3.14 AST-backed function extraction & fingerprinting ---
+
+type pyBlockStmt struct {
+	kind       string // "FunctionDef", "AsyncFunctionDef", "class", "compound", "simple"
+	name       string
+	decorators [][]screener.PyToken
+	header     []screener.PyToken
+	body       []pyBlockStmt
 }
 
-func matchingCloseBracket(open byte) byte {
-	switch open {
-	case '(':
-		return ')'
-	case '[':
-		return ']'
-	case '{':
-		return '}'
+type pyBlockParser struct {
+	toks []screener.PyToken
+	pos  int
+}
+
+func (p *pyBlockParser) peek() screener.PyToken {
+	if p.pos >= len(p.toks) {
+		return screener.PyToken{Kind: screener.PyEOF}
+	}
+	return p.toks[p.pos]
+}
+
+func (p *pyBlockParser) peekN(n int) screener.PyToken {
+	i := p.pos + n
+	if i < 0 || i >= len(p.toks) {
+		return screener.PyToken{Kind: screener.PyEOF}
+	}
+	return p.toks[i]
+}
+
+func (p *pyBlockParser) next() screener.PyToken {
+	tk := p.peek()
+	if p.pos < len(p.toks)-1 {
+		p.pos++
+	}
+	return tk
+}
+
+func (p *pyBlockParser) parseBlock() ([]pyBlockStmt, error) {
+	var stmts []pyBlockStmt
+	for {
+		for p.peek().Kind == screener.PyNL {
+			p.next()
+		}
+		tk := p.peek()
+		if tk.Kind == screener.PyEOF || tk.Kind == screener.PyDedent {
+			return stmts, nil
+		}
+		if tk.Kind == screener.PyIndent {
+			return nil, pErr("unexpected indent at line %d", tk.Line)
+		}
+		var decorators [][]screener.PyToken
+		for p.peek().Kind == screener.PyOp && p.peek().Val == "@" {
+			var dec []screener.PyToken
+			for p.peek().Kind != screener.PyNL && p.peek().Kind != screener.PyEOF && p.peek().Kind != screener.PyDedent {
+				dec = append(dec, p.next())
+			}
+			decorators = append(decorators, dec)
+			for p.peek().Kind == screener.PyNL {
+				p.next()
+			}
+		}
+		cur := p.peek()
+		if cur.Kind == screener.PyEOF || cur.Kind == screener.PyDedent {
+			return nil, pErr("dangling decorator at line %d", cur.Line)
+		}
+		if kind, name, ok := p.matchDefOrClass(); ok {
+			header, err := p.consumeUntilTopColon()
+			if err != nil {
+				return nil, err
+			}
+			body, err := p.parseSuite()
+			if err != nil {
+				return nil, err
+			}
+			stmts = append(stmts, pyBlockStmt{
+				kind:       kind,
+				name:       name,
+				decorators: decorators,
+				header:     header,
+				body:       body,
+			})
+			continue
+		}
+		if len(decorators) > 0 {
+			return nil, pErr("expected def or class after decorator at line %d", cur.Line)
+		}
+		if p.isCompoundHeader() {
+			header, err := p.consumeUntilTopColon()
+			if err != nil {
+				return nil, err
+			}
+			body, err := p.parseSuite()
+			if err != nil {
+				return nil, err
+			}
+			stmts = append(stmts, pyBlockStmt{
+				kind:   "compound",
+				header: header,
+				body:   body,
+			})
+			continue
+		}
+		simpleLine := p.consumeLine()
+		stmts = append(stmts, splitSimplePyLine(simpleLine)...)
+	}
+}
+
+func (p *pyBlockParser) matchDefOrClass() (kind, name string, ok bool) {
+	t0 := p.peek()
+	if t0.Kind != screener.PyIdent {
+		return "", "", false
+	}
+	switch t0.Val {
+	case "def":
+		t1 := p.peekN(1)
+		if t1.Kind == screener.PyIdent {
+			return "FunctionDef", t1.Val, true
+		}
+	case "async":
+		t1 := p.peekN(1)
+		t2 := p.peekN(2)
+		if t1.Kind == screener.PyIdent && t1.Val == "def" && t2.Kind == screener.PyIdent {
+			return "AsyncFunctionDef", t2.Val, true
+		}
+	case "class":
+		t1 := p.peekN(1)
+		if t1.Kind == screener.PyIdent {
+			return "class", t1.Val, true
+		}
+	}
+	return "", "", false
+}
+
+func (p *pyBlockParser) isCompoundHeader() bool {
+	t0 := p.peek()
+	if t0.Kind != screener.PyIdent {
+		return false
+	}
+	switch t0.Val {
+	case "if", "elif", "else", "for", "while", "with", "try", "except", "finally":
+		return p.findTopColonOnLine() >= 0
+	case "async":
+		t1 := p.peekN(1)
+		if t1.Kind == screener.PyIdent && (t1.Val == "for" || t1.Val == "with") {
+			return p.findTopColonOnLine() >= 0
+		}
+		return false
+	case "match", "case":
+		colonIdx := p.findTopColonOnLine()
+		if colonIdx <= p.pos+1 {
+			return false
+		}
+		depth := 0
+		for i := p.pos + 1; i < colonIdx; i++ {
+			tk := p.toks[i]
+			if tk.Kind == screener.PyOp {
+				switch tk.Val {
+				case "(", "[", "{":
+					depth++
+				case ")", "]", "}":
+					depth--
+				default:
+					if depth == 0 {
+						if _, isAssign := pyAssignOps[tk.Val]; isAssign || tk.Val == ":=" {
+							return false
+						}
+					}
+				}
+			}
+		}
+		if t0.Val == "match" {
+			return colonIdx+1 < len(p.toks) && p.toks[colonIdx+1].Kind == screener.PyNL
+		}
+		return true
 	default:
-		return 0
+		return false
 	}
 }
 
-func scanPyLineStateStrict(line string, lineNo int, stack []byte, quote byte, triple, escaped bool) ([]byte, byte, bool, bool, error) {
-	i := 0
-	for i < len(line) {
-		ch := line[i]
-		if escaped {
-			escaped = false
-			i++
-			continue
+func (p *pyBlockParser) findTopColonOnLine() int {
+	depth := 0
+	for i := p.pos; i < len(p.toks); i++ {
+		tk := p.toks[i]
+		if tk.Kind == screener.PyNL || tk.Kind == screener.PyDedent || tk.Kind == screener.PyEOF {
+			return -1
 		}
-		if quote != 0 {
-			if ch == '\\' {
-				escaped = true
-				i++
-				continue
+		if tk.Kind == screener.PyOp {
+			switch tk.Val {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			case ":":
+				if depth == 0 {
+					return i
+				}
 			}
-			if triple && i+2 < len(line) && line[i] == quote && line[i+1] == quote && line[i+2] == quote {
-				quote = 0
-				triple = false
-				i += 3
-				continue
-			}
-			if !triple && ch == quote {
-				quote = 0
-			}
-			i++
-			continue
 		}
-		if ch == '#' {
-			break
-		}
-		if ch == '\\' {
-			escaped = true
-			i++
-			continue
-		}
-		if (ch == '"' || ch == '\'') && i+2 < len(line) && line[i+1] == ch && line[i+2] == ch {
-			quote = ch
-			triple = true
-			i += 3
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			triple = false
-			i++
-			continue
-		}
-		switch ch {
-		case '(', '[', '{':
-			stack = append(stack, ch)
-		case ')', ']', '}':
-			if len(stack) == 0 {
-				return nil, quote, triple, escaped, pErr("unmatched closing bracket %q at line %d", string(ch), lineNo)
-			}
-			open := stack[len(stack)-1]
-			if matchingCloseBracket(open) != ch {
-				return nil, quote, triple, escaped, pErr("mismatched bracket %q closed by %q at line %d", string(open), string(ch), lineNo)
-			}
-			stack = stack[:len(stack)-1]
-		}
-		i++
 	}
-	return stack, quote, triple, escaped, nil
+	return -1
 }
 
-type pyTokKind int
+func (p *pyBlockParser) consumeUntilTopColon() ([]screener.PyToken, error) {
+	colonIdx := p.findTopColonOnLine()
+	if colonIdx < 0 {
+		return nil, pErr("missing ':' in compound header at line %d", p.peek().Line)
+	}
+	header := append([]screener.PyToken(nil), p.toks[p.pos:colonIdx+1]...)
+	p.pos = colonIdx + 1
+	return header, nil
+}
+
+func (p *pyBlockParser) consumeLine() []screener.PyToken {
+	var line []screener.PyToken
+	for p.peek().Kind != screener.PyNL && p.peek().Kind != screener.PyEOF && p.peek().Kind != screener.PyDedent {
+		line = append(line, p.next())
+	}
+	if p.peek().Kind == screener.PyNL {
+		p.next()
+	}
+	return line
+}
+
+func (p *pyBlockParser) parseSuite() ([]pyBlockStmt, error) {
+	if p.peek().Kind == screener.PyNL {
+		p.next()
+		if p.peek().Kind != screener.PyIndent {
+			return nil, pErr("expected indented block at line %d", p.peek().Line)
+		}
+		p.next()
+		body, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().Kind == screener.PyDedent {
+			p.next()
+		}
+		if len(body) == 0 {
+			return nil, pErr("empty indented block at line %d", p.peek().Line)
+		}
+		return body, nil
+	}
+	line := p.consumeLine()
+	stmts := splitSimplePyLine(line)
+	if len(stmts) == 0 {
+		return nil, pErr("empty single-line suite at line %d", p.peek().Line)
+	}
+	return stmts, nil
+}
+
+func splitSimplePyLine(line []screener.PyToken) []pyBlockStmt {
+	var out []pyBlockStmt
+	depth := 0
+	start := 0
+	for i, tk := range line {
+		if tk.Kind == screener.PyOp {
+			switch tk.Val {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			case ";":
+				if depth == 0 {
+					if part := line[start:i]; len(part) > 0 {
+						out = append(out, pyBlockStmt{kind: "simple", header: part})
+					}
+					start = i + 1
+				}
+			}
+		}
+	}
+	if start < len(line) {
+		out = append(out, pyBlockStmt{kind: "simple", header: line[start:]})
+	}
+	return out
+}
+
+func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
+	if strings.TrimSpace(source) == "" {
+		return map[string]string{}, nil
+	}
+	if err := screener.ValidatePythonSyntax(source); err != nil {
+		return nil, pErr("%s", err.Error())
+	}
+	toks, err := screener.TokenizePython(source)
+	if err != nil {
+		return nil, pErr("%s", err.Error())
+	}
+	parser := &pyBlockParser{toks: toks}
+	stmts, err := parser.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	funcs := map[string]string{}
+	counts := map[string]int{}
+	var walk func(block []pyBlockStmt, prefix string) error
+	walk = func(block []pyBlockStmt, prefix string) error {
+		for _, stmt := range block {
+			switch stmt.kind {
+			case "FunctionDef", "AsyncFunctionDef":
+				base := stmt.name
+				if prefix != "" {
+					base = prefix + "." + stmt.name
+				}
+				counts[base]++
+				key := base
+				if counts[base] > 1 {
+					key = fmt.Sprintf("%s#%d", base, counts[base])
+				}
+				fp, err := fingerprintPyFuncStmt(stmt)
+				if err != nil {
+					return err
+				}
+				funcs[key] = fp
+				if err := walk(stmt.body, base); err != nil {
+					return err
+				}
+			case "class":
+				cls := stmt.name
+				if prefix != "" {
+					cls = prefix + "." + stmt.name
+				}
+				if err := walk(stmt.body, cls); err != nil {
+					return err
+				}
+			default:
+				if len(stmt.body) > 0 {
+					if err := walk(stmt.body, prefix); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
+	if err := walk(stmts, ""); err != nil {
+		return nil, err
+	}
+	return funcs, nil
+}
+
+// --- Canonical Python token normalization & unambiguous hashing ---
+
+type pyNormKind int
 
 const (
-	pyTokIdent pyTokKind = iota
-	pyTokNumber
-	pyTokString
-	pyTokOp
+	normIdent pyNormKind = iota
+	normNum
+	normStr
+	normBytes
+	normFStr
+	normTStr
+	normOp
 )
 
-type pyToken struct {
-	kind   pyTokKind
+type pyFPart struct {
+	isExpr bool
 	text   string
-	prefix string
+}
+
+type pyNormTok struct {
+	kind   pyNormKind
+	text   string
+	fParts []pyFPart
 }
 
 var pyNonCallKeywords = map[string]struct{}{
 	"return": {}, "yield": {}, "assert": {}, "raise": {},
 	"if": {}, "elif": {}, "while": {}, "for": {}, "in": {},
 	"not": {}, "and": {}, "or": {}, "is": {}, "del": {},
-	"await": {}, "lambda": {}, "as": {}, "from": {}, "import": {},
+	"await": {}, "lambda": {}, "as": {}, "from": {},
 	"except": {}, "with": {}, "case": {}, "match": {},
 }
 
@@ -582,231 +754,722 @@ var pyAssignOps = map[string]struct{}{
 }
 
 var pyPrefixExprKeywords = map[string]struct{}{
-	"return": {}, "yield": {}, "raise": {}, "assert": {}, "del": {}, "await": {},
+	"return": {}, "yield": {}, "del": {}, "await": {},
 }
 
-var pyCondKeywords = map[string]struct{}{
-	"if": {}, "elif": {}, "while": {},
+func fingerprintPyFuncStmt(stmt pyBlockStmt) (string, error) {
+	var b strings.Builder
+	writeField(&b, "K", stmt.kind)
+	writeField(&b, "N", stmt.name)
+	for _, dec := range stmt.decorators {
+		norm, err := normalizePyStmt(dec, "simple")
+		if err != nil {
+			return "", err
+		}
+		writeNormStmt(&b, "@", norm)
+	}
+	hdrNorm, err := normalizePyStmt(stmt.header, stmt.kind)
+	if err != nil {
+		return "", err
+	}
+	writeNormStmt(&b, "H", hdrNorm)
+	if err := writePyBodyFingerprint(&b, stmt.body); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:]), nil
 }
 
-var pyCompoundHeadRe = regexp.MustCompile(`^(?:(?:async\s+)?(?:for|with)|if|elif|else|while|try|except|finally)\b`)
-
-func normalizePyPrefix(raw string) string {
-	low := strings.ToLower(raw)
-	hasR, hasB, hasF := false, false, false
-	for i := 0; i < len(low); i++ {
-		switch low[i] {
-		case 'r':
-			hasR = true
-		case 'b':
-			hasB = true
-		case 'f':
-			hasF = true
+func writePyBodyFingerprint(b *strings.Builder, body []pyBlockStmt) error {
+	b.WriteString("I\x00")
+	for _, stmt := range body {
+		switch stmt.kind {
+		case "FunctionDef", "AsyncFunctionDef":
+			// Nested functions are fingerprinted independently; do not double-count outer.
+			continue
+		case "class":
+			for _, dec := range stmt.decorators {
+				norm, err := normalizePyStmt(dec, "simple")
+				if err != nil {
+					return err
+				}
+				writeNormStmt(b, "@", norm)
+			}
+			hdrNorm, err := normalizePyStmt(stmt.header, "class")
+			if err != nil {
+				return err
+			}
+			writeNormStmt(b, "C", hdrNorm)
+			if err := writePyBodyFingerprint(b, stmt.body); err != nil {
+				return err
+			}
+		case "compound":
+			hdrNorm, err := normalizePyStmt(stmt.header, "compound")
+			if err != nil {
+				return err
+			}
+			writeNormStmt(b, "S", hdrNorm)
+			if err := writePyBodyFingerprint(b, stmt.body); err != nil {
+				return err
+			}
+		default:
+			norm, err := normalizePyStmt(stmt.header, "simple")
+			if err != nil {
+				return err
+			}
+			if len(norm) > 0 {
+				writeNormStmt(b, "S", norm)
+			}
 		}
 	}
+	b.WriteString("D\x00")
+	return nil
+}
+
+func writeField(b *strings.Builder, tag, val string) {
+	b.WriteString(tag)
+	b.WriteByte(':')
+	b.WriteString(strconv.Itoa(len(val)))
+	b.WriteByte(':')
+	b.WriteString(val)
+	b.WriteByte(0)
+}
+
+func writeNormStmt(b *strings.Builder, tag string, toks []pyNormTok) {
+	b.WriteString(tag)
+	b.WriteByte(':')
+	b.WriteString(strconv.Itoa(len(toks)))
+	b.WriteByte(0)
+	for _, tk := range toks {
+		b.WriteString(strconv.Itoa(int(tk.kind)))
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(len(tk.text)))
+		b.WriteByte(':')
+		b.WriteString(tk.text)
+		b.WriteByte(0)
+	}
+	b.WriteByte(0x1e)
+}
+
+func serializeNormTokens(toks []pyNormTok) string {
 	var b strings.Builder
-	if hasF {
-		b.WriteByte('f')
+	writeNormStmt(&b, "E", toks)
+	return b.String()
+}
+
+func normalizePyStmt(raw []screener.PyToken, stmtKind string) ([]pyNormTok, error) {
+	toks, err := convertPyTokens(raw)
+	if err != nil {
+		return nil, err
 	}
-	if hasB {
-		b.WriteByte('b')
+	if len(toks) == 0 {
+		return nil, nil
 	}
-	if hasR {
-		b.WriteByte('r')
+	toks = mergeAdjacentPyNormStrings(toks)
+	toks = stripTrailingPyCommasNorm(toks)
+	toks = mergeAdjacentPyNormStrings(toks)
+	return normalizePyStmtParens(toks, stmtKind), nil
+}
+
+func normalizePyExprSlice(raw []screener.PyToken) ([]pyNormTok, error) {
+	toks, err := convertPyTokens(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(toks) == 0 {
+		return nil, nil
+	}
+	toks = mergeAdjacentPyNormStrings(toks)
+	toks = stripTrailingPyCommasNorm(toks)
+	toks = mergeAdjacentPyNormStrings(toks)
+	return stripOuterGroupingParensNorm(toks), nil
+}
+
+func convertPyTokens(raw []screener.PyToken) ([]pyNormTok, error) {
+	out := make([]pyNormTok, 0, len(raw))
+	for _, tk := range raw {
+		switch tk.Kind {
+		case screener.PyIdent:
+			out = append(out, pyNormTok{kind: normIdent, text: tk.Val})
+		case screener.PyNum:
+			out = append(out, pyNormTok{kind: normNum, text: normalizePyNumber(tk.Val)})
+		case screener.PyOp:
+			out = append(out, pyNormTok{kind: normOp, text: tk.Val})
+		case screener.PyStr:
+			nt, err := normalizePyStrLit(tk.Val)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, nt)
+		}
+	}
+	return out, nil
+}
+
+func normalizePyNumber(raw string) string {
+	cleaned := strings.ReplaceAll(raw, "_", "")
+	return strings.ToLower(cleaned)
+}
+
+func splitPyStrPrefixAndBody(raw string) (prefix, body string, quote byte, triple bool) {
+	i := 0
+	for i < len(raw) && raw[i] != '"' && raw[i] != '\'' {
+		i++
+	}
+	prefix = strings.ToLower(raw[:i])
+	rest := raw[i:]
+	if len(rest) < 2 {
+		return prefix, rest, 0, false
+	}
+	quote = rest[0]
+	if len(rest) >= 6 && rest[1] == quote && rest[2] == quote &&
+		rest[len(rest)-1] == quote && rest[len(rest)-2] == quote && rest[len(rest)-3] == quote {
+		return prefix, rest[3 : len(rest)-3], quote, true
+	}
+	return prefix, rest[1 : len(rest)-1], quote, false
+}
+
+func normalizePyStrLit(raw string) (pyNormTok, error) {
+	prefix, body, _, _ := splitPyStrPrefixAndBody(raw)
+	isRaw := strings.ContainsRune(prefix, 'r')
+	isBytes := strings.ContainsRune(prefix, 'b')
+	isF := strings.ContainsRune(prefix, 'f')
+	isT := strings.ContainsRune(prefix, 't')
+
+	if isBytes {
+		decoded := body
+		if !isRaw {
+			decoded = decodePyEscapes(body)
+		}
+		return pyNormTok{kind: normBytes, text: decoded}, nil
+	}
+	if isF || isT {
+		parts, err := parsePyFStringParts(body, isRaw)
+		if err != nil {
+			return pyNormTok{}, err
+		}
+		kind := normFStr
+		if isT {
+			kind = normTStr
+		}
+		return pyNormTok{kind: kind, text: serializeFParts(parts), fParts: parts}, nil
+	}
+	decoded := body
+	if !isRaw {
+		decoded = decodePyEscapes(body)
+	}
+	parts := []pyFPart{{isExpr: false, text: decoded}}
+	return pyNormTok{kind: normStr, text: decoded, fParts: parts}, nil
+}
+
+func decodePyEscapes(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	n := len(s)
+	for i := 0; i < n; {
+		if s[i] != '\\' || i+1 >= n {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		nxt := s[i+1]
+		switch nxt {
+		case '\n':
+			i += 2
+		case '\\':
+			b.WriteByte('\\')
+			i += 2
+		case '\'':
+			b.WriteByte('\'')
+			i += 2
+		case '"':
+			b.WriteByte('"')
+			i += 2
+		case 'a':
+			b.WriteByte('\a')
+			i += 2
+		case 'b':
+			b.WriteByte('\b')
+			i += 2
+		case 'f':
+			b.WriteByte('\f')
+			i += 2
+		case 'n':
+			b.WriteByte('\n')
+			i += 2
+		case 'r':
+			b.WriteByte('\r')
+			i += 2
+		case 't':
+			b.WriteByte('\t')
+			i += 2
+		case 'v':
+			b.WriteByte('\v')
+			i += 2
+		case 'x':
+			if i+4 <= n {
+				if v, err := strconv.ParseUint(s[i+2:i+4], 16, 8); err == nil {
+					b.WriteRune(rune(v))
+					i += 4
+					continue
+				}
+			}
+			b.WriteString(s[i : i+2])
+			i += 2
+		case 'u':
+			if i+6 <= n {
+				if v, err := strconv.ParseUint(s[i+2:i+6], 16, 32); err == nil {
+					b.WriteRune(rune(v))
+					i += 6
+					continue
+				}
+			}
+			b.WriteString(s[i : i+2])
+			i += 2
+		case 'U':
+			if i+10 <= n {
+				if v, err := strconv.ParseUint(s[i+2:i+10], 16, 32); err == nil && utf8.ValidRune(rune(v)) {
+					b.WriteRune(rune(v))
+					i += 10
+					continue
+				}
+			}
+			b.WriteString(s[i : i+2])
+			i += 2
+		case '0', '1', '2', '3', '4', '5', '6', '7':
+			end := i + 2
+			for end < n && end < i+4 && s[end] >= '0' && s[end] <= '7' {
+				end++
+			}
+			if v, err := strconv.ParseUint(s[i+1:end], 8, 16); err == nil {
+				b.WriteRune(rune(v))
+				i = end
+				continue
+			}
+			b.WriteString(s[i : i+2])
+			i += 2
+		default:
+			b.WriteByte('\\')
+			b.WriteByte(nxt)
+			i += 2
+		}
 	}
 	return b.String()
 }
 
-func normalizePyStringToken(prefix, seg string) string {
-	normPrefix := normalizePyPrefix(prefix)
-	if len(seg) < 2 {
-		return normPrefix + seg
-	}
-	q := seg[0]
-	if q != '\'' && q != '"' {
-		return normPrefix + seg
-	}
-	isTriple := len(seg) >= 6 && seg[1] == q && seg[2] == q && seg[len(seg)-1] == q && seg[len(seg)-2] == q && seg[len(seg)-3] == q
-	if isTriple {
-		if q == '\'' && !strings.Contains(normPrefix, "r") && !strings.Contains(normPrefix, "f") {
-			inner := seg[3 : len(seg)-3]
-			if !strings.Contains(inner, `"""`) && !strings.HasSuffix(inner, `"`) {
-				return normPrefix + `"""` + inner + `"""`
+func parsePyFStringParts(body string, isRaw bool) ([]pyFPart, error) {
+	var parts []pyFPart
+	var lit strings.Builder
+	flushLit := func() {
+		if lit.Len() == 0 {
+			return
+		}
+		text := lit.String()
+		if !isRaw {
+			text = decodePyEscapes(text)
+		}
+		if text != "" {
+			if len(parts) > 0 && !parts[len(parts)-1].isExpr {
+				parts[len(parts)-1].text += text
+			} else {
+				parts = append(parts, pyFPart{isExpr: false, text: text})
 			}
 		}
-		return normPrefix + seg
+		lit.Reset()
 	}
-	if strings.Contains(normPrefix, "r") {
-		if q == '\'' {
-			inner := seg[1 : len(seg)-1]
-			if !strings.Contains(inner, `"`) && !strings.Contains(inner, `\'`) {
-				return normPrefix + `"` + inner + `"`
+
+	n := len(body)
+	for i := 0; i < n; {
+		ch := body[i]
+		if ch == '\\' && i+1 < n {
+			if !isRaw && body[i+1] == 'N' && i+2 < n && body[i+2] == '{' {
+				j := i + 3
+				for j < n && body[j] != '}' {
+					j++
+				}
+				if j < n && body[j] == '}' {
+					lit.WriteString(body[i : j+1])
+					i = j + 1
+					continue
+				}
 			}
-		}
-		return normPrefix + seg
-	}
-	if strings.Contains(normPrefix, "f") {
-		if q == '\'' {
-			inner := seg[1 : len(seg)-1]
-			if !strings.Contains(inner, `"`) && !strings.Contains(inner, `\'`) {
-				return normPrefix + `"` + inner + `"`
+			if body[i+1] == '\\' || body[i+1] == '\'' || body[i+1] == '"' || body[i+1] == '\n' {
+				lit.WriteString(body[i : i+2])
+				i += 2
+				continue
 			}
+			lit.WriteByte(ch)
+			i++
+			continue
 		}
-		return normPrefix + seg
+		if ch == '{' {
+			if i+1 < n && body[i+1] == '{' {
+				flushLit()
+				if len(parts) > 0 && !parts[len(parts)-1].isExpr {
+					parts[len(parts)-1].text += "{"
+				} else {
+					parts = append(parts, pyFPart{isExpr: false, text: "{"})
+				}
+				i += 2
+				continue
+			}
+			flushLit()
+			exprStart := i + 1
+			exprEnd, err := scanFExprEnd(body, exprStart)
+			if err != nil {
+				return nil, err
+			}
+			exprRaw := body[exprStart:exprEnd]
+			i = exprEnd
+
+			conv := ""
+			if i < n && body[i] == '!' {
+				if i+1 < n {
+					conv = body[i : i+2]
+					i += 2
+				} else {
+					return nil, pErr("unterminated f-string conversion")
+				}
+			}
+			specCanon := ""
+			if i < n && body[i] == ':' {
+				specStart := i + 1
+				specEnd, err := scanFSpecEnd(body, specStart)
+				if err != nil {
+					return nil, err
+				}
+				specParts, err := parsePyFStringParts(body[specStart:specEnd], isRaw)
+				if err != nil {
+					return nil, err
+				}
+				specCanon = serializeFParts(specParts)
+				i = specEnd
+			}
+			if i >= n || body[i] != '}' {
+				return nil, pErr("unterminated f-string expression")
+			}
+			i++
+
+			// Handle PEP 3.8 debug f-strings like f"{x=}" or f"{x = }".
+			evalSrc := exprRaw
+			if eqIdx, isDebug := findFStringDebugEq(exprRaw); isDebug {
+				debugLit := exprRaw[:eqIdx+1]
+				if len(parts) > 0 && !parts[len(parts)-1].isExpr {
+					parts[len(parts)-1].text += debugLit
+				} else {
+					parts = append(parts, pyFPart{isExpr: false, text: debugLit})
+				}
+				evalSrc = exprRaw[:eqIdx]
+				if conv == "" && specCanon == "" {
+					conv = "!r"
+				}
+			}
+
+			exprToks, err := screener.TokenizePythonExpr(evalSrc)
+			if err != nil {
+				return nil, pErr("invalid f-string expression: %s", err.Error())
+			}
+			normExpr, err := normalizePyExprSlice(exprToks)
+			if err != nil {
+				return nil, err
+			}
+			var eb strings.Builder
+			writeField(&eb, "X", serializeNormTokens(normExpr))
+			writeField(&eb, "C", conv)
+			writeField(&eb, "F", specCanon)
+			parts = append(parts, pyFPart{isExpr: true, text: eb.String()})
+			continue
+		}
+		if ch == '}' && i+1 < n && body[i+1] == '}' {
+			flushLit()
+			if len(parts) > 0 && !parts[len(parts)-1].isExpr {
+				parts[len(parts)-1].text += "}"
+			} else {
+				parts = append(parts, pyFPart{isExpr: false, text: "}"})
+			}
+			i += 2
+			continue
+		}
+		lit.WriteByte(ch)
+		i++
 	}
-	return normPrefix + normalizePyQuotedString(seg)
+	flushLit()
+	return parts, nil
 }
 
-func isPyStringPrefixChars(s string) bool {
-	if len(s) == 0 || len(s) > 2 {
+func findFStringDebugEq(exprRaw string) (int, bool) {
+	trimmed := strings.TrimRight(exprRaw, " \t\r\n")
+	if len(trimmed) == 0 || trimmed[len(trimmed)-1] != '=' {
+		return -1, false
+	}
+	if len(trimmed) >= 2 {
+		prev := trimmed[len(trimmed)-2]
+		if prev == '=' || prev == '!' || prev == '<' || prev == '>' || prev == ':' {
+			return -1, false
+		}
+	}
+	return len(trimmed) - 1, true
+}
+
+func scanFExprEnd(src string, i int) (int, error) {
+	var stack []byte
+	for i < len(src) {
+		if end, ok, err := skipPyNestedString(src, i); ok || err != nil {
+			if err != nil {
+				return 0, err
+			}
+			i = end
+			continue
+		}
+		c := src[i]
+		switch c {
+		case '#':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+		case '(', '[', '{':
+			stack = append(stack, c)
+			i++
+		case ')', ']', '}':
+			if c == '}' && len(stack) == 0 {
+				return i, nil
+			}
+			if len(stack) == 0 {
+				return 0, pErr("unmatched closing bracket %q in f-string", string(c))
+			}
+			stack = stack[:len(stack)-1]
+			i++
+		case '!':
+			if i+1 < len(src) && src[i+1] == '=' {
+				i += 2
+				continue
+			}
+			if len(stack) == 0 {
+				return i, nil
+			}
+			i++
+		case ':':
+			if len(stack) == 0 {
+				return i, nil
+			}
+			i++
+		case '\\':
+			i += 2
+		default:
+			_, sz := utf8.DecodeRuneInString(src[i:])
+			if sz < 1 {
+				sz = 1
+			}
+			i += sz
+		}
+	}
+	return 0, pErr("unterminated f-string expression")
+}
+
+func scanFSpecEnd(src string, i int) (int, error) {
+	for i < len(src) {
+		c := src[i]
+		if c == '\\' && i+1 < len(src) {
+			i += 2
+			continue
+		}
+		if c == '{' {
+			endExpr, err := scanFExprEnd(src, i+1)
+			if err != nil {
+				return 0, err
+			}
+			i = endExpr
+			if i < len(src) && src[i] == '!' && i+1 < len(src) {
+				i += 2
+			}
+			if i < len(src) && src[i] == ':' {
+				endSub, err := scanFSpecEnd(src, i+1)
+				if err != nil {
+					return 0, err
+				}
+				i = endSub
+			}
+			if i >= len(src) || src[i] != '}' {
+				return 0, pErr("unterminated nested f-string format spec")
+			}
+			i++
+			continue
+		}
+		if c == '}' {
+			return i, nil
+		}
+		i++
+	}
+	return 0, pErr("unterminated f-string format spec")
+}
+
+func skipPyNestedString(src string, i int) (int, bool, error) {
+	if i >= len(src) {
+		return 0, false, nil
+	}
+	startQuote := -1
+	prefix := ""
+	if src[i] == '"' || src[i] == '\'' {
+		startQuote = i
+	} else {
+		if i > 0 {
+			prev, _ := utf8.DecodeLastRuneInString(src[:i])
+			if prev == '_' || isUnicodeAlnum(prev) {
+				return 0, false, nil
+			}
+		}
+		for k := 2; k >= 1; k-- {
+			if i+k < len(src) && (src[i+k] == '"' || src[i+k] == '\'') && isValidPyStrPrefix(src[i:i+k]) {
+				prefix = strings.ToLower(src[i : i+k])
+				startQuote = i + k
+				break
+			}
+		}
+	}
+	if startQuote < 0 {
+		return 0, false, nil
+	}
+	q := src[startQuote]
+	triple := startQuote+2 < len(src) && src[startQuote+1] == q && src[startQuote+2] == q
+	endMark := string(q)
+	j := startQuote + 1
+	if triple {
+		endMark = strings.Repeat(endMark, 3)
+		j = startQuote + 3
+	}
+	isF := strings.ContainsAny(prefix, "ft")
+	for j < len(src) {
+		if strings.HasPrefix(src[j:], endMark) {
+			return j + len(endMark), true, nil
+		}
+		if src[j] == '\\' && j+1 < len(src) {
+			j += 2
+			continue
+		}
+		if isF && src[j] == '{' {
+			if j+1 < len(src) && src[j+1] == '{' {
+				j += 2
+				continue
+			}
+			endExpr, err := scanFExprEnd(src, j+1)
+			if err != nil {
+				return 0, false, err
+			}
+			j = endExpr
+			if j < len(src) && src[j] == '!' && j+1 < len(src) {
+				j += 2
+			}
+			if j < len(src) && src[j] == ':' {
+				endSpec, err := scanFSpecEnd(src, j+1)
+				if err != nil {
+					return 0, false, err
+				}
+				j = endSpec
+			}
+			if j >= len(src) || src[j] != '}' {
+				return 0, false, pErr("unterminated nested f-string expression")
+			}
+			j++
+			continue
+		}
+		j++
+	}
+	return 0, false, pErr("unterminated string inside f-string")
+}
+
+func isValidPyStrPrefix(s string) bool {
+	low := strings.ToLower(s)
+	if len(low) == 0 || len(low) > 2 {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case 'r', 'R', 'b', 'B', 'u', 'U', 'f', 'F':
-		default:
+	seen := map[byte]bool{}
+	for i := 0; i < len(low); i++ {
+		c := low[i]
+		if c != 'r' && c != 'f' && c != 'b' && c != 'u' && c != 't' {
 			return false
 		}
+		if seen[c] {
+			return false
+		}
+		seen[c] = true
+	}
+	if seen['u'] && len(low) > 1 {
+		return false
+	}
+	if seen['b'] && (seen['f'] || seen['t']) {
+		return false
+	}
+	if seen['f'] && seen['t'] {
+		return false
 	}
 	return true
 }
 
-func tokenizePy(text string) []pyToken {
-	var toks []pyToken
-	n := len(text)
-	i := 0
-	for i < n {
-		ch := text[i]
-		if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' {
-			i++
-			continue
+func serializeFParts(parts []pyFPart) string {
+	var b strings.Builder
+	for _, p := range parts {
+		if p.isExpr {
+			writeField(&b, "E", p.text)
+		} else if p.text != "" {
+			writeField(&b, "L", p.text)
 		}
-		if ch == '\\' {
-			i++
-			if i < n && text[i] == '\r' {
-				i++
-			}
-			if i < n && text[i] == '\n' {
-				i++
-			}
-			continue
-		}
-		if ch == '#' {
-			for i < n && text[i] != '\n' {
-				i++
-			}
-			continue
-		}
-		// Check prefixed string literal (e.g. r"...", f'...', rb"...")
-		if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch >= 0x80 {
-			start := i
-			for i < n && isIdentByte(text[i]) {
-				i++
-			}
-			word := text[start:i]
-			if i < n && (text[i] == '"' || text[i] == '\'') && isPyStringPrefixChars(word) {
-				q := text[i]
-				segStart := i
-				end := scanPyStringEnd(text, i, q)
-				i = end
-				normPrefix := normalizePyPrefix(word)
-				toks = append(toks, pyToken{
-					kind:   pyTokString,
-					text:   normalizePyStringToken(word, text[segStart:end]),
-					prefix: normPrefix,
-				})
-				continue
-			}
-			toks = append(toks, pyToken{kind: pyTokIdent, text: word})
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			end := scanPyStringEnd(text, i, ch)
-			toks = append(toks, pyToken{
-				kind:   pyTokString,
-				text:   normalizePyStringToken("", text[i:end]),
-				prefix: "",
-			})
-			i = end
-			continue
-		}
-		if ch >= '0' && ch <= '9' {
-			start := i
-			for i < n && (isIdentByte(text[i]) || text[i] == '.') {
-				i++
-			}
-			toks = append(toks, pyToken{kind: pyTokNumber, text: text[start:i]})
-			continue
-		}
-		// Multi-character operators
-		if i+2 < n {
-			tri := text[i : i+3]
-			switch tri {
-			case "...", "//=", "**=", ">>=", "<<=":
-				toks = append(toks, pyToken{kind: pyTokOp, text: tri})
-				i += 3
-				continue
-			}
-		}
-		if i+1 < n {
-			duo := text[i : i+2]
-			switch duo {
-			case "==", "!=", "<=", ">=", "**", "//", "<<", ">>", "->", ":=",
-				"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "@=":
-				toks = append(toks, pyToken{kind: pyTokOp, text: duo})
-				i += 2
-				continue
-			}
-		}
-		toks = append(toks, pyToken{kind: pyTokOp, text: text[i : i+1]})
-		i++
 	}
-	return mergeAdjacentPyStrings(toks)
+	return b.String()
 }
 
-func scanPyStringEnd(text string, start int, q byte) int {
-	n := len(text)
-	if start+2 < n && text[start+1] == q && text[start+2] == q {
-		i := start + 3
-		for i < n {
-			if text[i] == '\\' && i+1 < n {
-				i += 2
-				continue
-			}
-			if i+2 < n && text[i] == q && text[i+1] == q && text[i+2] == q {
-				return i + 3
-			}
-			i++
+func mergeFParts(a, b []pyFPart) []pyFPart {
+	out := make([]pyFPart, 0, len(a)+len(b))
+	appendPart := func(p pyFPart) {
+		if !p.isExpr && p.text == "" {
+			return
 		}
-		return n
+		if !p.isExpr && len(out) > 0 && !out[len(out)-1].isExpr {
+			out[len(out)-1].text += p.text
+			return
+		}
+		out = append(out, p)
 	}
-	i := start + 1
-	for i < n {
-		if text[i] == '\\' && i+1 < n {
-			i += 2
-			continue
-		}
-		if text[i] == q {
-			return i + 1
-		}
-		i++
+	for _, p := range a {
+		appendPart(p)
 	}
-	return n
+	for _, p := range b {
+		appendPart(p)
+	}
+	return out
 }
 
-func mergeAdjacentPyStrings(toks []pyToken) []pyToken {
+func mergeAdjacentPyNormStrings(toks []pyNormTok) []pyNormTok {
 	if len(toks) < 2 {
 		return toks
 	}
-	out := make([]pyToken, 0, len(toks))
+	out := make([]pyNormTok, 0, len(toks))
 	for _, tok := range toks {
-		if len(out) > 0 && tok.kind == pyTokString && out[len(out)-1].kind == pyTokString &&
-			tok.prefix == out[len(out)-1].prefix && !strings.Contains(tok.prefix, "r") && !strings.Contains(tok.prefix, "f") {
-			prev := out[len(out)-1]
-			if isSimpleDoubleQuoted(prev.text, prev.prefix) && isSimpleDoubleQuoted(tok.text, tok.prefix) {
-				pBody := prev.text[len(prev.prefix)+1 : len(prev.text)-1]
-				tBody := tok.text[len(tok.prefix)+1 : len(tok.text)-1]
-				out[len(out)-1].text = prev.prefix + `"` + pBody + tBody + `"`
+		if len(out) > 0 {
+			prev := &out[len(out)-1]
+			if prev.kind == normBytes && tok.kind == normBytes {
+				prev.text += tok.text
+				continue
+			}
+			prevStrFam := prev.kind == normStr || prev.kind == normFStr
+			curStrFam := tok.kind == normStr || tok.kind == normFStr
+			if prevStrFam && curStrFam {
+				combined := mergeFParts(prev.fParts, tok.fParts)
+				if prev.kind == normFStr || tok.kind == normFStr {
+					prev.kind = normFStr
+					prev.fParts = combined
+					prev.text = serializeFParts(combined)
+				} else {
+					text := ""
+					if len(combined) == 1 && !combined[0].isExpr {
+						text = combined[0].text
+					}
+					prev.kind = normStr
+					prev.text = text
+					prev.fParts = []pyFPart{{isExpr: false, text: text}}
+				}
 				continue
 			}
 		}
@@ -815,74 +1478,27 @@ func mergeAdjacentPyStrings(toks []pyToken) []pyToken {
 	return out
 }
 
-func isSimpleDoubleQuoted(s, prefix string) bool {
-	if !strings.HasPrefix(s, prefix+`"`) || !strings.HasSuffix(s, `"`) {
-		return false
+func matchingNormClose(toks []pyNormTok, openIdx int) int {
+	if openIdx < 0 || openIdx >= len(toks) || toks[openIdx].kind != normOp {
+		return -1
 	}
-	body := s[len(prefix):]
-	if len(body) < 2 {
-		return false
-	}
-	if len(body) >= 6 && strings.HasPrefix(body, `"""`) && strings.HasSuffix(body, `"""`) {
-		return false
-	}
-	return true
-}
-
-func normalizePyQuotedString(seg string) string {
-	if len(seg) < 2 {
-		return seg
-	}
-	q := seg[0]
-	if (q != '\'' && q != '"') || seg[len(seg)-1] != q {
-		return seg
-	}
-	if len(seg) >= 6 && seg[1] == q && seg[2] == q && seg[len(seg)-2] == q && seg[len(seg)-3] == q {
-		return seg
-	}
-	inner := seg[1 : len(seg)-1]
-	var out strings.Builder
-	out.WriteByte('"')
-	for i := 0; i < len(inner); i++ {
-		ch := inner[i]
-		if ch == '\\' && i+1 < len(inner) {
-			nxt := inner[i+1]
-			if q == '\'' && nxt == '\'' {
-				out.WriteByte('\'')
-				i++
-				continue
-			}
-			if q == '"' && nxt == '"' {
-				out.WriteString(`\"`)
-				i++
-				continue
-			}
-			out.WriteByte(ch)
-			out.WriteByte(nxt)
-			i++
-			continue
-		}
-		if ch == '"' {
-			out.WriteString(`\"`)
-			continue
-		}
-		out.WriteByte(ch)
-	}
-	out.WriteByte('"')
-	return out.String()
-}
-
-func matchingPyClose(toks []pyToken, openIdx int) int {
 	open := toks[openIdx].text
-	closeTok := ")"
+	var closeTok string
 	switch open {
 	case "[":
 		closeTok = "]"
 	case "{":
 		closeTok = "}"
+	case "(":
+		closeTok = ")"
+	default:
+		return -1
 	}
 	depth := 0
 	for i := openIdx; i < len(toks); i++ {
+		if toks[i].kind != normOp {
+			continue
+		}
 		switch toks[i].text {
 		case open:
 			depth++
@@ -896,7 +1512,7 @@ func matchingPyClose(toks []pyToken, openIdx int) int {
 	return -1
 }
 
-func stripTrailingPyCommas(toks []pyToken) []pyToken {
+func stripTrailingPyCommasNorm(toks []pyNormTok) []pyNormTok {
 	type frame struct {
 		open       string
 		isCallLike bool
@@ -905,16 +1521,34 @@ func stripTrailingPyCommas(toks []pyToken) []pyToken {
 	var stack []frame
 	drop := make([]bool, len(toks))
 	for i, tok := range toks {
+		if tok.kind != normOp {
+			continue
+		}
 		switch tok.text {
 		case "(":
 			callLike := false
 			if i > 0 {
 				prev := toks[i-1]
-				if prev.kind == pyTokIdent {
-					if _, kw := pyNonCallKeywords[prev.text]; !kw {
+				if prev.kind == normIdent {
+					if i >= 2 && toks[i-2].kind == normOp && toks[i-2].text == "." {
+						// Attribute call like re.match(pat,) or obj.case(x,).
+						callLike = true
+					} else if prev.text == "import" {
+						// `from m import (A,)` is an import list, never a 1-tuple.
+						callLike = true
+					} else if prev.text == "with" {
+						// `with (open(a) as fa,):` is a parenthesized with-item list.
+						if closeIdx := matchingNormClose(toks, i); closeIdx > i && closeIdx+1 < len(toks) && toks[closeIdx+1].kind == normOp && toks[closeIdx+1].text == ":" {
+							callLike = true
+						}
+					} else if prev.text == "match" || prev.text == "case" {
+						// Soft keywords: only non-call when opening a `match (...):` / `case (...):` statement.
+						isStmtHead := i == 1 && len(toks) > 0 && toks[len(toks)-1].kind == normOp && toks[len(toks)-1].text == ":"
+						callLike = !isStmtHead
+					} else if _, kw := pyNonCallKeywords[prev.text]; !kw {
 						callLike = true
 					}
-				} else if prev.text == ")" || prev.text == "]" || prev.text == "}" {
+				} else if prev.kind == normOp && (prev.text == ")" || prev.text == "]" || prev.text == "}") {
 					callLike = true
 				}
 			}
@@ -929,7 +1563,7 @@ func stripTrailingPyCommas(toks []pyToken) []pyToken {
 			if len(stack) > 0 {
 				top := stack[len(stack)-1]
 				stack = stack[:len(stack)-1]
-				if i > 0 && toks[i-1].text == "," {
+				if i > 0 && toks[i-1].kind == normOp && toks[i-1].text == "," {
 					if tok.text != ")" || top.isCallLike || top.commaCount > 1 {
 						drop[i-1] = true
 					}
@@ -937,7 +1571,7 @@ func stripTrailingPyCommas(toks []pyToken) []pyToken {
 			}
 		}
 	}
-	out := make([]pyToken, 0, len(toks))
+	out := make([]pyNormTok, 0, len(toks))
 	for i, tok := range toks {
 		if !drop[i] {
 			out = append(out, tok)
@@ -946,8 +1580,8 @@ func stripTrailingPyCommas(toks []pyToken) []pyToken {
 	return out
 }
 
-func stripOuterGroupingParens(toks []pyToken) []pyToken {
-	for len(toks) >= 2 && toks[0].text == "(" && matchingPyClose(toks, 0) == len(toks)-1 {
+func stripOuterGroupingParensNorm(toks []pyNormTok) []pyNormTok {
+	for len(toks) >= 2 && toks[0].kind == normOp && toks[0].text == "(" && matchingNormClose(toks, 0) == len(toks)-1 {
 		inner := toks[1 : len(toks)-1]
 		if len(inner) == 0 {
 			break
@@ -955,16 +1589,19 @@ func stripOuterGroupingParens(toks []pyToken) []pyToken {
 		depth := 0
 		keep := false
 		for _, tok := range inner {
-			switch tok.text {
-			case "(", "[", "{":
-				depth++
-			case ")", "]", "}":
-				depth--
-			default:
-				if depth == 0 && (tok.text == "," || tok.text == ":=" ||
-					(tok.kind == pyTokIdent && (tok.text == "for" || tok.text == "async" || tok.text == "yield"))) {
-					keep = true
+			if tok.kind == normOp {
+				switch tok.text {
+				case "(", "[", "{":
+					depth++
+				case ")", "]", "}":
+					depth--
+				default:
+					if depth == 0 && (tok.text == "," || tok.text == ":=") {
+						keep = true
+					}
 				}
+			} else if depth == 0 && tok.kind == normIdent && (tok.text == "for" || tok.text == "async" || tok.text == "yield") {
+				keep = true
 			}
 			if keep {
 				break
@@ -978,306 +1615,281 @@ func stripOuterGroupingParens(toks []pyToken) []pyToken {
 	return toks
 }
 
-func normalizePyStmtTokens(toks []pyToken) []pyToken {
-	if len(toks) == 0 {
-		return toks
-	}
-	toks = stripTrailingPyCommas(toks)
-	toks = mergeAdjacentPyStrings(toks)
-	if len(toks) == 0 {
-		return toks
-	}
-	// Leading expression keyword: return (expr), yield (expr), assert (expr), etc.
-	if toks[0].kind == pyTokIdent {
-		if _, ok := pyPrefixExprKeywords[toks[0].text]; ok && len(toks) > 1 {
-			rhs := stripOuterGroupingParens(toks[1:])
-			out := make([]pyToken, 0, 1+len(rhs))
-			out = append(out, toks[0])
-			out = append(out, rhs...)
-			return out
-		}
-		if _, ok := pyCondKeywords[toks[0].text]; ok && len(toks) > 2 && toks[len(toks)-1].text == ":" {
-			cond := stripOuterGroupingParens(toks[1 : len(toks)-1])
-			out := make([]pyToken, 0, 2+len(cond))
-			out = append(out, toks[0])
-			out = append(out, cond...)
-			out = append(out, toks[len(toks)-1])
-			return out
-		}
-	}
-	// Top-level assignment: lhs = (expr), lhs: T = (expr), lhs += (expr)
+func findTopLevelOp(toks []pyNormTok, op string) int {
 	depth := 0
-	for i, tok := range toks {
-		switch tok.text {
-		case "(", "[", "{":
-			depth++
-		case ")", "]", "}":
-			depth--
-		default:
-			if depth == 0 && tok.kind == pyTokOp {
-				if _, ok := pyAssignOps[tok.text]; ok && i+1 < len(toks) {
-					rhs := stripOuterGroupingParens(toks[i+1:])
-					out := make([]pyToken, 0, i+1+len(rhs))
-					out = append(out, toks[:i+1]...)
-					out = append(out, rhs...)
-					return out
-				}
-			}
-		}
-	}
-	return stripOuterGroupingParens(toks)
-}
-
-func collapseCode(text string) string {
-	toks := normalizePyStmtTokens(tokenizePy(text))
-	if len(toks) == 0 {
-		return ""
-	}
-	parts := make([]string, len(toks))
-	for i, tok := range toks {
-		parts[i] = tok.text
-	}
-	return strings.Join(parts, " ")
-}
-
-func findTopLevelColon(text string) int {
-	depth := 0
-	var quote byte
-	triple := false
-	escaped := false
-	for i := 0; i < len(text); i++ {
-		ch := text[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if quote != 0 {
-			if ch == '\\' {
-				escaped = true
-				continue
-			}
-			if triple && i+2 < len(text) && text[i] == quote && text[i+1] == quote && text[i+2] == quote {
-				quote = 0
-				triple = false
-				i += 2
-				continue
-			}
-			if !triple && ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == '#' {
-			for i < len(text) && text[i] != '\n' {
-				i++
-			}
-			continue
-		}
-		if (ch == '"' || ch == '\'') && i+2 < len(text) && text[i+1] == ch && text[i+2] == ch {
-			quote = ch
-			triple = true
-			i += 2
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			triple = false
-			continue
-		}
-		switch ch {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			if depth > 0 {
+	for i, tk := range toks {
+		if tk.kind == normOp {
+			switch tk.text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
 				depth--
-			}
-		case ':':
-			if depth == 0 {
-				return i
+			default:
+				if depth == 0 && tk.text == op {
+					return i
+				}
 			}
 		}
 	}
 	return -1
 }
 
-var (
-	pyDefLikeRe   = regexp.MustCompile(`^(?:async\s+)?def\b`)
-	pyClassLikeRe = regexp.MustCompile(`^class\b`)
-)
-
-func extractPythonFuncBodiesPureGo(source string) (map[string]string, error) {
-	if strings.TrimSpace(source) == "" {
-		return map[string]string{}, nil
-	}
-	rawLines, err := pythonLogicalLinesStrict(source)
-	if err != nil {
-		return nil, err
-	}
-	lines := make([]logicalLine, 0, len(rawLines))
-	for _, line := range rawLines {
-		head := firstContent(line)
-		switch {
-		case pyDefLikeRe.MatchString(head):
-			if _, _, ok := pyHeader(line); !ok {
-				return nil, pErr("invalid def header: %q", head)
+func findTopLevelIdent(toks []pyNormTok, ident string) int {
+	depth := 0
+	for i, tk := range toks {
+		if tk.kind == normOp {
+			switch tk.text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
 			}
-			colon := findTopLevelColon(line.text)
-			if colon < 0 {
-				return nil, pErr("def header missing ':': %q", head)
-			}
-			tail := strings.TrimSpace(collapseCode(line.text[colon+1:]))
-			if tail != "" {
-				lines = append(lines,
-					logicalLine{indent: line.indent, text: line.text[:colon+1]},
-					logicalLine{indent: line.indent + 4, text: line.text[colon+1:]},
-				)
-				continue
-			}
-		case pyClassLikeRe.MatchString(head):
-			if _, _, ok := pyHeader(line); !ok {
-				return nil, pErr("invalid class header: %q", head)
-			}
-			colon := findTopLevelColon(line.text)
-			if colon < 0 {
-				return nil, pErr("class header missing ':': %q", head)
-			}
-			tail := strings.TrimSpace(collapseCode(line.text[colon+1:]))
-			if tail != "" {
-				lines = append(lines,
-					logicalLine{indent: line.indent, text: line.text[:colon+1]},
-					logicalLine{indent: line.indent + 4, text: line.text[colon+1:]},
-				)
-				continue
-			}
-		case pyCompoundHeadRe.MatchString(head):
-			if findTopLevelColon(line.text) < 0 {
-				return nil, pErr("compound statement missing ':': %q", head)
-			}
+		} else if depth == 0 && tk.kind == normIdent && tk.text == ident {
+			return i
 		}
-		lines = append(lines, line)
 	}
-	funcs := map[string]string{}
-	counts := map[string]int{}
-	var walkErr error
-	var walk func(start, end, minIndent int, prefix string) int
-	walk = func(start, end, minIndent int, prefix string) int {
-		i := start
-		for i < end && walkErr == nil {
-			if strings.TrimSpace(lines[i].text) == "" {
-				i++
-				continue
-			}
-			if lines[i].indent < minIndent {
-				return i
-			}
-			dec := i
-			for dec < end && isPyDecorator(lines[dec]) && lines[dec].indent >= minIndent {
-				dec++
-			}
-			if dec >= end || lines[dec].indent < minIndent {
-				i++
-				continue
-			}
-			kind, name, ok := pyHeader(lines[dec])
-			if !ok {
-				i++
-				continue
-			}
-			headerIndent := lines[dec].indent
-			bodyStart := dec + 1
-			j := bodyStart
-			for j < end {
-				if strings.TrimSpace(lines[j].text) == "" {
-					j++
-					continue
-				}
-				if lines[j].indent <= headerIndent {
-					break
-				}
-				j++
-			}
-			if j == bodyStart {
-				walkErr = pErr("empty body for %s %q", kind, name)
-				return end
-			}
-			if kind == "class" {
-				cls := name
-				if prefix != "" {
-					cls = prefix + "." + name
-				}
-				walk(bodyStart, j, headerIndent+1, cls)
-				i = j
-				continue
-			}
-			base := name
-			if prefix != "" {
-				base = prefix + "." + name
-			}
-			counts[base]++
-			key := base
-			if counts[base] > 1 {
-				key = fmt.Sprintf("%s#%d", base, counts[base])
-			}
-			funcs[key] = fingerprintPython(kind, name, lines[i:dec+1], lines[bodyStart:j], headerIndent)
-			walk(bodyStart, j, headerIndent+1, base)
-			i = j
-		}
-		return end
-	}
-	walk(0, len(lines), 0, "")
-	if walkErr != nil {
-		return nil, walkErr
-	}
-	return funcs, nil
+	return -1
 }
 
-func fingerprintPython(kind, name string, header, body []logicalLine, headerIndent int) string {
-	var b strings.Builder
-	b.WriteString(kind)
-	b.WriteByte('\n')
-	b.WriteString(name)
-	b.WriteByte('\n')
-	for _, h := range header {
-		if norm := collapseCode(h.text); norm != "" {
-			b.WriteString(norm)
-			b.WriteByte('\n')
+func normalizePyStmtParens(toks []pyNormTok, stmtKind string) []pyNormTok {
+	if len(toks) == 0 {
+		return toks
+	}
+
+	// def / async def header: strip grouping parens on return annotation `-> (T):`
+	// and on parameter annotations / defaults inside `(...)`.
+	if stmtKind == "FunctionDef" || stmtKind == "AsyncFunctionDef" {
+		toks = normalizePyDefHeader(toks)
+		return toks
+	}
+
+	// Compound headers ending with ':'.
+	last := toks[len(toks)-1]
+	if last.kind == normOp && last.text == ":" && toks[0].kind == normIdent {
+		kwIdx := 0
+		if toks[0].text == "async" && len(toks) > 2 && toks[1].kind == normIdent {
+			kwIdx = 1
+		}
+		kw := toks[kwIdx].text
+		switch kw {
+		case "if", "elif", "while", "match":
+			cond := stripOuterGroupingParensNorm(toks[kwIdx+1 : len(toks)-1])
+			return joinToks(toks[:kwIdx+1], cond, toks[len(toks)-1:])
+		case "with":
+			rest := toks[kwIdx+1 : len(toks)-1]
+			if len(rest) >= 2 && rest[0].kind == normOp && rest[0].text == "(" && matchingNormClose(rest, 0) == len(rest)-1 {
+				rest = rest[1 : len(rest)-1]
+			}
+			return joinToks(toks[:kwIdx+1], rest, toks[len(toks)-1:])
+		case "for":
+			inOff := findTopLevelIdent(toks[kwIdx+1:len(toks)-1], "in")
+			if inOff >= 0 {
+				inIdx := kwIdx + 1 + inOff
+				iter := stripOuterGroupingParensNorm(toks[inIdx+1 : len(toks)-1])
+				return joinToks(toks[:inIdx+1], iter, toks[len(toks)-1:])
+			}
+		case "case":
+			body := toks[kwIdx+1 : len(toks)-1]
+			if ifOff := findTopLevelIdent(body, "if"); ifOff >= 0 {
+				pat := stripOuterGroupingParensNorm(body[:ifOff])
+				guard := stripOuterGroupingParensNorm(body[ifOff+1:])
+				return joinToks(toks[:kwIdx+1], pat, []pyNormTok{body[ifOff]}, guard, toks[len(toks)-1:])
+			}
+			pat := stripOuterGroupingParensNorm(body)
+			return joinToks(toks[:kwIdx+1], pat, toks[len(toks)-1:])
+		case "except":
+			start := kwIdx + 1
+			if start < len(toks)-1 && toks[start].kind == normOp && toks[start].text == "*" {
+				start++
+			}
+			body := toks[start : len(toks)-1]
+			if asOff := findTopLevelIdent(body, "as"); asOff >= 0 {
+				exc := stripOuterGroupingParensNorm(body[:asOff])
+				return joinToks(toks[:start], exc, body[asOff:], toks[len(toks)-1:])
+			}
+			exc := stripOuterGroupingParensNorm(body)
+			return joinToks(toks[:start], exc, toks[len(toks)-1:])
 		}
 	}
-	skipAt := -1
-	for idx := 0; idx < len(body); idx++ {
-		line := body[idx]
-		if strings.TrimSpace(line.text) == "" {
-			continue
-		}
-		if skipAt >= 0 {
-			if line.indent > skipAt {
-				continue
+
+	// `from m import (A, B)` -> `from m import A, B`.
+	if toks[0].kind == normIdent && toks[0].text == "from" {
+		if impIdx := findTopLevelIdent(toks[1:], "import"); impIdx >= 0 {
+			impPos := 1 + impIdx
+			after := toks[impPos+1:]
+			if len(after) >= 2 && after[0].kind == normOp && after[0].text == "(" && matchingNormClose(after, 0) == len(after)-1 {
+				return joinToks(toks[:impPos+1], after[1:len(after)-1])
 			}
-			skipAt = -1
 		}
-		if line.indent > headerIndent && isPyDecorator(line) {
-			k := idx
-			for k < len(body) && (strings.TrimSpace(body[k].text) == "" || (isPyDecorator(body[k]) && body[k].indent == line.indent)) {
-				k++
+	}
+
+	// Prefix keyword statements: return, yield [from], raise [from], assert, del, await.
+	if toks[0].kind == normIdent {
+		switch toks[0].text {
+		case "yield":
+			if len(toks) > 2 && toks[1].kind == normIdent && toks[1].text == "from" {
+				rhs := stripOuterGroupingParensNorm(toks[2:])
+				return joinToks(toks[:2], rhs)
 			}
-			if k < len(body) && body[k].indent == line.indent {
-				if _, _, ok := pyHeader(body[k]); ok {
-					skipAt = body[k].indent
-					idx = k
-					continue
+			if len(toks) > 1 {
+				rhs := stripOuterGroupingParensNorm(toks[1:])
+				return joinToks(toks[:1], rhs)
+			}
+		case "raise":
+			if len(toks) > 1 {
+				rest := toks[1:]
+				if fromOff := findTopLevelIdent(rest, "from"); fromOff >= 0 {
+					lhs := stripOuterGroupingParensNorm(rest[:fromOff])
+					rhs := stripOuterGroupingParensNorm(rest[fromOff+1:])
+					return joinToks(toks[:1], lhs, []pyNormTok{rest[fromOff]}, rhs)
+				}
+				return joinToks(toks[:1], stripOuterGroupingParensNorm(rest))
+			}
+		case "assert":
+			if len(toks) > 1 {
+				rest := toks[1:]
+				if commaOff := findTopLevelOp(rest, ","); commaOff >= 0 {
+					cond := stripOuterGroupingParensNorm(rest[:commaOff])
+					msg := stripOuterGroupingParensNorm(rest[commaOff+1:])
+					return joinToks(toks[:1], cond, []pyNormTok{rest[commaOff]}, msg)
+				}
+				return joinToks(toks[:1], stripOuterGroupingParensNorm(rest))
+			}
+		default:
+			if _, ok := pyPrefixExprKeywords[toks[0].text]; ok && len(toks) > 1 {
+				return joinToks(toks[:1], stripOuterGroupingParensNorm(toks[1:]))
+			}
+		}
+	}
+
+	// Top-level assignment / annotated assignment: `lhs = (expr)`, `lhs: (T) = (expr)`, `lhs += (expr)`.
+	depth := 0
+	colonIdx := -1
+	for i, tok := range toks {
+		if tok.kind == normOp {
+			switch tok.text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			default:
+				if depth == 0 {
+					if tok.text == ":" && colonIdx < 0 {
+						colonIdx = i
+					} else if _, isAssign := pyAssignOps[tok.text]; isAssign && i+1 < len(toks) {
+						rhs := stripOuterGroupingParensNorm(toks[i+1:])
+						if colonIdx >= 0 && colonIdx < i {
+							ann := stripOuterGroupingParensNorm(toks[colonIdx+1 : i])
+							return joinToks(toks[:colonIdx+1], ann, toks[i:i+1], rhs)
+						}
+						return joinToks(toks[:i+1], rhs)
+					}
 				}
 			}
 		}
-		if line.indent > headerIndent {
-			if _, _, ok := pyHeader(line); ok {
-				skipAt = line.indent
-				continue
+	}
+	if colonIdx >= 0 && colonIdx+1 < len(toks) {
+		ann := stripOuterGroupingParensNorm(toks[colonIdx+1:])
+		return joinToks(toks[:colonIdx+1], ann)
+	}
+	return stripOuterGroupingParensNorm(toks)
+}
+
+func normalizePyDefHeader(toks []pyNormTok) []pyNormTok {
+	// Normalize parameter annotations & defaults inside the main `(...)` parameter list.
+	paramOpen := -1
+	for i := 0; i < len(toks); i++ {
+		if toks[i].kind == normOp && toks[i].text == "[" {
+			if closeIdx := matchingNormClose(toks, i); closeIdx > i {
+				i = closeIdx
 			}
+			continue
 		}
-		if norm := collapseCode(line.text); norm != "" {
-			b.WriteString(norm)
-			b.WriteByte('\n')
+		if toks[i].kind == normOp && toks[i].text == "(" {
+			paramOpen = i
+			break
 		}
 	}
-	return hashNormalized(b.String())
+	if paramOpen >= 0 {
+		if paramClose := matchingNormClose(toks, paramOpen); paramClose > paramOpen {
+			normParams := normalizePyParamList(toks[paramOpen+1 : paramClose])
+			toks = joinToks(toks[:paramOpen+1], normParams, toks[paramClose:])
+		}
+	}
+	// Strip outer grouping parens on return type annotation `-> (RetType):`.
+	arrowIdx := findTopLevelOp(toks, "->")
+	if arrowIdx >= 0 && toks[len(toks)-1].kind == normOp && toks[len(toks)-1].text == ":" {
+		retAnn := stripOuterGroupingParensNorm(toks[arrowIdx+1 : len(toks)-1])
+		toks = joinToks(toks[:arrowIdx+1], retAnn, toks[len(toks)-1:])
+	}
+	return toks
+}
+
+func normalizePyParamList(params []pyNormTok) []pyNormTok {
+	if len(params) == 0 {
+		return params
+	}
+	var out []pyNormTok
+	depth := 0
+	start := 0
+	flush := func(end int, trailingComma *pyNormTok) {
+		seg := params[start:end]
+		if len(seg) > 0 {
+			out = append(out, normalizePySingleParam(seg)...)
+		}
+		if trailingComma != nil {
+			out = append(out, *trailingComma)
+		}
+	}
+	for i, tk := range params {
+		if tk.kind == normOp {
+			switch tk.text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			case ",":
+				if depth == 0 {
+					c := tk
+					flush(i, &c)
+					start = i + 1
+				}
+			}
+		}
+	}
+	if start < len(params) {
+		flush(len(params), nil)
+	}
+	return out
+}
+
+func normalizePySingleParam(seg []pyNormTok) []pyNormTok {
+	colonIdx := findTopLevelOp(seg, ":")
+	eqIdx := findTopLevelOp(seg, "=")
+	if colonIdx >= 0 && eqIdx > colonIdx {
+		ann := stripOuterGroupingParensNorm(seg[colonIdx+1 : eqIdx])
+		defVal := stripOuterGroupingParensNorm(seg[eqIdx+1:])
+		return joinToks(seg[:colonIdx+1], ann, seg[eqIdx:eqIdx+1], defVal)
+	}
+	if colonIdx >= 0 {
+		ann := stripOuterGroupingParensNorm(seg[colonIdx+1:])
+		return joinToks(seg[:colonIdx+1], ann)
+	}
+	if eqIdx >= 0 {
+		defVal := stripOuterGroupingParensNorm(seg[eqIdx+1:])
+		return joinToks(seg[:eqIdx+1], defVal)
+	}
+	return seg
+}
+
+func joinToks(slices ...[]pyNormTok) []pyNormTok {
+	total := 0
+	for _, s := range slices {
+		total += len(s)
+	}
+	out := make([]pyNormTok, 0, total)
+	for _, s := range slices {
+		out = append(out, s...)
+	}
+	return out
 }

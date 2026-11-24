@@ -425,6 +425,8 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 	return total
 }
 
+var shellVarAssignRE = regexp.MustCompile(`(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)=["']?[^"';\s]*$`)
+
 func extractAltHarnessCall(cmd string) (string, []string, bool) {
 	idx := strings.Index(cmd, altHarnessRel)
 	if idx < 0 {
@@ -434,9 +436,25 @@ func extractAltHarnessCall(cmd string) (string, []string, bool) {
 	for len(rest) > 0 && (rest[0] == '"' || rest[0] == '\'') {
 		rest = rest[1:]
 	}
-	if len(rest) > 0 && rest[0] != ' ' && rest[0] != '\t' {
-		return "", nil, false
+	if len(rest) == 0 || rest[0] == ' ' || rest[0] == '\t' {
+		if sub, args, ok := parseAltHarnessSubcmd(rest); ok {
+			return sub, args, true
+		}
 	}
+	// Support shell variable indirection, e.g.:
+	// s="$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness"; "$s" preflight --hook
+	if m := shellVarAssignRE.FindStringSubmatch(cmd[:idx]); len(m) == 2 {
+		varName := m[1]
+		if after := findShellVarInvocation(rest, varName); after != "" {
+			if sub, args, ok := parseAltHarnessSubcmd(after); ok {
+				return sub, args, true
+			}
+		}
+	}
+	return "", nil, true
+}
+
+func parseAltHarnessSubcmd(rest string) (string, []string, bool) {
 	fields := strings.Fields(rest)
 	var clean []string
 	for _, f := range fields {
@@ -446,9 +464,33 @@ func extractAltHarnessCall(cmd string) (string, []string, bool) {
 		clean = append(clean, f)
 	}
 	if len(clean) == 0 {
-		return "", nil, true
+		return "", nil, false
 	}
 	return clean[0], clean[1:], true
+}
+
+func findShellVarInvocation(rest, varName string) string {
+	patterns := []string{
+		`"$` + varName + `"`,
+		`"${` + varName + `}"`,
+		`$` + varName,
+		`${` + varName + `}`,
+	}
+	// Find the last shell command invocation referencing the variable (skipping test brackets like `[ -x "$s" ]`).
+	for i := len(rest) - 1; i >= 0; i-- {
+		for _, pat := range patterns {
+			if strings.HasPrefix(rest[i:], pat) {
+				after := rest[i+len(pat):]
+				if len(after) > 0 && (after[0] == ' ' || after[0] == '\t') {
+					trimmed := strings.TrimLeft(after, " \t")
+					if trimmed != "" && trimmed[0] != ']' && trimmed[0] != ';' && trimmed[0] != '|' && trimmed[0] != '&' {
+						return after
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func checkHookCommandRefs(root, label, cmd string, findings *[]Finding) {

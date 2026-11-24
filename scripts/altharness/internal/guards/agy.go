@@ -547,26 +547,12 @@ func runAgyPreEdit(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
 	}
 
 	// 4. ADR preflight hook (first edit per scope held once with receipt).
+	// Batch all non-artifact paths into a single preflight invocation so multi-file
+	// edits (e.g., apply_patch across multiple scopes) record receipts for every
+	// unacknowledged scope in one hold and succeed on the immediate retry.
 	sessionID := agySessionID(payload)
 	agentID, _ := payload["agent_id"].(string)
-	effectiveCwd := cwd
-	if effectiveCwd == "" {
-		effectiveCwd = repo
-	}
-	for _, p := range paths {
-		if isInsideArtifactDir(p, cwd, artifactDir) {
-			continue
-		}
-		pfPayload := map[string]any{
-			"hook_event_name": "PreToolUse",
-			"session_id":      sessionID,
-			"cwd":             effectiveCwd,
-			"tool_name":       "Write",
-			"tool_input":      map[string]any{"file_path": p},
-		}
-		if strings.TrimSpace(agentID) != "" {
-			pfPayload["agent_id"] = agentID
-		}
+	if pfPayload := buildAgyPreflightPayload(paths, cwd, repo, artifactDir, sessionID, agentID); pfPayload != nil {
 		_, pfStderr, pfCode := agyRunPreflightFn(ctx, repo, pfPayload)
 		if pfCode == 2 {
 			reason := strings.TrimSpace(pfStderr)
@@ -580,6 +566,45 @@ func runAgyPreEdit(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
 
 	writeAgyJSON(stdout, map[string]any{"decision": "allow"})
 	return 0
+}
+
+func buildAgyPreflightPayload(paths []string, cwd, repo, artifactDir, sessionID, agentID string) map[string]any {
+	var preflightPaths []string
+	for _, p := range paths {
+		if isInsideArtifactDir(p, cwd, artifactDir) {
+			continue
+		}
+		preflightPaths = append(preflightPaths, p)
+	}
+	if len(preflightPaths) == 0 {
+		return nil
+	}
+	effectiveCwd := cwd
+	if effectiveCwd == "" {
+		effectiveCwd = repo
+	}
+	pfPayload := map[string]any{
+		"hook_event_name": "PreToolUse",
+		"session_id":      sessionID,
+		"cwd":             effectiveCwd,
+	}
+	if len(preflightPaths) == 1 {
+		pfPayload["tool_name"] = "Write"
+		pfPayload["tool_input"] = map[string]any{"file_path": preflightPaths[0]}
+	} else {
+		var patchLines strings.Builder
+		for _, p := range preflightPaths {
+			patchLines.WriteString("*** Update File: ")
+			patchLines.WriteString(p)
+			patchLines.WriteByte('\n')
+		}
+		pfPayload["tool_name"] = "apply_patch"
+		pfPayload["tool_input"] = map[string]any{"command": patchLines.String()}
+	}
+	if strings.TrimSpace(agentID) != "" {
+		pfPayload["agent_id"] = agentID
+	}
+	return pfPayload
 }
 
 func runAgyPostEdit(ctx context.Context, stdin io.Reader, stdout io.Writer) int {

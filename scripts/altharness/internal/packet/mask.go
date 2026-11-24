@@ -334,8 +334,38 @@ func findRustFnBodyOpen(src string, start int) (int, bool) {
 	return 0, false
 }
 
-func hashNormalized(text string) string {
-	return commandSHA256(strings.Join(strings.Fields(text), " "))
+// hashNormalizedLang collapses whitespace outside string literals while
+// preserving significant whitespace and newlines inside string literals.
+func hashNormalizedLang(text, language string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	n := len(text)
+	i := 0
+	needSpace := false
+	for i < n {
+		if end, ok := scanStringLiteralEnd(text, i, language); ok {
+			if needSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			b.WriteString(text[i:end])
+			needSpace = false
+			i = end
+			continue
+		}
+		ch := text[i]
+		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v' {
+			needSpace = true
+			i++
+			continue
+		}
+		if needSpace && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteByte(ch)
+		needSpace = false
+		i++
+	}
+	return commandSHA256(b.String())
 }
 
 func isUnicodeAlnum(r rune) bool {

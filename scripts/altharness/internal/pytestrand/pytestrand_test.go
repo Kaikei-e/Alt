@@ -237,3 +237,98 @@ func TestValidationAndUsageErrors(t *testing.T) {
 		})
 	}
 }
+
+func writeFakePytestScript(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'PWD=%s\\nSEED=%s\\nARGS=%s\\n' \"$PWD\" \"${ALT_PYTEST_RANDOM_SEED:-}\" \"$*\"\n"
+	if err := os.WriteFile(path, []byte(script), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRelativePytestCmdResolution(t *testing.T) {
+	t.Parallel()
+
+	t.Run("target-dir relative .venv/bin/pytest", func(t *testing.T) {
+		t.Parallel()
+		target := t.TempDir()
+		writeFakePytestScript(t, filepath.Join(target, ".venv", "bin", "pytest"))
+
+		var out, errb bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"--pytest-cmd", ".venv/bin/pytest",
+			"--seed", "42",
+			target,
+			"--", "-q",
+		}, Options{Stdout: &out, Stderr: &errb})
+		if rc != 0 {
+			t.Fatalf("rc=%d want 0 stdout=%q stderr=%q", rc, out.String(), errb.String())
+		}
+		if !strings.Contains(out.String(), "SEED=42") || !strings.Contains(out.String(), "-p "+pluginModuleName+" -q") {
+			t.Fatalf("unexpected stdout: %q", out.String())
+		}
+	})
+
+	t.Run("caller-cwd relative scripts/custom-pytest", func(t *testing.T) {
+		t.Parallel()
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := t.TempDir()
+		callerTools := t.TempDir()
+		scriptAbs := filepath.Join(callerTools, "scripts", "custom-pytest")
+		writeFakePytestScript(t, scriptAbs)
+		relFromWd, err := filepath.Rel(wd, scriptAbs)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var out, errb bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"--pytest-cmd", relFromWd,
+			"--seed", "77",
+			target,
+			"--", "-k", "smoke",
+		}, Options{Stdout: &out, Stderr: &errb})
+		if rc != 0 {
+			t.Fatalf("rc=%d want 0 stdout=%q stderr=%q", rc, out.String(), errb.String())
+		}
+		if !strings.Contains(out.String(), "SEED=77") || !strings.Contains(out.String(), "-k smoke") {
+			t.Fatalf("unexpected stdout: %q", out.String())
+		}
+	})
+
+	t.Run("relative PATH entry resolves to absolute path before cmd.Dir", func(t *testing.T) {
+		t.Parallel()
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := t.TempDir()
+		binDir := t.TempDir()
+		writeFakePytestScript(t, filepath.Join(binDir, "my-pytest"))
+		relBinDir, err := filepath.Rel(wd, binDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		env := baseEnvWithOrderFile("")
+		env["PATH"] = relBinDir + string(os.PathListSeparator) + env["PATH"]
+		var out, errb bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"--pytest-cmd", "my-pytest",
+			"--seed", "99",
+			target,
+		}, Options{Stdout: &out, Stderr: &errb, Env: env})
+		if rc != 0 {
+			t.Fatalf("rc=%d want 0 stdout=%q stderr=%q", rc, out.String(), errb.String())
+		}
+		if !strings.Contains(out.String(), "SEED=99") {
+			t.Fatalf("unexpected stdout: %q", out.String())
+		}
+	})
+}

@@ -58,7 +58,7 @@ allowed-tools:
         "hooks": [
           {
             "type": "command",
-            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || { echo \"adr_preflight_disabled: $s not found in this checkout; code edits are not gated.\"; exit 0; }; \"$s\" preflight --hook",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" preflight --hook",
             "timeout": 30
           }
         ]
@@ -70,7 +70,8 @@ allowed-tools:
         "hooks": [
           {
             "type": "command",
-            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || exit 0; \"$s\" preflight --hook",
+            "onFailure": "block",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" preflight --hook",
             "timeout": 30
           }
         ]

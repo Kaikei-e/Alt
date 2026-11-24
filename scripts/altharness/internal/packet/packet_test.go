@@ -626,3 +626,250 @@ func TestPacketTemplateIncludesBaseCommit(t *testing.T) {
 		t.Fatalf("task-packet.md.tmpl must define non-empty base_commit, got %#v", doc.Data["base_commit"])
 	}
 }
+
+func TestCheckTemplatesRepoRootFlag(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid fixture repo-root succeeds", func(t *testing.T) {
+		t.Parallel()
+		dst := t.TempDir()
+		srcRoot := repoRoot()
+		for _, rel := range []string{
+			"scripts/agent-harness/task_packet.schema.json",
+			"scripts/agent-harness/templates/task-packet.md.tmpl",
+			"scripts/agent-harness/templates/task-handoff.md.tmpl",
+		} {
+			raw, err := os.ReadFile(filepath.Join(srcRoot, rel))
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(dst, rel)
+			if err := os.MkdirAll(filepath.Dir(target), fsperm.Dir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(target, raw, fsperm.File); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var stdout, stderr bytes.Buffer
+		rc := Run(context.Background(), []string{"check-templates", "--repo-root", dst}, &stdout, &stderr)
+		if rc != exitOK {
+			t.Fatalf("rc=%d want %d stdout=%q stderr=%q", rc, exitOK, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "OK:") {
+			t.Fatalf("stdout=%q missing OK:", stdout.String())
+		}
+	})
+
+	t.Run("empty temp repo-root reports missing schema and templates", func(t *testing.T) {
+		t.Parallel()
+		empty := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		rc := Run(context.Background(), []string{"check-templates", "--repo-root", empty}, &stdout, &stderr)
+		if rc != exitInvalid {
+			t.Fatalf("rc=%d want %d stdout=%q stderr=%q", rc, exitInvalid, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "MISSING_SCHEMA") || !strings.Contains(stderr.String(), "MISSING_TEMPLATE") {
+			t.Fatalf("stderr=%q missing expected error codes", stderr.String())
+		}
+	})
+
+	t.Run("nonexistent repo-root returns usage error", func(t *testing.T) {
+		t.Parallel()
+		var stdout, stderr bytes.Buffer
+		rc := Run(context.Background(), []string{"check-templates", "--repo-root", filepath.Join(t.TempDir(), "missing")}, &stdout, &stderr)
+		if rc != exitUsage {
+			t.Fatalf("rc=%d want %d stderr=%q", rc, exitUsage, stderr.String())
+		}
+	})
+}
+
+func TestPythonFingerprintingSemanticChangesDetected(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		before string
+		after  string
+		want   int
+	}{
+		{
+			name:   "multiline triple-quoted string whitespace change",
+			before: "def query() -> str:\n    return \"\"\"SELECT a\n    FROM t\"\"\"\n",
+			after:  "def query() -> str:\n    return \"\"\"SELECT a FROM t\"\"\"\n",
+			want:   1,
+		},
+		{
+			name:   "pep701 nested-quote f-string hash key change",
+			before: "def fmt(d: dict[str, str]) -> str:\n    return f\"v={d[\"a#1\"]}\"\n",
+			after:  "def fmt(d: dict[str, str]) -> str:\n    return f\"v={d[\"a#2\"]}\"\n",
+			want:   1,
+		},
+		{
+			name:   "pep701 nested-quote f-string closing paren inside string",
+			before: "def fmt(d: dict[str, str]) -> str:\n    return f\"v={d[\"a)\"]}\"\n",
+			after:  "def fmt(d: dict[str, str]) -> str:\n    return f\"v={d[\"b)\"]}\"\n",
+			want:   1,
+		},
+		{
+			name:   "pep701 multiline f-string expression change",
+			before: "def join_items(items: list[str]) -> str:\n    return f\"items: {\n        ', '.join(items)\n    }\"\n",
+			after:  "def join_items(items: list[str]) -> str:\n    return f\"items: {\n        '; '.join(items)\n    }\"\n",
+			want:   1,
+		},
+		{
+			name:   "pep695 generic function body change",
+			before: "def first[T](items: list[T]) -> T:\n    return items[0]\n",
+			after:  "def first[T](items: list[T]) -> T:\n    return items[-1]\n",
+			want:   1,
+		},
+		{
+			name:   "pep695 generic class method change",
+			before: "class Box[T]:\n    def unwrap(self) -> T:\n        return self.val\n",
+			after:  "class Box[T]:\n    def unwrap(self) -> T:\n        return self.other\n",
+			want:   1,
+		},
+		{
+			name:   "1-tuple vs grouping paren semantic change",
+			before: "def f(a):\n    return (a,)\n",
+			after:  "def f(a):\n    return (a)\n",
+			want:   1,
+		},
+		{
+			name:   "moving statement out of if block changes hash",
+			before: "def f(cond, x):\n    if cond:\n        x += 1\n        return x\n    return 0\n",
+			after:  "def f(cond, x):\n    if cond:\n        x += 1\n    return x\n    return 0\n",
+			want:   1,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			n, err := countModifiedFunctionsInFile("pkg/sample.py", tc.before, tc.after)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if n != tc.want {
+				t.Fatalf("modified=%d want %d", n, tc.want)
+			}
+		})
+	}
+}
+
+func TestPythonFingerprintingFormatInvariance(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{
+			name:   "re.match and obj.case trailing comma after dot",
+			before: "def f(re, obj, pat, x):\n    a = re.match(pat)\n    b = obj.case(x)\n    return a, b\n",
+			after:  "def f(re, obj, pat, x):\n    a = re.match(\n        pat,\n    )\n    b = obj.case(\n        x,\n    )\n    return a, b\n",
+		},
+		{
+			name:   "implicit plain and f-string concatenation",
+			before: "def f(u: str) -> str:\n    return f\"prefix {u} suffix\"\n",
+			after:  "def f(u: str) -> str:\n    return (\n        \"prefix \"\n        f\"{u} suffix\"\n    )\n",
+		},
+		{
+			name:   "pep701 multiline f-string vs single-line f-string",
+			before: "def f(items: list[str]) -> str:\n    return f\"items: {', '.join(items)}\"\n",
+			after:  "def f(items: list[str]) -> str:\n    return f\"items: {\n        \", \".join(items)\n    }\"\n",
+		},
+		{
+			name:   "parenthesized with statement",
+			before: "def f(a, b):\n    with open(a) as fa, open(b) as fb:\n        return fa.read() + fb.read()\n",
+			after:  "def f(a, b):\n    with (\n        open(a) as fa,\n        open(b) as fb,\n    ):\n        return fa.read() + fb.read()\n",
+		},
+		{
+			name:   "parenthesized for iterable",
+			before: "def f(items):\n    out = []\n    for x in items:\n        out.append(x)\n    return out\n",
+			after:  "def f(items):\n    out = []\n    for x in (\n        items\n    ):\n        out.append(x)\n    return out\n",
+		},
+		{
+			name:   "parenthesized from import",
+			before: "def f():\n    from m import A, B\n    return A, B\n",
+			after:  "def f():\n    from m import (\n        A,\n        B,\n    )\n    return A, B\n",
+		},
+		{
+			name:   "parenthesized match and case",
+			before: "def f(code):\n    match code:\n        case 200:\n            return 'ok'\n        case _:\n            return 'err'\n",
+			after:  "def f(code):\n    match (\n        code\n    ):\n        case (\n            200\n        ):\n            return \"ok\"\n        case _:\n            return \"err\"\n",
+		},
+		{
+			name:   "parenthesized return annotation and pep695 generics",
+			before: "def first[T](items: list[T]) -> dict[str, int] | None:\n    return None\n",
+			after:  "def first[T](\n    items: list[T],\n) -> (\n    dict[str, int] | None\n):\n    return None\n",
+		},
+		{
+			name:   "numeric underscores and quote styles",
+			before: "def f():\n    n = 1000\n    s1 = 'a'\n    s2 = \"\"\"b\"\"\"\n    return n, s1, s2\n",
+			after:  "def f():\n    n = 1_000\n    s1 = \"a\"\n    s2 = 'b'\n    return n, s1, s2\n",
+		},
+		{
+			name:   "pep695 generic class format-only",
+			before: "class Box[T]:\n    def get(self, x: T) -> T:\n        return x\n",
+			after:  "class Box[T]:\n    def get(\n        self,\n        x: T,\n    ) -> (\n        T\n    ):\n        return x\n",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			n, err := countModifiedFunctionsInFile("pkg/sample.py", tc.before, tc.after)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if n != 0 {
+				t.Fatalf("format-only diff counted %d modified functions, want 0", n)
+			}
+		})
+	}
+}
+
+func TestPythonIndentationAndSyntaxErrorsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	badSources := []struct {
+		name string
+		src  string
+	}{
+		{"unexpected_indent", "def f():\n    x = 1\n      y = 2\n    return x\n"},
+		{"missing_indented_block", "def f():\nreturn 1\n"},
+		{"missing_indented_block_if", "def f(x):\n    if x:\n    return 1\n"},
+		{"inconsistent_dedent", "def f():\n    if True:\n        x = 1\n      y = 2\n    return x\n"},
+		{"mismatched_bracket", "def f():\n    return [1, 2)\n"},
+		{"unmatched_closing_bracket", "def f():\n    return 1)\n"},
+		{"unclosed_fstring_expr", "def f(x):\n    return f\"{x\"\n"},
+		{"broken_def_missing_paren", "def foo x:\n    return x\n"},
+	}
+
+	for _, tc := range badSources {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := countModifiedFunctionsInFile("pkg/bad.py", "def f():\n    return 1\n", tc.src); err == nil {
+				t.Fatalf("expected error for invalid Python (%s), got nil", tc.name)
+			}
+		})
+	}
+}
+
+func TestGoMultilineRawStringWhitespaceDetected(t *testing.T) {
+	t.Parallel()
+	before := "package p\nfunc Query() string { return `SELECT a\n    FROM t` }\n"
+	after := "package p\nfunc Query() string { return `SELECT a FROM t` }\n"
+	n, err := countModifiedFunctionsInFile("p.go", before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("Go raw string whitespace edit counted %d modified functions, want 1", n)
+	}
+}

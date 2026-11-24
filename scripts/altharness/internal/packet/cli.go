@@ -62,7 +62,7 @@ subcommands:
   validate-handoff <handoff> [--packet PATH] [--screener-report PATH | --base-commit REV] [--repo-root DIR] [--format text|json]
   list-generated-forbidden-paths [--repo-root DIR] [--format text|json]
   render-template --kind packet|handoff [--packet-id ID] [--target TARGET] [--format markdown|json]
-  check-templates
+  check-templates [--repo-root DIR]
   measure <packet> [--repo-root DIR] [--format text|json]
   verify-handoff <handoff> --packet PATH [--base-commit REV] [--repo-root DIR] [--runs-dir DIR] [--no-rerun] [--format text|json]
   verify-sequence --base-commit REV --test-command CMD [--packet PATH] [--behavior-preserving | --bugfix] [--repo-root DIR] [--format text|json]
@@ -888,19 +888,36 @@ func cmdCheckTemplates(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, perr)
 		return exitUsage
 	}
-	if msg := unknownFlags(p); msg != "" {
+	if msg := unknownFlags(p, "repo-root"); msg != "" {
 		fmt.Fprintln(stderr, msg)
 		return exitUsage
 	}
+	if len(p.positionals) != 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return exitUsage
+	}
+	root := repoRoot()
+	if v, ok := p.values["repo-root"]; ok {
+		root = resolveExisting(v)
+		if !isDir(root) {
+			fmt.Fprintf(stderr, "error: repo root directory not found: %s\n", root)
+			return exitUsage
+		}
+	}
+	harness := filepath.Join(root, "scripts", "agent-harness")
+	schemaP := filepath.Join(harness, "task_packet.schema.json")
+	pktTmplP := filepath.Join(harness, "templates", "task-packet.md.tmpl")
+	hoTmplP := filepath.Join(harness, "templates", "task-handoff.md.tmpl")
+
 	var issues []Issue
-	if !isFile(schemaPath()) {
-		issues = append(issues, Issue{Code: "MISSING_SCHEMA", Path: schemaPath(), Message: "schema file missing"})
+	if !isFile(schemaP) {
+		issues = append(issues, Issue{Code: "MISSING_SCHEMA", Path: schemaP, Message: "schema file missing"})
 	}
-	if !isFile(packetTemplatePath()) {
-		issues = append(issues, Issue{Code: "MISSING_TEMPLATE", Path: packetTemplatePath(), Message: "packet template missing"})
+	if !isFile(pktTmplP) {
+		issues = append(issues, Issue{Code: "MISSING_TEMPLATE", Path: pktTmplP, Message: "packet template missing"})
 	}
-	if !isFile(handoffTemplatePath()) {
-		issues = append(issues, Issue{Code: "MISSING_TEMPLATE", Path: handoffTemplatePath(), Message: "handoff template missing"})
+	if !isFile(hoTmplP) {
+		issues = append(issues, Issue{Code: "MISSING_TEMPLATE", Path: hoTmplP, Message: "handoff template missing"})
 	}
 	if len(issues) > 0 {
 		for _, item := range issues {
@@ -908,7 +925,7 @@ func cmdCheckTemplates(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitInvalid
 	}
-	schema, err := loadSchema(schemaPath())
+	schema, err := loadSchema(schemaP)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR [SELF_CHECK_ERROR] $: %s\n", err.Error())
 		fmt.Fprintln(stderr, "INVALID: 1 template self-check error(s)")
@@ -923,10 +940,10 @@ func cmdCheckTemplates(args []string, stdout, stderr io.Writer) int {
 			issues = append(issues, Issue{Code: "SCHEMA_DEFS", Path: "$defs." + name, Message: fmt.Sprintf("missing definition '%s'", name)})
 		}
 	}
-	packetDoc, err := loadDocument(packetTemplatePath())
+	packetDoc, err := loadDocument(pktTmplP)
 	if err != nil {
 		issues = append(issues, Issue{Code: "SELF_CHECK_ERROR", Path: "$", Message: err.Error()})
-	} else if handoffDoc, err := loadDocument(handoffTemplatePath()); err != nil {
+	} else if handoffDoc, err := loadDocument(hoTmplP); err != nil {
 		issues = append(issues, Issue{Code: "SELF_CHECK_ERROR", Path: "$", Message: err.Error()})
 	} else {
 		pktIssues, err := validatePacketDoc(packetDoc, schema)
@@ -949,7 +966,7 @@ func cmdCheckTemplates(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "INVALID: %d template self-check error(s)\n", len(issues))
 		return exitInvalid
 	}
-	fmt.Fprintf(stdout, "OK: schema and bundled templates validated (%s, %s)\n", filepath.Base(packetTemplatePath()), filepath.Base(handoffTemplatePath()))
+	fmt.Fprintf(stdout, "OK: schema and bundled templates validated (%s, %s)\n", filepath.Base(pktTmplP), filepath.Base(hoTmplP))
 	return exitOK
 }
 

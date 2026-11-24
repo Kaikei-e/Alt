@@ -600,6 +600,65 @@ func TestAgyHookLifecycle(t *testing.T) {
 	}
 }
 
+func TestAgyHookPreEditBatchesMultiScopePreflight(t *testing.T) {
+	multiRepo := initTestGitRepo(t)
+	artifactDir := t.TempDir()
+	artPlan := filepath.Join(artifactDir, "scratch", "plan.json")
+	t.Setenv("ALT_HARNESS_REPO_ROOT", multiRepo)
+	t.Setenv("ALT_ACTIVE_PACKET", "")
+
+	origPreflight := agyRunPreflightFn
+	t.Cleanup(func() { agyRunPreflightFn = origPreflight })
+
+	seenScopes := map[string]bool{}
+	preflightCalls := 0
+	agyRunPreflightFn = func(_ context.Context, _ string, pfPayload map[string]any) (string, string, int) {
+		preflightCalls++
+		ti, _ := pfPayload["tool_input"].(map[string]any)
+		cmd, _ := ti["command"].(string)
+		if pfPayload["tool_name"] != "apply_patch" {
+			t.Errorf("multi-file pre-edit should batch via apply_patch, got tool_name=%v payload=%#v", pfPayload["tool_name"], pfPayload)
+		}
+		if strings.Contains(cmd, artPlan) {
+			t.Errorf("artifact path should be excluded from preflight batch: %q", cmd)
+		}
+		var unack []string
+		for _, line := range strings.Split(cmd, "\n") {
+			if p, ok := strings.CutPrefix(line, "*** Update File: "); ok {
+				scope := strings.SplitN(strings.TrimSpace(p), "/", 2)[0]
+				if !seenScopes[scope] {
+					seenScopes[scope] = true
+					unack = append(unack, scope)
+				}
+			}
+		}
+		if len(unack) > 0 {
+			return "", "ADR PREFLIGHT (not an error) — scope(s): " + strings.Join(unack, ", "), 2
+		}
+		return "", "", 0
+	}
+
+	multiPatchReq := `{"conversationId":"c-multi","cwd":"` + multiRepo + `","artifactDirectoryPath":"` + artifactDir + `","toolCall":{"id":"e5","name":"apply_patch","args":{"command":"*** Begin Patch\n*** Update File: alt-backend/app/main.go\n@@\n+x := 1\n*** Update File: tag-generator/app/main.py\n@@\n+y = 2\n*** Update File: ` + artPlan + `\n@@\n+{}\n*** End Patch"}}}`
+	var stdout, stderr bytes.Buffer
+	rc := RunAgyHook(context.Background(), []string{"pre-edit"}, strings.NewReader(multiPatchReq), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "alt-backend, tag-generator") {
+		t.Fatalf("call 1 should deny with both scopes batched: rc=%d out=%s", rc, stdout.String())
+	}
+	if preflightCalls != 1 {
+		t.Fatalf("call 1 invoked preflight %d times, want 1", preflightCalls)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	rc = RunAgyHook(context.Background(), []string{"pre-edit"}, strings.NewReader(multiPatchReq), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("call 2 retry must succeed immediately: rc=%d out=%s", rc, stdout.String())
+	}
+	if preflightCalls != 2 {
+		t.Fatalf("total preflight calls=%d, want 2", preflightCalls)
+	}
+}
+
 func TestScopeBlocksHistoricalAndResolvesCwd(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, "stopped-using-k8s"), fsperm.Dir); err != nil {

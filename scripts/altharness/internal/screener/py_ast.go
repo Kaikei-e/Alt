@@ -244,6 +244,14 @@ func (p *pyParser) parseFunc() (pyStmt, error) {
 		return pyStmt{}, p.errorf("expected function name")
 	}
 	name := p.next().val
+	if p.peekOp("[") {
+		if err := p.consumeBalancedBrackets("[", "]"); err != nil {
+			return pyStmt{}, err
+		}
+	}
+	if !p.peekOp("(") {
+		return pyStmt{}, p.errorf("expected '(' in def header")
+	}
 	if err := p.consumeUntilColon(); err != nil {
 		return pyStmt{}, err
 	}
@@ -262,6 +270,9 @@ func (p *pyParser) parseClass() (pyStmt, error) {
 		return pyStmt{}, p.errorf("expected class name")
 	}
 	name := p.next().val
+	if !p.peekOp("[") && !p.peekOp("(") && !p.peekOp(":") {
+		return pyStmt{}, p.errorf("expected ':', '(', or '[' in class header")
+	}
 	if err := p.consumeUntilColon(); err != nil {
 		return pyStmt{}, err
 	}
@@ -270,6 +281,29 @@ func (p *pyParser) parseClass() (pyStmt, error) {
 		return pyStmt{}, err
 	}
 	return pyStmt{kind: skClass, name: name, body: body}, nil
+}
+
+func (p *pyParser) consumeBalancedBrackets(open, close string) error {
+	if err := p.expectOp(open); err != nil {
+		return err
+	}
+	depth := 1
+	for depth > 0 {
+		tk := p.peek()
+		if tk.kind == pyEOF {
+			return p.errorf("unclosed %s", open)
+		}
+		if tk.kind == pyOp {
+			switch tk.val {
+			case open:
+				depth++
+			case close:
+				depth--
+			}
+		}
+		p.next()
+	}
+	return nil
 }
 
 func (p *pyParser) consumeUntilColon() error {
@@ -310,6 +344,9 @@ func (p *pyParser) parseSuite() ([]pyStmt, error) {
 			if p.peek().kind == pyNL {
 				p.next()
 				continue
+			}
+			if p.peek().kind == pyIndent {
+				return nil, p.errorf("unexpected indent")
 			}
 			part, err := p.parseStmt()
 			if err != nil {
