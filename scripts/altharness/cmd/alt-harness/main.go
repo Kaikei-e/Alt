@@ -124,7 +124,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return code
 	case "help", "-h", "--help":
-		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time harness-run gate")
+		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time harness-run agy-hook gate")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])

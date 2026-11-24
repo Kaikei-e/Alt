@@ -38,7 +38,7 @@ func TestHelpListsAllSubcommands(t *testing.T) {
 		"generated", "screener", "packet", "corpus", "selfcheck",
 		"canary", "entrypoint-canary", "postmortem", "migration-gate", "adr-gate",
 		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time",
-		"harness-run", "gate",
+		"harness-run", "agy-hook", "gate",
 	}
 	help := out.String()
 	for _, cmd := range want {
