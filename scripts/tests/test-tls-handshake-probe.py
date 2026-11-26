@@ -67,24 +67,62 @@ LISTENER_KEYS = (
 # The variable names differ per service, so this is read from each service's
 # listener code; enrollment writes CERT_PATH / KEY_PATH.
 LISTENER_PATHS = {
-    "alt-data-hub:9443": (("DATAHUB_TLS_CERT_FILE",), ("DATAHUB_TLS_KEY_FILE",)),
-    "auth-hub:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
-    "auth-hub:8443": (("FRONTEND_TLS_CERT_FILE",), ("FRONTEND_TLS_KEY_FILE",)),
-    "search-indexer:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
-    "pre-processor:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "alt-data-hub:9443": (
+        ("DATAHUB_TLS_CERT_FILE",),
+        ("DATAHUB_TLS_KEY_FILE",),
+        "alt-backend/app/config/binary_datahub.go",
+    ),
+    "auth-hub:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",), "auth-hub/cmd/auth-hub/main.go"),
+    "auth-hub:8443": (
+        ("FRONTEND_TLS_CERT_FILE",),
+        ("FRONTEND_TLS_KEY_FILE",),
+        "auth-hub/cmd/auth-hub/main.go",
+    ),
+    "search-indexer:9443": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "search-indexer/app/bootstrap/app.go",
+    ),
+    "pre-processor:9443": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "pre-processor/app/bootstrap/server.go",
+    ),
     "tag-generator:9443": (
         ("INBOUND_TLS_CERT_FILE", "MTLS_CERT_FILE"),
         ("INBOUND_TLS_KEY_FILE", "MTLS_KEY_FILE"),
+        "tag-generator/app/tag_generator/infra/inbound_tls.py",
     ),
-    "recap-worker:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "recap-worker:9443": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "recap-worker/recap-worker/src/tls.rs",
+    ),
     "acolyte-orchestrator:9443": (
         ("INBOUND_TLS_CERT_FILE", "MTLS_CERT_FILE"),
         ("INBOUND_TLS_KEY_FILE", "MTLS_KEY_FILE"),
+        "acolyte-orchestrator/acolyte/infra/inbound_tls.py",
     ),
-    "recap-subworker:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
-    "news-creator:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
-    "rag-orchestrator:9010": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
-    "rag-orchestrator:9011": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "recap-subworker:9443": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "recap-subworker/recap_subworker/app/infra/inbound_tls.py",
+    ),
+    "news-creator:9443": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "news-creator/app/news_creator/infra/inbound_tls.py",
+    ),
+    "rag-orchestrator:9010": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "rag-orchestrator/internal/infra/config/config.go",
+    ),
+    "rag-orchestrator:9011": (
+        ("MTLS_CERT_FILE",),
+        ("MTLS_KEY_FILE",),
+        "rag-orchestrator/internal/infra/config/config.go",
+    ),
 }
 
 
@@ -222,6 +260,19 @@ check(
     (own.get("static_configs") or [{}])[0].get("targets") == ["blackbox-exporter:9115"],
 )
 
+canary = scrape_job(prom, "tls-handshake-canary")
+canary_targets = [t for sc in canary.get("static_configs") or [] for t in sc.get("targets") or []]
+check("a canary job probes step-ca", canary_targets == ["step-ca:9000"], str(canary_targets))
+check(
+    "the canary uses the same module and /probe path as the listeners",
+    (canary.get("params") or {}).get("module") == [MODULE]
+    and canary.get("metrics_path") == "/probe",
+)
+check(
+    "the canary is not part of the listener job, so it cannot pad the fleet pin",
+    "step-ca:9000" not in targets,
+)
+
 sys.stdout.write("listener inventory vs compose\n")
 services = production_services()
 for target, subject in EXPECTED_TARGETS.items():
@@ -236,7 +287,7 @@ for target, subject in EXPECTED_TARGETS.items():
         svc is not None and not svc.get("profiles"),
     )
 
-enrolled = {env_map(svc).get("CERT_SUBJECT") for svc in services.values()} - {None}
+enrolled = {s for svc in services.values() if (s := env_map(svc).get("CERT_SUBJECT"))}
 probed_subjects = set(EXPECTED_TARGETS.values())
 unaccounted = enrolled - probed_subjects - UNPROBED_SUBJECTS.keys()
 check(
@@ -255,18 +306,37 @@ for subject, (reason, holds) in UNPROBED_SUBJECTS.items():
 check(
     "every probe target has a listener path entry", LISTENER_PATHS.keys() == EXPECTED_TARGETS.keys()
 )
-for target, (cert_vars, key_vars) in LISTENER_PATHS.items():
+for target, (cert_vars, key_vars, source) in LISTENER_PATHS.items():
     env = env_map(services.get(target.split(":")[0]) or {})
+    try:
+        code = (ROOT / source).read_text(encoding="utf-8")
+    except OSError:
+        code = ""
+    check(f"{target}: listener source {source} exists", bool(code))
     for kind, names, enrolled_var in (
         ("cert", cert_vars, "CERT_PATH"),
         ("key", key_vars, "KEY_PATH"),
     ):
+        missing = [n for n in names if n not in code]
+        check(
+            f"{target}: {source} reads {'/'.join(names)}",
+            not missing,
+            f"not found in source: {missing}",
+        )
         effective = next((env[n] for n in names if env.get(n)), None)
         check(
             f"{target}: listener {kind} path ({'/'.join(names)}) equals {enrolled_var}",
             effective is not None and effective == env.get(enrolled_var),
             f"listener={effective!r} enrollment={env.get(enrolled_var)!r}",
         )
+
+step_ca_nets = set((services.get("step-ca") or {}).get("networks") or [])
+prober_nets = set((services.get("blackbox-exporter") or {}).get("networks") or [])
+check(
+    "step-ca and blackbox-exporter share a network (the canary can reach it)",
+    bool(step_ca_nets & prober_nets),
+    f"step-ca={sorted(step_ca_nets)} prober={sorted(prober_nets)}",
+)
 
 sys.stdout.write("prober module\n")
 module = (load(BLACKBOX).get("modules") or {}).get(MODULE) or {}
@@ -327,9 +397,9 @@ for group in rules_doc.get("groups") or []:
         sev[rule["alert"]] = (rule.get("labels") or {}).get("severity", "")
 EXPECTED_SEVERITY = {
     "TlsHandshakeCertExpirySoon": "page",
-    "TlsHandshakeProbeFailing": "page",
+    "TlsHandshakeListenerFailing": "page",
     "TlsHandshakeCertDivergesFromReported": "ticket",
-    "TlsHandshakeProbeMassFailure": "ticket",
+    "TlsHandshakeCanaryFailing": "ticket",
     "TlsHandshakeProberDown": "ticket",
     "TlsHandshakeProbeScrapeFailing": "ticket",
     "TlsHandshakeProbeFleetIncomplete": "ticket",
