@@ -168,18 +168,7 @@ func main() {
 	}()
 
 	// 10. Start Echo Server
-	// ReadHeaderTimeout/ReadTimeout/IdleTimeout/MaxHeaderBytes are set
-	// explicitly to avoid the bare http.Server defaults (unlimited = open
-	// to Slowloris). WriteTimeout stays 0 (unlimited) because the SSE
-	// streaming endpoints (handler.go writeSSE) hold the response open.
-	echoServer := httpserver.New(httpserver.Config{
-		Addr:              fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler:           e,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1 MiB
-	})
+	echoServer := newEchoHTTPServer(fmt.Sprintf(":%s", cfg.Server.Port), e)
 
 	go func() {
 		if connectTLS != nil {
@@ -275,6 +264,20 @@ type HealthPinger interface {
 	Ping(ctx context.Context) error
 }
 
+// newEchoHTTPServer constructs the Echo REST *http.Server with explicit
+// ReadHeaderTimeout/ReadTimeout/IdleTimeout/MaxHeaderBytes while keeping
+// WriteTimeout at 0 for SSE streaming responses.
+func newEchoHTTPServer(addr string, handler http.Handler) *http.Server {
+	return httpserver.New(httpserver.Config{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
+	})
+}
+
 // newRESTEcho builds the Echo REST router (:9010) with peer-identity, API auth,
 // all OpenAPI/internal handlers, and observability endpoints.
 func newRESTEcho(
@@ -286,6 +289,19 @@ func newRESTEcho(
 	log *slog.Logger,
 ) *echo.Echo {
 	e := echo.New()
+	configureRESTEcho(e, app, cfg, peerMW, apiAuthMW, pinger, log)
+	return e
+}
+
+func configureRESTEcho(
+	e *echo.Echo,
+	app *di.ApplicationComponents,
+	cfg *config.Config,
+	peerMW *peermw.PeerIdentityMiddleware,
+	apiAuthMW *peermw.APIAuthMiddleware,
+	pinger HealthPinger,
+	log *slog.Logger,
+) {
 	if log != nil {
 		e.Logger = log
 	}
@@ -334,7 +350,6 @@ func newRESTEcho(
 	// ops listener (:9110, private registry) — they must not land here via
 	// DefaultRegisterer.
 	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
-	return e
 }
 
 // newHealthMux builds the ServeMux for the dedicated public health check port.

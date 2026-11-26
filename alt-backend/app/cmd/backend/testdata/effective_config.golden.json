@@ -1,0 +1,1072 @@
+{
+  "body_limit_bytes": 2097152,
+  "cors": {
+    "allowed_origins": [
+      "http://localhost:3000",
+      "http://localhost:80",
+      "http://localhost:4173",
+      "https://curionoah.com"
+    ],
+    "empty_origins_startup_error": "backend config: CORS_ALLOWED_ORIGINS must contain at least one origin",
+    "preflight_results": {
+      "http://localhost:3000": "http://localhost:3000",
+      "http://localhost:4173": "http://localhost:4173",
+      "http://localhost:80": "http://localhost:80",
+      "https://curionoah.com": "https://curionoah.com",
+      "https://untrusted.example": ""
+    }
+  },
+  "global_middlewares": [
+    "alt/middleware.RequestIDMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+    "alt/middleware.DOSProtectionMiddleware.func3",
+    "alt/middleware.CSRFMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+    "alt/middleware.ValidationMiddleware.func1",
+    "alt/middleware.LoggingMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1"
+  ],
+  "otel_global_middlewares": [
+    "github.com/labstack/echo-otel/v5.Config.ToMiddleware.func1",
+    "alt/middleware.OTelStatusMiddleware.func1"
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1"
+      ],
+      "path": "/security/csp-report"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/sse/v1/rag/answer"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/admin/scraping-domains"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/admin/scraping-domains/:id"
+    },
+    {
+      "method": "PATCH",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/admin/scraping-domains/:id"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/admin/scraping-domains/:id/refresh-robots"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/:id/tags"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/archive"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/by-tag"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/fetch/content"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/fetch/cursor"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/articles/search"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1"
+      ],
+      "path": "/v1/csrf-token"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/dashboard/jobs"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/dashboard/logs"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/dashboard/metrics"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/dashboard/overview"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/middleware.(*AuthMiddleware).RequireAdmin.func1"
+      ],
+      "path": "/v1/dashboard/recap_jobs"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/:id/tags"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/count/unreads"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/cursor"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/details"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/favorites/cursor"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/limit/:limit"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/list"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/page/:page"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/single"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/v1/feeds/fetch/summary"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/summary/provided"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/fetch/viewed/cursor"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/read"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/register/favorite"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/search"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/stats"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/stats/detailed"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/stats/trends"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/v1/feeds/summarize"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/v1/feeds/summarize/queue"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/summarize/status/:job_id"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/v1/feeds/summarize/stream"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/feeds/tags"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1"
+      ],
+      "path": "/v1/health"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/images/fetch"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/morning-letter/updates"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1",
+        "alt/connect/v2/middleware.echoQuotaMiddleware.func1"
+      ],
+      "path": "/v1/rag/context"
+    },
+    {
+      "method": "DELETE",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/:id"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/export/opml"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/import/opml"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/list"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/random"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "alt/middleware.RequestIDMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.SecureConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.CORSConfig.ToMiddleware.func1",
+        "alt/middleware.DOSProtectionMiddleware.func3",
+        "alt/middleware.CSRFMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.ContextTimeoutConfig.ToMiddleware.func2",
+        "alt/middleware.ValidationMiddleware.func1",
+        "alt/middleware.LoggingMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.GzipConfig.ToMiddleware.func1",
+        "alt/middleware.PathProbe",
+        "alt/middleware.(*AuthMiddleware).RequireAuth.func1"
+      ],
+      "path": "/v1/rss-feed-link/register"
+    }
+  ],
+  "security_headers": {
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; report-uri /security/csp-report",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "1; mode=block"
+  },
+  "servers": {
+    "connect": {
+      "addr": ":9101",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "http1",
+        "unencrypted_http2"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "5m0s",
+      "write_timeout": "0s"
+    },
+    "operator": {
+      "addr": "127.0.0.1:9102",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "http1",
+        "unencrypted_http2"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "5m0s",
+      "write_timeout": "0s"
+    },
+    "ops": {
+      "addr": ":9110",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "http1",
+        "unencrypted_http2"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "5m0s",
+      "write_timeout": "0s"
+    },
+    "rest": {
+      "addr": ":9000",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "5m0s",
+      "write_timeout": "5m0s"
+    }
+  },
+  "service": "alt-backend"
+}

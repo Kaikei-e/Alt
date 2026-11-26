@@ -1,0 +1,109 @@
+{
+  "body_limit_bytes": 1000000,
+  "cors_allowed_origins": [],
+  "global_middlewares": [
+    "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+  ],
+  "otel_global_middlewares": [
+    "github.com/labstack/echo-otel/v5.Config.ToMiddleware.func1",
+    "pre-processor/middleware.OTelStatusMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+      ],
+      "path": "/api/v1/health"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "pre-processor/middleware.(*PeerIdentityMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/api/v1/summarize"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "pre-processor/middleware.(*PeerIdentityMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/api/v1/summarize/queue"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "pre-processor/middleware.(*PeerIdentityMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/api/v1/summarize/status/:job_id"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.BodyLimitConfig.ToMiddleware.func1",
+        "pre-processor/middleware.(*PeerIdentityMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/api/v1/summarize/stream"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+      ],
+      "path": "/health"
+    }
+  ],
+  "servers": {
+    "connect": {
+      "addr": ":9202",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "http1",
+        "unencrypted_http2"
+      ],
+      "read_header_timeout": "0s",
+      "read_timeout": "30s",
+      "write_timeout": "0s"
+    },
+    "http": {
+      "addr": ":9200",
+      "idle_timeout": "0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    },
+    "mtls": {
+      "addr": ":9443",
+      "idle_timeout": "1m0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    }
+  },
+  "service": "pre-processor"
+}

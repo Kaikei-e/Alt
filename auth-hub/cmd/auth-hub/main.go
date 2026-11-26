@@ -108,6 +108,99 @@ func newRequestLoggerMiddleware() echo.MiddlewareFunc {
 	})
 }
 
+type authHubHandlers struct {
+	validate *adapterhandler.ValidateHandler
+	session  *adapterhandler.SessionHandler
+	csrf     *adapterhandler.CSRFHandler
+	health   *adapterhandler.HealthHandler
+	internal *adapterhandler.InternalHandler
+}
+
+// configureAuthHubEcho wires auth-hub's trusted proxies, middleware stack,
+// rate limiters, and public/internal routes onto e.
+func configureAuthHubEcho(ctx context.Context, e *echo.Echo, cfg *config.Config, otelCfg otel.Config, appLog *slog.Logger, h authHubHandlers) {
+	e.Logger = appLog
+
+	configureTrustedProxies(ctx, e, cfg, appLog)
+
+	// Security middleware
+	e.Use(appmiddleware.SecurityHeaders())
+
+	// OpenTelemetry tracing
+	if otelCfg.Enabled {
+		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
+			ServerName:     otelCfg.ServiceName,
+			Skipper:        appmiddleware.OTelSkipper,
+			TracerProvider: otelapi.GetTracerProvider(),
+			Propagators:    otelapi.GetTextMapPropagator(),
+		}))
+		e.Use(appmiddleware.OTelStatusMiddleware())
+	}
+
+	// Request logging
+	e.Use(newRequestLoggerMiddleware())
+
+	e.Use(middleware.Recover())
+
+	// Rate limiters per endpoint group
+	validateBurst := int(cfg.ValidateRateLimit * 10) // burst = 10x rate
+	if validateBurst < 10 {
+		validateBurst = 10
+	}
+	validateRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.ValidateRateLimit), validateBurst)
+	sessionBurst := int(cfg.SessionRateLimit * 10) // burst = 10x rate
+	if sessionBurst < 5 {
+		sessionBurst = 5
+	}
+	sessionRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.SessionRateLimit), sessionBurst)
+	csrfBurst := int(cfg.CSRFRateLimit * 10)
+	if csrfBurst < 10 {
+		csrfBurst = 10
+	}
+	csrfRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.CSRFRateLimit), csrfBurst)
+	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3) // 10 req/min, burst 3 for cache invalidation & system user
+
+	introspectBurst := cfg.IntrospectBurst
+	if introspectBurst <= 0 {
+		introspectBurst = 100
+	}
+	introspectLimit := cfg.IntrospectRateLimit
+	if introspectLimit <= 0 {
+		introspectLimit = 1200.0 / 60.0
+	}
+	introspectRL := appmiddleware.NewRateLimiter(rate.Limit(introspectLimit), introspectBurst)
+
+	// Public routes
+	e.GET("/validate", h.validate.Handle, validateRL.Middleware())
+	e.GET("/session", h.session.Handle, sessionRL.Middleware())
+	e.POST("/session/invalidate", h.session.HandleInvalidate, sessionRL.Middleware())
+	e.POST("/csrf", h.csrf.Handle, csrfRL.Middleware())
+	e.GET("/health", h.health.Handle)
+
+	// Internal routes (protected by INTERNAL_AUTH_SECRET — see wireInternalAuth — and by mTLS).
+	internalGroup := e.Group("/internal",
+		internalRL.Middleware(),
+		appmiddleware.RequireMTLS(),
+	)
+	internalGroup.Use(wireInternalAuth(cfg))
+	internalGroup.GET("/system-user", h.internal.HandleSystemUser)
+	internalGroup.POST("/session/invalidate", h.internal.HandleInvalidateSession)
+
+	// Introspect route: dedicated high-capacity limiter for Search/Sov RPCs, mTLS ONLY (no shared bearer), narrow CN check
+	introspectGroup := e.Group("/internal", introspectRL.Middleware())
+	introspectGroup.POST("/token/introspect", h.internal.HandleIntrospectToken, appmiddleware.RequireMTLSPeer([]string{"search-indexer", "knowledge-sovereign"}))
+}
+
+// newPlaintextServer constructs auth-hub's plaintext listener with ReadHeaderTimeout
+// only (no unrequested IdleTimeout — see corpus C-11).
+func newPlaintextServer(addr string, handler http.Handler) *http.Server {
+	return httpserver.New(httpserver.Config{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	})
+}
+
 func main() {
 	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
@@ -195,76 +288,13 @@ func main() {
 
 	// Setup Echo server
 	e := echo.New()
-	e.Logger = appLog
-
-	configureTrustedProxies(ctx, e, cfg, appLog)
-
-	// Security middleware
-	e.Use(appmiddleware.SecurityHeaders())
-
-	// OpenTelemetry tracing
-	if otelCfg.Enabled {
-		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
-			ServerName:     otelCfg.ServiceName,
-			Skipper:        appmiddleware.OTelSkipper,
-			TracerProvider: otelapi.GetTracerProvider(),
-			Propagators:    otelapi.GetTextMapPropagator(),
-		}))
-		e.Use(appmiddleware.OTelStatusMiddleware())
-	}
-
-	// Request logging
-	e.Use(newRequestLoggerMiddleware())
-
-	e.Use(middleware.Recover())
-
-	// Rate limiters per endpoint group
-	validateBurst := int(cfg.ValidateRateLimit * 10) // burst = 10x rate
-	if validateBurst < 10 {
-		validateBurst = 10
-	}
-	validateRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.ValidateRateLimit), validateBurst)
-	sessionBurst := int(cfg.SessionRateLimit * 10) // burst = 10x rate
-	if sessionBurst < 5 {
-		sessionBurst = 5
-	}
-	sessionRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.SessionRateLimit), sessionBurst)
-	csrfBurst := int(cfg.CSRFRateLimit * 10)
-	if csrfBurst < 10 {
-		csrfBurst = 10
-	}
-	csrfRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.CSRFRateLimit), csrfBurst)
-	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3) // 10 req/min, burst 3 for cache invalidation & system user
-
-	introspectBurst := cfg.IntrospectBurst
-	if introspectBurst <= 0 {
-		introspectBurst = 100
-	}
-	introspectLimit := cfg.IntrospectRateLimit
-	if introspectLimit <= 0 {
-		introspectLimit = 1200.0 / 60.0
-	}
-	introspectRL := appmiddleware.NewRateLimiter(rate.Limit(introspectLimit), introspectBurst)
-
-	// Public routes
-	e.GET("/validate", validateHandler.Handle, validateRL.Middleware())
-	e.GET("/session", sessionHandler.Handle, sessionRL.Middleware())
-	e.POST("/session/invalidate", sessionHandler.HandleInvalidate, sessionRL.Middleware())
-	e.POST("/csrf", csrfHandler.Handle, csrfRL.Middleware())
-	e.GET("/health", healthHandler.Handle)
-
-	// Internal routes (protected by INTERNAL_AUTH_SECRET — see wireInternalAuth — and by mTLS).
-	internalGroup := e.Group("/internal",
-		internalRL.Middleware(),
-		appmiddleware.RequireMTLS(),
-	)
-	internalGroup.Use(wireInternalAuth(cfg))
-	internalGroup.GET("/system-user", internalHandler.HandleSystemUser)
-	internalGroup.POST("/session/invalidate", internalHandler.HandleInvalidateSession)
-
-	// Introspect route: dedicated high-capacity limiter for Search/Sov RPCs, mTLS ONLY (no shared bearer), narrow CN check
-	introspectGroup := e.Group("/internal", introspectRL.Middleware())
-	introspectGroup.POST("/token/introspect", internalHandler.HandleIntrospectToken, appmiddleware.RequireMTLSPeer([]string{"search-indexer", "knowledge-sovereign"}))
+	configureAuthHubEcho(ctx, e, cfg, otelCfg, appLog, authHubHandlers{
+		validate: validateHandler,
+		session:  sessionHandler,
+		csrf:     csrfHandler,
+		health:   healthHandler,
+		internal: internalHandler,
+	})
 	// Names the env source for /internal bearer auth without logging its secret value (auth-hub Rule 2).
 	slog.InfoContext(ctx, "internal_auth_enabled", "secret_source", "INTERNAL_AUTH_SECRET")
 
@@ -336,11 +366,7 @@ func main() {
 	devPlaintextAllowed := os.Getenv("AUTH_HUB_DEV_PLAINTEXT") == "true"
 	plaintextHandler := buildPlaintextHandler(e, devPlaintextAllowed && !frontendTLSEnabled)
 
-	plaintextServer := httpserver.New(httpserver.Config{
-		Addr:              address,
-		Handler:           plaintextHandler,
-		ReadHeaderTimeout: 10 * time.Second,
-	})
+	plaintextServer := newPlaintextServer(address, plaintextHandler)
 
 	g.Go(func() error {
 		if err := plaintextServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -1,0 +1,40 @@
+{
+  "body_limit_boundary": {
+    "at_limit_status": 200,
+    "limit_bytes": 1024,
+    "over_limit_status": 413,
+    "over_limit_upstream_hits": 0
+  },
+  "default_max_request_body_bytes": 16777216,
+  "route_policy_status": {
+    "DELETE /api/delete": 403,
+    "GET /api/ps": 200,
+    "GET /api/tags": 200,
+    "GET /api/tags (unauth)": 401,
+    "GET /health (unauth)": 200,
+    "POST /api/chat": 200,
+    "POST /api/embed": 200,
+    "POST /api/embeddings": 200,
+    "POST /api/generate": 200,
+    "POST /api/pull": 403
+  },
+  "server": {
+    "addr": ":11436",
+    "idle_timeout": "2m0s",
+    "max_header_bytes": 0,
+    "read_header_timeout": "10s",
+    "read_timeout": "30s",
+    "write_timeout": "0s"
+  },
+  "service": "inference-proxy",
+  "upstream_forwarded_headers": {
+    "authorization_stripped": true,
+    "custom_header": "custom-val",
+    "forwarded": "for=192.0.2.60",
+    "host_matches_target": true,
+    "path_and_query": "/api/generate?stream=true&model=qwen",
+    "x_forwarded_for": "203.0.113.10, 127.0.0.1",
+    "x_forwarded_host": "",
+    "x_forwarded_proto": ""
+  }
+}

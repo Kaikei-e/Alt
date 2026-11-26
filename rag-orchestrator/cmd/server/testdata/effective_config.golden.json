@@ -1,0 +1,182 @@
+{
+  "body_limit_bytes": 0,
+  "cors_allowed_origins": [],
+  "global_middlewares": [
+    "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5.WrapMiddleware.func1",
+    "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/healthz"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/internal/rag/backfill"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/internal/rag/candidate-similarity"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/internal/rag/index/delete"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/internal/rag/index/upsert"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/metrics"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/readyz"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/v1/documents/owners"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/v1/rag/answer"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/v1/rag/answer/stream"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/v1/rag/morning-letter"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5.WrapMiddleware.func1",
+        "rag-orchestrator/internal/middleware.(*APIAuthMiddleware).EchoMiddleware.func1"
+      ],
+      "path": "/v1/rag/retrieve"
+    }
+  ],
+  "servers": {
+    "connect_plaintext": {
+      "addr": ":9011",
+      "idle_timeout": "0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "http1",
+        "unencrypted_http2"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    },
+    "connect_tls": {
+      "addr": ":9011",
+      "idle_timeout": "0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "tls_client_auth": "RequireAndVerifyClientCert",
+      "tls_min_version": "TLS 1.3",
+      "write_timeout": "0s"
+    },
+    "echo": {
+      "addr": ":9010",
+      "idle_timeout": "2m0s",
+      "max_header_bytes": 1048576,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "10s",
+      "read_timeout": "30s",
+      "write_timeout": "0s"
+    },
+    "health": {
+      "addr": ":9012",
+      "idle_timeout": "0s",
+      "max_header_bytes": 0,
+      "protocols": [
+        "default"
+      ],
+      "read_header_timeout": "5s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    }
+  },
+  "service": "rag-orchestrator"
+}

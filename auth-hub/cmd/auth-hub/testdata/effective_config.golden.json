@@ -1,0 +1,134 @@
+{
+  "body_limit_bytes": 0,
+  "cors_allowed_origins": [],
+  "global_middlewares": [
+    "auth-hub/middleware.SecurityHeaders.func1",
+    "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+  ],
+  "otel_global_middlewares": [
+    "auth-hub/middleware.SecurityHeaders.func1",
+    "github.com/labstack/echo-otel/v5.Config.ToMiddleware.func1",
+    "auth-hub/middleware.OTelStatusMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+    "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+  ],
+  "plaintext_health_only_status": {
+    "GET /health": 200,
+    "GET /internal/system-user": 403,
+    "GET /session": 403,
+    "GET /validate": 403,
+    "POST /csrf": 403
+  },
+  "routes": [
+    {
+      "method": "POST",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1"
+      ],
+      "path": "/csrf"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1"
+      ],
+      "path": "/health"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1",
+        "auth-hub/middleware.RequireMTLS.func1",
+        "auth-hub/middleware.InternalAuth.func1"
+      ],
+      "path": "/internal/session/invalidate"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1",
+        "auth-hub/middleware.RequireMTLS.func1",
+        "auth-hub/middleware.InternalAuth.func1"
+      ],
+      "path": "/internal/system-user"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1",
+        "auth-hub/middleware.RequireMTLSPeer.func1"
+      ],
+      "path": "/internal/token/introspect"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1"
+      ],
+      "path": "/session"
+    },
+    {
+      "method": "POST",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1"
+      ],
+      "path": "/session/invalidate"
+    },
+    {
+      "method": "GET",
+      "middlewares": [
+        "auth-hub/middleware.SecurityHeaders.func1",
+        "github.com/labstack/echo/v5/middleware.RequestLoggerConfig.ToMiddleware.func1",
+        "github.com/labstack/echo/v5/middleware.RecoverConfig.ToMiddleware.func1",
+        "auth-hub/middleware.(*RateLimiter).Middleware.func1"
+      ],
+      "path": "/validate"
+    }
+  ],
+  "security_headers": {
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "servers": {
+    "mtls": {
+      "addr": ":9443",
+      "idle_timeout": "1m0s",
+      "max_header_bytes": 0,
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    },
+    "plaintext": {
+      "addr": ":8888",
+      "idle_timeout": "0s",
+      "max_header_bytes": 0,
+      "read_header_timeout": "10s",
+      "read_timeout": "0s",
+      "write_timeout": "0s"
+    }
+  },
+  "service": "auth-hub"
+}

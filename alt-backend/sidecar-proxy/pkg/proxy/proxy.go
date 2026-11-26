@@ -180,23 +180,24 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	}, nil
 }
 
-// Start initializes and starts the proxy server
-// This is the main entry point for the proxy service
-func (p *LightweightProxy) Start() error {
-	// Setup HTTP handlers
+// buildServer constructs the HTTP server for the proxy without binding a socket.
+func (p *LightweightProxy) buildServer() *http.Server {
 	mux := http.NewServeMux()
-
-	// Main proxy routing - this is where the magic happens
 	mux.HandleFunc("/", p.handleRawRequest)
 
-	// Create HTTP server
-	p.server = httpserver.New(httpserver.Config{
+	return httpserver.New(httpserver.Config{
 		Addr:         fmt.Sprintf(":%s", p.config.ListenPort),
 		Handler:      mux,
 		ReadTimeout:  p.config.ReadTimeout,
 		WriteTimeout: p.config.WriteTimeout,
 		IdleTimeout:  p.config.IdleTimeout,
 	})
+}
+
+// Start initializes and starts the proxy server
+// This is the main entry point for the proxy service
+func (p *LightweightProxy) Start() error {
+	p.server = p.buildServer()
 
 	p.ready.Store(true)
 	p.logger.Printf("🚀 Lightweight Proxy Sidecar started on port %s", p.config.ListenPort)

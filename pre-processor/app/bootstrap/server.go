@@ -30,6 +30,11 @@ const (
 // NewHTTPServer creates and configures the Echo HTTP server.
 func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string) *echo.Echo {
 	e := echo.New()
+	configureHTTPServer(e, deps, otelEnabled, otelServiceName)
+	return e
+}
+
+func configureHTTPServer(e *echo.Echo, deps *Dependencies, otelEnabled bool, otelServiceName string) {
 	// CVE-2026-118653 / CVE-2026-118651: pre-processor is service-to-service
 	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
 	e.IPExtractor = echo.ExtractIPDirect()
@@ -101,8 +106,33 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	api.POST("/summarize/stream", deps.SummarizeHandler.HandleStreamSummarize)
 	api.POST("/summarize/queue", deps.SummarizeHandler.HandleSummarizeQueue)
 	api.GET("/summarize/status/:job_id", deps.SummarizeHandler.HandleSummarizeStatus)
+}
 
-	return e
+func newHTTPListenerServer(addr string, handler http.Handler) *http.Server {
+	return httpserver.New(httpserver.Config{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	})
+}
+
+func newConnectListenerServer(addr string, handler http.Handler) *http.Server {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	return httpserver.New(httpserver.Config{
+		Addr:        addr,
+		Handler:     handler,
+		Protocols:   protocols,
+		ReadTimeout: 30 * time.Second,
+		// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
+		// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,
+		// not per-message. LLM inference can take 30-90+ seconds before the first
+		// token, so any fixed timeout would kill streaming connections.
+		// Per-RPC deadlines are handled via context.WithTimeout instead.
+		WriteTimeout: 0,
+		IdleTimeout:  120 * time.Second,
+	})
 }
 
 // StartHTTPServer starts the HTTP server in a goroutine and returns the
@@ -115,11 +145,7 @@ func StartHTTPServer(e *echo.Echo, log *slog.Logger, errCh chan<- error) *http.S
 		port = httpPort
 	}
 	addr := fmt.Sprintf(":%s", port)
-	srv := httpserver.New(httpserver.Config{
-		Addr:              addr,
-		Handler:           e,
-		ReadHeaderTimeout: 10 * time.Second,
-	})
+	srv := newHTTPListenerServer(addr, e)
 	go func() {
 		log.Info("Starting HTTP server", "port", port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -151,22 +177,7 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error, echoServers ...*
 		port = connectPort
 	}
 	addr := fmt.Sprintf(":%s", port)
-	protocols := new(http.Protocols)
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-	server := httpserver.New(httpserver.Config{
-		Addr:        addr,
-		Handler:     connectHandler,
-		Protocols:   protocols,
-		ReadTimeout: 30 * time.Second,
-		// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
-		// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,
-		// not per-message. LLM inference can take 30-90+ seconds before the first
-		// token, so any fixed timeout would kill streaming connections.
-		// Per-RPC deadlines are handled via context.WithTimeout instead.
-		WriteTimeout: 0,
-		IdleTimeout:  120 * time.Second,
-	})
+	server := newConnectListenerServer(addr, connectHandler)
 	go func() {
 		deps.Logger.Info("Starting Connect-RPC server", "port", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
