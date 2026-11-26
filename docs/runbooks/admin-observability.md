@@ -147,7 +147,7 @@ not updated when their jobs were added — see the Allowlist section above.
 
 | key | PromQL | unit |
 |---|---|---|
-| `availability_services` | `min by (job) (up{job=~"prometheus\|alertmanager\|plecto-proxy\|cadvisor\|mq-hub\|pre-processor\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|alt-harvester\|alt-notifier\|alt-data-hub\|alt-butterfly-facade-ops\|auth-hub\|search-indexer\|rag-orchestrator-ops\|pre-processor-ops\|tag-generator\|recap-worker-ops\|acolyte-orchestrator\|recap-subworker-ops\|news-creator-ops\|knowledge-sovereign-ops\|recap-evaluator\|knowledge-sovereign\|rag-orchestrator\|alt-butterfly-facade"})` | bool |
+| `availability_services` | `min by (job) (up{job=~"prometheus\|alertmanager\|plecto-proxy\|cadvisor\|mq-hub\|pre-processor\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|alt-harvester\|alt-notifier\|alt-data-hub\|alt-butterfly-facade-ops\|auth-hub\|search-indexer\|rag-orchestrator-ops\|pre-processor-ops\|tag-generator\|recap-worker-ops\|acolyte-orchestrator\|recap-subworker-ops\|news-creator-ops\|knowledge-sovereign-ops\|recap-evaluator\|knowledge-sovereign\|rag-orchestrator\|alt-butterfly-facade\|tls-handshake\|tls-handshake-canary\|blackbox-exporter"})` | bool |
 | `http_latency_p95` | `histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
 | `http_rps` | `sum by (job) (rate(http_requests_total[1m]))` | req/s |
 | `http_error_ratio` | `sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)` | ratio |
@@ -190,11 +190,17 @@ now ([[pki-agent-recovery]]) and no job in `prometheus.yml` scrapes a
 a `:9110` ops port under separate jobs, and the alt-backend Go module's four
 binaries (`alt-backend`, `alt-harvester`, `alt-notifier`, `alt-data-hub`) are
 four jobs rather than one — bundling any of these would let `min by (job)`
-collapse distinct processes into a single row and hide which one died. No
-scrape job in the current config has more than one target, so `min by (job)`
-is presently a no-op; it stays in the PromQL as a guard for the day a job
-regains multiple targets, and `TestAllowlist_AvailabilityAggregatesMultiTargetJobs`
-enforces its presence unconditionally.
+collapse distinct processes into a single row and hide which one died.
+`tls-handshake` is the one multi-target job (12 listeners), so `min by (job)`
+shows its worst target, and `TestAllowlist_AvailabilityAggregatesMultiTargetJobs`
+enforces the aggregation unconditionally.
+
+`tls-handshake` and `tls-handshake-canary` are scraped through
+`blackbox-exporter`, so their rows show whether Prometheus could scrape the
+prober, not whether the probed listener completed a handshake. A listener that
+fails its handshake keeps the row up — that state is `probe_success`, and the
+`TlsHandshake*` alerts watch it ([[pki-agent-recovery]]). When the prober is
+down, all three rows go down together.
 
 `rask-log-aggregator` does not expose `/metrics` and has no scrape job, so it
 never appears in the series; `ServiceHealthTable` lists it explicitly with a
