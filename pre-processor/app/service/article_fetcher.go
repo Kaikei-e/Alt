@@ -136,7 +136,7 @@ func (w *HTTPClientWrapper) Get(ctx context.Context, url string) (*http.Response
 	resp, err := w.Do(req)
 	duration := time.Since(start)
 
-	metrics := GetGlobalProxyMetrics(nil)
+	metrics := GetGlobalProxyMetrics(slog.Default())
 
 	if err != nil {
 		errorType := classifyProxyError(err)

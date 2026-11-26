@@ -57,6 +57,9 @@ type ProxyMetrics struct {
 
 // NewProxyMetrics creates a new proxy metrics collector
 func NewProxyMetrics(logger *slog.Logger) *ProxyMetrics {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &ProxyMetrics{
 		logger:            logger,
 		windowSize:        100, // Keep last 100 measurements for moving averages
@@ -69,7 +72,7 @@ func NewProxyMetrics(logger *slog.Logger) *ProxyMetrics {
 
 // RecordEnvoyRequest records an Envoy proxy request with its outcome
 func (m *ProxyMetrics) RecordEnvoyRequest(duration time.Duration, success bool, dnsResolutionTime time.Duration) {
-	atomic.AddUint64(&m.totalRequests, 1)
+	total := atomic.AddUint64(&m.totalRequests, 1)
 	atomic.AddUint64(&m.envoyRequests, 1)
 
 	// Safe conversion: check for negative values before converting to uint64
@@ -108,14 +111,14 @@ func (m *ProxyMetrics) RecordEnvoyRequest(duration time.Duration, success bool, 
 	m.mutex.Unlock()
 
 	// Log detailed metrics periodically
-	if m.totalRequests%50 == 0 {
+	if total%50 == 0 {
 		m.logPerformanceMetrics()
 	}
 }
 
 // RecordDirectRequest records a direct HTTP request with its outcome
 func (m *ProxyMetrics) RecordDirectRequest(duration time.Duration, success bool) {
-	atomic.AddUint64(&m.totalRequests, 1)
+	total := atomic.AddUint64(&m.totalRequests, 1)
 	atomic.AddUint64(&m.directRequests, 1)
 
 	// Safe conversion: check for negative values before converting to uint64
@@ -142,7 +145,7 @@ func (m *ProxyMetrics) RecordDirectRequest(duration time.Duration, success bool)
 	m.mutex.Unlock()
 
 	// Log detailed metrics periodically
-	if m.totalRequests%50 == 0 {
+	if total%50 == 0 {
 		m.logPerformanceMetrics()
 	}
 }
@@ -496,7 +499,7 @@ func (m *ProxyMetrics) RecordDomainRequest(requestURL string, duration time.Dura
 	}
 
 	// Update request counters
-	atomic.AddUint64(&domainMetrics.TotalRequests, 1)
+	domainTotal := atomic.AddUint64(&domainMetrics.TotalRequests, 1)
 	// Safe conversion: check for negative values before converting to uint64
 	ms := duration.Milliseconds()
 	if ms < 0 {
@@ -540,7 +543,7 @@ func (m *ProxyMetrics) RecordDomainRequest(requestURL string, duration time.Dura
 	m.updateDomainCalculatedMetrics(domainMetrics)
 
 	// Log domain-specific metrics periodically
-	if domainMetrics.TotalRequests%25 == 0 {
+	if domainTotal%25 == 0 {
 		m.logDomainMetrics(domainMetrics)
 	}
 }

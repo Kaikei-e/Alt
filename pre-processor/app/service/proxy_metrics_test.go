@@ -476,6 +476,43 @@ func TestProxyMetrics_GlobalSingleton(t *testing.T) {
 	t.Logf("Global singleton working correctly: %d requests recorded", summary.TotalRequests)
 }
 
+// TestProxyMetrics_NilLoggerAndConcurrentRecording pins the order-dependent
+// panic reproduced under -shuffle=1795714559739160007 and
+// -shuffle=1795714634738483214 (where HTTPClientWrapper.Get called
+// GetGlobalProxyMetrics(nil) before EnvoyHTTPClient.Get called RecordError)
+// and verifies concurrent metric recording is race-free.
+func TestProxyMetrics_NilLoggerAndConcurrentRecording(t *testing.T) {
+	metrics := NewProxyMetrics(nil)
+
+	// Must not panic when logging errors, config switches, bad domain URLs,
+	// or periodic 25/50-request summaries.
+	metrics.RecordError(ProxyErrorDNS)
+	metrics.RecordError(ProxyErrorTimeout)
+	metrics.RecordConfigSwitch(false, true)
+	metrics.RecordDomainRequest("://invalid-url", 10*time.Millisecond, false, ProxyErrorConfig)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 60 {
+			metrics.RecordEnvoyRequest(10*time.Millisecond, true, time.Millisecond)
+		}
+	}()
+	for range 60 {
+		metrics.RecordDirectRequest(10*time.Millisecond, true)
+		metrics.RecordDomainRequest("https://example.com/feed", 10*time.Millisecond, true, ProxyErrorConfig)
+	}
+	<-done
+
+	summary := metrics.GetMetricsSummary()
+	if summary.TotalRequests != 120 {
+		t.Fatalf("TotalRequests=%d want 120", summary.TotalRequests)
+	}
+	if summary.DNSErrors != 1 || summary.TimeoutErrors != 1 {
+		t.Fatalf("unexpected error counts: dns=%d timeout=%d", summary.DNSErrors, summary.TimeoutErrors)
+	}
+}
+
 // Helper function for absolute value
 func abs(x float64) float64 {
 	if x < 0 {
