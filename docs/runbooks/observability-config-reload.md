@@ -202,10 +202,10 @@ for t in alt-data-hub:9443 auth-hub:9443 auth-hub:8443 search-indexer:9443 \
          pre-processor:9443 tag-generator:9443 recap-worker:9443 \
          acolyte-orchestrator:9443 recap-subworker:9443 news-creator:9443 \
          rag-orchestrator:9010 rag-orchestrator:9011 step-ca:9000; do
-  printf '%s ' "$t"
-  docker compose -f compose/compose.yaml -p alt exec -T blackbox-exporter \
-    wget -qO- "http://localhost:9115/probe?module=mtls_server_cert&target=$t" \
-    | grep '^probe_success'
+  r=$(docker compose -f compose/compose.yaml -p alt exec -T blackbox-exporter \
+        wget -qO- "http://localhost:9115/probe?module=mtls_server_cert&target=$t" 2>&1 \
+      | grep '^probe_success') || r='NO RESULT (exec or wget failed)'
+  printf '%s %s\n' "$t" "$r"
 done
 
 # 3. その後で Prometheus に設定とルールを読ませる
@@ -226,6 +226,7 @@ ticket 2 本が鳴る。page にはならないので、慌てず手順 1〜2 �
 |---|---|---|
 | 12 本とも成功 | `count(probe_success{job="tls-handshake"} == 1)` と `count(probe_success{job="tls-handshake"} == 0)` | 前者 12、後者は空 |
 | canary (step-ca) が成功 | `probe_success{job="tls-handshake-canary"}` | 1 |
+| ルール 9 本が読み込まれている | `curl -s http://127.0.0.1:9090/api/v1/rules \| python3 -c 'import sys,json; print(sum(1 for g in json.load(sys.stdin)["data"]["groups"] for r in g["rules"] if r["name"].startswith("TlsHandshake")))'` | 9 |
 | 提示と報告の差が数秒以内 (最短期限が leaf であること) | `abs(probe_ssl_earliest_cert_expiry{job="tls-handshake"} - on(subject) group_left() max by (subject) (pki_enrollment_cert_not_after_seconds))` | 全系列 5 以下 |
 | 交渉された TLS が 1.3 (Rust の recap-worker を含む) | `probe_tls_version_info{job="tls-handshake",version!="TLS 1.3"}` | 空 |
 | probe 由来のログ行数 | `docker compose -f compose/compose.yaml -p alt logs --since 24h <service> \| grep -c 'TLS handshake error'` (クライアント認証を要求する Go の listener) | listener あたり 1 日約 1,440 行、6 本合計で約 8,600 行 |

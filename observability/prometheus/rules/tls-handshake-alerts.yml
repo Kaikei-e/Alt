@@ -22,14 +22,16 @@ groups:
       # Evaluated on the last value of the past hour: once the presented
       # certificate really expires the handshake fails verification and
       # probe_ssl_earliest_cert_expiry disappears, which would resolve the page
-      # at the moment of failure. TlsHandshakeListenerFailing takes over 5m later.
-      # Skipped when the disk side is also under 4h: PkiEnrollmentCertExpirySoon
-      # already pages for that, and one cause should not page twice.
+      # at the moment of failure. TlsHandshakeListenerFailing joins 5m later.
+      # Only while the disk side reported 4h or more within the last 2m:
+      # shorter means PkiEnrollmentCertExpirySoon owns it, and no disk series
+      # means the service is down (PkiEnrollmentOpsDown), where an old presented
+      # value would be a misdiagnosis.
       - alert: TlsHandshakeCertExpirySoon
         expr: |
           (last_over_time(probe_ssl_earliest_cert_expiry{job="tls-handshake"}[1h]) - time() < 4 * 3600)
-          unless on(subject)
-          (min by (subject) (pki_enrollment_cert_remaining_seconds) < 4 * 3600)
+          and on(subject)
+          (min by (subject) (last_over_time(pki_enrollment_cert_remaining_seconds[2m])) >= 4 * 3600)
         for: 2m
         labels:
           severity: page
@@ -39,23 +41,26 @@ groups:
           description: |
             The certificate presented in the TLS handshake on {{ $labels.instance }} expires in
             {{ humanizeDuration $value }} (negative once it has expired) while the on-disk leaf
-            reported for {{ $labels.subject }} still has more than 4h, so the process is serving a
-            stale certificate.
+            reported for {{ $labels.subject }} had 4h or more left within the last 2m, so the process is
+            serving a stale certificate.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # One series however many listeners fail, so a failure count that moves
-      # between 1 and 3 never restarts `for`. Services whose process reports no
-      # enrollment state are left to PkiEnrollmentOpsDown. Held back while the
-      # canary fails, because then every listener result is suspect.
+      # Every input is read over a window shorter than `for`: a failed scrape
+      # drops a series until the next good one, and an instantaneous condition
+      # would restart `for` at each gap. The 2m window still lets a service that
+      # stopped entirely drop out (PkiEnrollmentOpsDown owns that), and
+      # "healthy" keeps a corrupt or expired disk certificate with the
+      # enrollment alerts. The canary only holds the page back after 3m
+      # without one success, so a blinking canary cannot hide a broken listener.
       - alert: TlsHandshakeListenerFailing
         expr: |
           count(
-            probe_success{job="tls-handshake"} == 0
+            last_over_time(probe_success{job="tls-handshake"}[2m]) == 0
             and on(subject)
-            count by (subject) (pki_enrollment_healthy)
+            (min by (subject) (last_over_time(pki_enrollment_healthy[2m])) == 1)
           ) > 0
           unless on()
-          (probe_success{job="tls-handshake-canary"} == 0)
+          (max_over_time(probe_success{job="tls-handshake-canary"}[3m]) == 0)
         for: 5m
         labels:
           severity: page
@@ -65,23 +70,25 @@ groups:
           description: |
             Handshake probes fail for listeners of services that still report enrollment
             state, so the process is up but its TLS listener is not serving.
-            Failing listeners:{{ range query `probe_success{job="tls-handshake"} == 0 and on(subject) count by (subject) (pki_enrollment_healthy)` | sortByLabel "instance" }} {{ .Labels.instance }}{{ end }}
+            Failing listeners:{{ range query `last_over_time(probe_success{job="tls-handshake"}[2m]) == 0 and on(subject) (min by (subject) (last_over_time(pki_enrollment_healthy[2m])) == 1)` | sortByLabel "instance" }} {{ .Labels.instance }}{{ end }}
             If the whole service is down, PkiEnrollmentOpsDown fires separately.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
       # step-ca is what every service verifies against with the same bundle, so a
       # failure here is the prober (bundle, config, network) or step-ca itself.
+      # Any failure in the last 5m counts, so an intermittently failing canary
+      # still opens a ticket; 10m keeps a single failed probe from doing so.
       # A missing series counts, unless the prober is down: that is ProberDown.
       - alert: TlsHandshakeCanaryFailing
         expr: |
-          probe_success{job="tls-handshake-canary"} == 0
+          min_over_time(probe_success{job="tls-handshake-canary"}[5m]) == 0
           or
           (
             absent(probe_success{job="tls-handshake-canary"})
             unless on()
             (up{job="blackbox-exporter"} == 0)
           )
-        for: 5m
+        for: 10m
         labels:
           severity: ticket
           stack: mtls

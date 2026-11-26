@@ -110,10 +110,10 @@ tests:
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
         values: '0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3'
     alert_rule_test:
-      - eval_time: 10m
+      - eval_time: 9m
         alertname: TlsHandshakeCanaryFailing
         exp_alerts: []
-      - eval_time: 12m
+      - eval_time: 11m
         alertname: TlsHandshakeCanaryFailing
         exp_alerts:
           - exp_labels:
@@ -130,6 +130,9 @@ tests:
                 (container, /trust/ca-bundle.pem, network) and then step-ca.
                 Runbook: docs/runbooks/pki-agent-recovery.md
       - eval_time: 7m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 9m
         alertname: TlsHandshakeListenerFailing
         exp_alerts:
           - exp_labels:
@@ -227,6 +230,96 @@ tests:
                 state, so the process is up but its TLS listener is not serving.
                 Failing listeners: news-creator:9443
                 If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The probe scrape itself fails one minute in three (the series drops until the next good scrape)
+  # while the listener is dead: the page must still come.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1x160'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The presented certificate is short while the :9110 scrape fails once every 2m: the expiry page
+  # must not restart its `for` at every gap in the disk-side series.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000x160'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443 expires in
+                2h 40m 40s (negative once it has expired) while the on-disk leaf
+                reported for news-creator had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 20m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443 expires in
+                2h 26m 40s (negative once it has expired) while the on-disk leaf
+                reported for news-creator had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
   # A crash-looping service: the :9110 endpoint answers for 30s each 2m cycle and the TLS listener
