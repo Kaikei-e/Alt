@@ -74,6 +74,7 @@ func buildCleanSelfcheckRepo(t *testing.T) string {
 					"hooks": []any{
 						map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" guard-ops --on-match deny`},
 						map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" guard-exec`},
+						map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" guard-adr-read`},
 					},
 				},
 			},
@@ -90,7 +91,10 @@ func buildCleanSelfcheckRepo(t *testing.T) string {
 			"PreToolUse": []any{
 				map[string]any{
 					"matcher": "run_command|Bash|shell",
-					"hooks":   []any{map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" agy-hook pre-shell`}},
+					"hooks": []any{
+						map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" agy-hook pre-shell`},
+						map[string]any{"type": "command", "command": `"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness" agy-hook pre-adr-read`},
+					},
 				},
 				map[string]any{
 					"matcher": "write_file|edit_file|Edit|Write|apply_patch",
@@ -197,6 +201,7 @@ func TestSelfcheckH1ToH9Parallel(t *testing.T) {
 						"hooks": []any{
 							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-ops`, "onFailure": "block"},
 							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-exec`, "onFailure": "block"},
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-adr-read`, "onFailure": "block"},
 						},
 					},
 				},
@@ -291,6 +296,55 @@ func TestSelfcheckH1ToH9Parallel(t *testing.T) {
 			if rc != 1 || !strings.Contains(out, want) {
 				t.Fatalf("H4 missing %q in rc=%d out=%s", want, rc, out)
 			}
+		}
+	})
+
+	t.Run("H4 missing ADR-read guard in any of the 3 environments fails", func(t *testing.T) {
+		t.Parallel()
+		// 1. Missing guard-adr-read in .codex/hooks.json.
+		repoCodex := buildCleanSelfcheckRepo(t)
+		pCodex := filepath.Join(repoCodex, ".codex", "hooks.json")
+		rawCodex, _ := os.ReadFile(pCodex)
+		_ = os.WriteFile(pCodex, []byte(strings.ReplaceAll(string(rawCodex), "guard-adr-read", "guard-exec")), fsperm.File)
+		if rc, out, _ := runSC(repoCodex); rc != 1 || !strings.Contains(out, "H4 .codex/hooks.json:") || !strings.Contains(out, "guard-adr-read") {
+			t.Fatalf("missing codex guard-adr-read: rc=%d out=%s", rc, out)
+		}
+
+		// 2. Missing guard-adr-read in .claude/settings.json.
+		repoClaude := buildCleanSelfcheckRepo(t)
+		writeClaudeSettingsJSON(t, repoClaude, map[string]any{
+			"hooks": map[string]any{
+				"PreToolUse": []any{
+					map[string]any{
+						"matcher": "Edit|Write|NotebookEdit",
+						"hooks": []any{
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" preflight --hook`, "onFailure": "block"},
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-protected`, "onFailure": "block"},
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-event-time`, "onFailure": "block"},
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-scope`, "onFailure": "block"},
+						},
+					},
+					map[string]any{
+						"matcher": "Bash",
+						"hooks": []any{
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-ops`, "onFailure": "block"},
+							map[string]any{"type": "command", "command": `"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness" guard-exec`, "onFailure": "block"},
+						},
+					},
+				},
+			},
+		})
+		if rc, out, _ := runSC(repoClaude); rc != 1 || !strings.Contains(out, "H4 .claude/settings.json:") || !strings.Contains(out, "guard-adr-read") {
+			t.Fatalf("missing claude guard-adr-read: rc=%d out=%s", rc, out)
+		}
+
+		// 3. Missing agy-hook pre-adr-read in .agents/hooks.json.
+		repoAgy := buildCleanSelfcheckRepo(t)
+		pAgy := filepath.Join(repoAgy, ".agents", "hooks.json")
+		rawAgy, _ := os.ReadFile(pAgy)
+		_ = os.WriteFile(pAgy, []byte(strings.ReplaceAll(string(rawAgy), "pre-adr-read", "pre-shell")), fsperm.File)
+		if rc, out, _ := runSC(repoAgy); rc != 1 || !strings.Contains(out, "H4 .agents/hooks.json:") || !strings.Contains(out, "pre-adr-read") {
+			t.Fatalf("missing agy pre-adr-read: rc=%d out=%s", rc, out)
 		}
 	})
 

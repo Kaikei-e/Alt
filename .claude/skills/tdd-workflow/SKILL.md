@@ -30,7 +30,7 @@ Bundled material, read when the phase calls for it:
 - `templates/go_usecase_test.go.tmpl`, `templates/python_handler_test.py.tmpl`,
   `templates/typescript_component_test.ts.tmpl`, `templates/deno_unit_test.ts.tmpl` — Phase 2 starting shapes
 
-**Before Phase 0 — ADR preflight:** Run `./scripts/altharness/alt-harness preflight <paths>` on the paths you will change, read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`), and stop if the change contradicts one.
+**Before Phase 0 — ADR preflight & draft:** Check binding ADRs (`./scripts/altharness/alt-harness preflight <paths>` and `docdag context <id> --depth 2 --budget 1500`; stop and ask the user if the change contradicts one) and draft `docs/ADR/NNNNNN.md` (`status: proposed`, via `alt-adr-writer` / `docdag new "<title>" --dry-run --format json` + `docs/ADR/template.md` + `docdag validate --touching`) before editing production code. Phase 0–2 test files are exempt from the ADR-first pre-edit gate (graph health is still enforced), while Phase 3 GREEN production edits (and Phase 2 production stubs) require the valid `docs/ADR/NNNNNN.md` draft ([[001032]]).
 
 ## Phase 0: E2E first
 
@@ -89,7 +89,8 @@ Reproduce each touched service's CI gates locally before committing implementati
 2. **Run each touched service's gate** from [references/ci-parity.md](references/ci-parity.md).
 3. **If `proto/**` changed**, run the proto gate. **If any contract changed**, run `./scripts/pact-check.sh`.
 4. **Never suppress a failing gate** (`// nolint`, loosened ruff config, skipped test) to unblock the task.
-5. **Commit the GREEN + REFACTOR implementation once all steps and gates pass:**
+5. **Finalize the drafted ADR (`proposed` → `accepted`)** via `alt-adr-writer --finalize`: update verified facts/Consequences, promote `status: proposed` → `status: accepted` (`Proposed` → `Accepted`; for an approved supersession, add `supersedes:` and set the old ADR to `status: superseded` together), and run `docdag validate --touching docs/ADR/NNNNNN.md && docdag validate --immutable-since origin/main`.
+6. **Commit the GREEN + REFACTOR implementation together with the accepted ADR once all steps and gates pass:**
    ```bash
    git commit -m "feat(<service>): implement <feature>"
    ```

@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	maxBriefADRs    = 8
-	maxTitleChars   = 120
-	maxBriefChars   = 6000
-	maxFindingLines = 40
-	workflowRelPath = ".github/workflows/adr-graph.yml"
-	selfServiceCmd  = "./scripts/altharness/alt-harness preflight"
+	maxBriefADRs     = 8
+	maxTitleChars    = 120
+	maxBriefChars    = 6000
+	maxFindingLines  = 40
+	testReceiptScope = "__tests__"
+	workflowRelPath  = ".github/workflows/adr-graph.yml"
+	selfServiceCmd   = "./scripts/altharness/alt-harness preflight"
 )
 
 var scopeAliases = map[string][]string{
@@ -50,7 +51,33 @@ var patchLinePrefixes = []string{
 var (
 	sanitiseRe      = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
 	docdagVersionRe = regexp.MustCompile(`(?m)^\s*DOCDAG_VERSION:\s*([^\s#]+)`)
+	adrFileRelRe    = regexp.MustCompile(`^docs/ADR/(\d{6})\.md$`)
 )
+
+var testPathSegments = map[string]struct{}{
+	"tests":     {},
+	"test":      {},
+	"__tests__": {},
+	"e2e":       {},
+	"testdata":  {},
+	"fixtures":  {},
+}
+
+var testFileSuffixes = []string{
+	"_test.go",
+	"_test.py",
+	".test.ts",
+	".spec.ts",
+	".test.tsx",
+	".spec.tsx",
+	".test.js",
+	".spec.js",
+	".test.mjs",
+	"_test.ts",
+	"_test.tsx",
+	"_test.rs",
+	"_test.sh",
+}
 
 var errMissingDocdag = errors.New("docdag is not on PATH")
 
@@ -265,6 +292,35 @@ func isExemptRelpath(relPath, scope string) bool {
 		return true
 	}
 	return filepath.ToSlash(filepath.Clean(relPath)) == "docdag.yaml"
+}
+
+func isTestRelpath(relPath string) bool {
+	norm := filepath.ToSlash(filepath.Clean(relPath))
+	if norm == "" || norm == "." {
+		return false
+	}
+	parts := strings.Split(norm, "/")
+	for _, seg := range parts {
+		if _, ok := testPathSegments[seg]; ok {
+			return true
+		}
+	}
+	base := parts[len(parts)-1]
+	if base == "conftest.py" {
+		return true
+	}
+	if strings.HasPrefix(base, "test_") && strings.HasSuffix(base, ".py") {
+		return true
+	}
+	if strings.HasPrefix(base, "test-") && strings.HasSuffix(base, ".sh") {
+		return true
+	}
+	for _, suffix := range testFileSuffixes {
+		if strings.HasSuffix(base, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func unquoteYAMLScalar(raw string) string {
@@ -525,7 +581,108 @@ func extractPorcelainPaths(porcelainOutput string) []string {
 	return paths
 }
 
-func (r *runner) computeFingerprint(root string) (string, error) {
+func isNonEmptyRegularFile(path string) bool {
+	st, err := os.Lstat(path)
+	return err == nil && st.Mode().IsRegular() && st.Size() > 0
+}
+
+func (r *runner) resolveBaseRef(root string) string {
+	for _, ref := range []string{"origin/main", "main", "origin/master", "master"} {
+		_, _, code, notFound, err := r.runCmd("", "git", "-C", root, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+		if !notFound && err == nil && code == 0 {
+			return ref
+		}
+	}
+	return ""
+}
+
+func (r *runner) detectActiveADRs(root string) ([]string, error) {
+	porcelain, err := r.runGitStdout(root,
+		"--no-optional-locks",
+		"-c", "core.quotePath=false",
+		"status", "--porcelain", "-uall",
+		"--", "docs/ADR",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	found := make(map[string]struct{})
+	deleted := make(map[string]struct{})
+
+	addIfValid := func(rawPath string) {
+		norm := filepath.ToSlash(strings.TrimSpace(rawPath))
+		if _, isDel := deleted[norm]; isDel {
+			return
+		}
+		m := adrFileRelRe.FindStringSubmatch(norm)
+		if len(m) != 2 {
+			return
+		}
+		if isNonEmptyRegularFile(filepath.Join(root, filepath.FromSlash(norm))) {
+			found[m[1]] = struct{}{}
+		}
+	}
+
+	// Source A (always): uncommitted worktree/staged ADRs under docs/ADR.
+	for _, line := range splitLines(porcelain) {
+		if len(line) < 4 {
+			continue
+		}
+		xy := line[:2]
+		rawPath := line[3:]
+		if strings.ContainsAny(xy, "RC") {
+			if _, after, ok := strings.Cut(rawPath, " -> "); ok {
+				rawPath = after
+			}
+		}
+		if len(rawPath) >= 2 && rawPath[0] == '"' && rawPath[len(rawPath)-1] == '"' {
+			rawPath = rawPath[1 : len(rawPath)-1]
+		}
+		norm := filepath.ToSlash(rawPath)
+		if xy == " D" || xy == "D " || xy == "DD" {
+			deleted[norm] = struct{}{}
+			if m := adrFileRelRe.FindStringSubmatch(norm); len(m) == 2 {
+				delete(found, m[1])
+			}
+			continue
+		}
+		addIfValid(norm)
+	}
+
+	// Source B (feature branch only): ADRs committed on non-main/master branches.
+	branchOut, _, branchCode, notFound, branchErr := r.runCmd("", "git", "-C", root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if !notFound && branchErr == nil && branchCode == 0 {
+		branch := strings.TrimSpace(branchOut)
+		if branch != "" && branch != "main" && branch != "master" {
+			if baseRef := r.resolveBaseRef(root); baseRef != "" {
+				diffOut, _, diffCode, diffNotFound, diffErr := r.runCmd(
+					"", "git", "-C", root,
+					"--no-optional-locks",
+					"-c", "core.quotePath=false",
+					"diff", "--name-only", "--diff-filter=AMCR",
+					baseRef+"...HEAD", "--", "docs/ADR",
+				)
+				if !diffNotFound && diffErr == nil && diffCode == 0 {
+					for _, line := range splitLines(diffOut) {
+						if strings.TrimSpace(line) != "" {
+							addIfValid(line)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ids := make([]string, 0, len(found))
+	for id := range found {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, nil
+}
+
+func (r *runner) computeFingerprint(root string, activeADRs []string) (string, error) {
 	canonicalRoot := resolveRealPath(root)
 	adrTree, err := r.runGitStdout(root, "rev-parse", "HEAD:docs/ADR")
 	if err != nil {
@@ -545,7 +702,9 @@ func (r *runner) computeFingerprint(root string) (string, error) {
 		return "", err
 	}
 
-	parts := []string{canonicalRoot, adrTree, cfgBlob, porcelain}
+	sortedActive := append([]string(nil), activeADRs...)
+	sort.Strings(sortedActive)
+	parts := []string{canonicalRoot, adrTree, cfgBlob, porcelain, "active:" + strings.Join(sortedActive, ",")}
 	for _, relStr := range extractPorcelainPaths(porcelain) {
 		target := filepath.Join(root, filepath.FromSlash(relStr))
 		st, serr := os.Stat(target)
@@ -718,7 +877,21 @@ func truncateTitle(title string) string {
 	return string(runes[:maxTitleChars-1]) + "…"
 }
 
-func buildBriefParts(summaryLines []string, sections []scopeSection) (string, string) {
+func serviceArgForSections(sections []scopeSection) string {
+	if len(sections) == 1 {
+		switch sections[0].scope {
+		case ".github":
+			return "ci-cd"
+		case "repo-root":
+			return "<name>"
+		default:
+			return sections[0].scope
+		}
+	}
+	return "<name>"
+}
+
+func buildBriefListings(summaryLines []string, sections []scopeSection) string {
 	listingLines := append([]string(nil), summaryLines...)
 	listingLines = append(listingLines, "")
 
@@ -751,48 +924,45 @@ func buildBriefParts(summaryLines []string, sections []scopeSection) (string, st
 			listingLines = append(listingLines, fmt.Sprintf("  %s  %s", adr.adrID, truncateTitle(adr.title)))
 		}
 	}
+	return strings.Join(listingLines, "\n")
+}
 
-	serviceArg := "<name>"
-	if len(sections) == 1 {
-		onlyScope := sections[0].scope
-		switch onlyScope {
-		case ".github":
-			serviceArg = "ci-cd"
-		case "repo-root":
-			serviceArg = "<name>"
-		default:
-			serviceArg = onlyScope
-		}
-	}
-
+func buildBriefBody(summaryLines []string, sections []scopeSection) string {
+	listings := buildBriefListings(summaryLines, sections)
+	serviceArg := serviceArgForSections(sections)
 	guidanceLines := []string{
 		"Read one ADR: docdag context <id> --depth 2 --budget 1500",
 		fmt.Sprintf("List all for a service: %s --service %s", selfServiceCmd, serviceArg),
 		"If a planned change contradicts a binding ADR, stop and supersede it with a new ADR rather than contradicting it silently.",
 	}
-	return strings.Join(listingLines, "\n"), strings.Join(guidanceLines, "\n")
+	return listings + "\n\n" + strings.Join(guidanceLines, "\n")
 }
 
-func buildBriefBody(summaryLines []string, sections []scopeSection) string {
-	listings, guidance := buildBriefParts(summaryLines, sections)
-	return listings + "\n\n" + guidance
-}
-
-func buildHookBrief(summaries []string, sections []scopeSection) string {
+func buildHookADRRequiredBrief(summaries []string, sections []scopeSection) string {
 	scopeNames := make([]string, 0, len(sections))
 	for _, s := range sections {
 		scopeNames = append(scopeNames, s.scope)
 	}
-	header := fmt.Sprintf("ADR PREFLIGHT (not an error) — scope(s): %s", strings.Join(scopeNames, ", "))
-	trailer := "Receipt recorded for this session; retrying the same edit now succeeds."
-	listings, guidance := buildBriefParts(summaries, sections)
-	candidate := fmt.Sprintf("%s\n%s\n\n%s\n%s\n", header, listings, guidance, trailer)
+	header := fmt.Sprintf("ADR PREFLIGHT BLOCKED (ADR required before code edits) — scope(s): %s", strings.Join(scopeNames, ", "))
+	listings := buildBriefListings(summaries, sections)
+	serviceArg := serviceArgForSections(sections)
+	guidance := strings.Join([]string{
+		"Required before editing production code (no receipt was recorded; blind retries stay blocked):",
+		fmt.Sprintf("1. Inspect governing binding ADRs: docdag context <id> --depth 2 --budget 1500 (list all: %s --service %s)", selfServiceCmd, serviceArg),
+		`2. Allocate next ADR ID: docdag new "<title>" --dry-run --format json`,
+		"3. Draft docs/ADR/NNNNNN.md from docs/ADR/template.md with status: proposed (stop and ask user before superseding a binding ADR)",
+		"4. Validate the ADR: docdag validate --touching docs/ADR/NNNNNN.md",
+		"5. Retry this edit (auto-unblocks once valid ADR exists; only docs/, docdag.yaml, and test files are exempt)",
+		"Guide: .agents/skills/alt-adr-writer/SKILL.md",
+	}, "\n")
+
+	candidate := fmt.Sprintf("%s\n%s\n\n%s\n", header, listings, guidance)
 	if len(candidate) < maxBriefChars {
 		return candidate
 	}
 
 	truncLine := "... (brief truncated; run the --service command per scope)"
-	suffix := fmt.Sprintf("%s\n%s\n%s\n", truncLine, guidance, trailer)
+	suffix := fmt.Sprintf("%s\n%s\n", truncLine, guidance)
 	budget := maxBriefChars - len(header) - len(suffix) - 3
 	if budget < 0 {
 		budget = 0
@@ -924,9 +1094,17 @@ func (r *runner) handlePreToolUse(payload map[string]any) int {
 	}
 
 	gitDirCache := make(map[string]*gitIdentity)
+	activeCache := make(map[string][]string)
 	fpCache := make(map[string]string)
-	pendingByRoot := make(map[string][]string)
-	var rootOrder []string
+
+	prodBlockedByRoot := make(map[string][]string)
+	var prodBlockedRoots []string
+
+	prodAllowedByRoot := make(map[string][]string)
+	var prodAllowedRoots []string
+
+	testPendingRoots := make(map[string]bool)
+	var testRootOrder []string
 
 	for _, rawPath := range rawPaths {
 		root, relPath, isDir, ok := r.resolveFileInRepo(rawPath, baseCwd, id.commonDir, gitDirCache)
@@ -937,69 +1115,128 @@ func (r *runner) handlePreToolUse(payload map[string]any) int {
 		if scope == "" || isExemptRelpath(relPath, scope) {
 			continue
 		}
+		if r.isGitIgnored(root, relPath) {
+			continue
+		}
 
+		activeADRs, ok := activeCache[root]
+		if !ok {
+			activeADRs, err = r.detectActiveADRs(root)
+			if err != nil {
+				return r.writePreToolInternalError(err)
+			}
+			activeCache[root] = activeADRs
+		}
 		fp, ok := fpCache[root]
 		if !ok {
-			fp, err = r.computeFingerprint(root)
+			fp, err = r.computeFingerprint(root, activeADRs)
 			if err != nil {
 				return r.writePreToolInternalError(err)
 			}
 			fpCache[root] = fp
 		}
 
+		if isTestRelpath(relPath) {
+			if r.hasValidReceipt(sessionID, agentID, root, testReceiptScope, fp) {
+				continue
+			}
+			if !testPendingRoots[root] {
+				testPendingRoots[root] = true
+				testRootOrder = append(testRootOrder, root)
+			}
+			continue
+		}
+
+		if len(activeADRs) == 0 {
+			if _, exists := prodBlockedByRoot[root]; !exists {
+				prodBlockedRoots = append(prodBlockedRoots, root)
+			}
+			if !containsString(prodBlockedByRoot[root], scope) {
+				prodBlockedByRoot[root] = append(prodBlockedByRoot[root], scope)
+			}
+			continue
+		}
+
 		if r.hasValidReceipt(sessionID, agentID, root, scope, fp) {
 			continue
 		}
-
-		if r.isGitIgnored(root, relPath) {
-			continue
+		if _, exists := prodAllowedByRoot[root]; !exists {
+			prodAllowedRoots = append(prodAllowedRoots, root)
 		}
-
-		if _, exists := pendingByRoot[root]; !exists {
-			rootOrder = append(rootOrder, root)
-		}
-		if !containsString(pendingByRoot[root], scope) {
-			pendingByRoot[root] = append(pendingByRoot[root], scope)
+		if !containsString(prodAllowedByRoot[root], scope) {
+			prodAllowedByRoot[root] = append(prodAllowedByRoot[root], scope)
 		}
 	}
 
-	if len(rootOrder) == 0 {
+	// If any production root lacks an active ADR, fail-closed without writing any receipt.
+	if len(prodBlockedRoots) > 0 {
+		var summaries []string
+		var sections []scopeSection
+		for _, root := range prodBlockedRoots {
+			vres := r.runDocdagValidate(root)
+			if vres.missingBinary || vres.returncode != 0 {
+				fmt.Fprint(r.stderr, formatValidateBlocked(root, vres))
+				return 2
+			}
+			summaries = append(summaries, vres.summaryLine)
+			bindingADRs, err := r.loadBindingADRs(root)
+			if err != nil {
+				return r.writePreToolInternalError(err)
+			}
+			for _, scope := range prodBlockedByRoot[root] {
+				sections = append(sections, scopeSection{
+					scope: scope,
+					adrs:  governingADRsForScope(scope, bindingADRs),
+				})
+			}
+		}
+		fmt.Fprint(r.stderr, buildHookADRRequiredBrief(summaries, sections))
+		return 2
+	}
+
+	if len(prodAllowedRoots) == 0 && len(testRootOrder) == 0 {
 		return 0
 	}
 
-	var summaries []string
-	var sections []scopeSection
+	validated := make(map[string]bool)
+	var rootsToValidate []string
+	for _, root := range prodAllowedRoots {
+		if !validated[root] {
+			validated[root] = true
+			rootsToValidate = append(rootsToValidate, root)
+		}
+	}
+	for _, root := range testRootOrder {
+		if !validated[root] {
+			validated[root] = true
+			rootsToValidate = append(rootsToValidate, root)
+		}
+	}
 
-	for _, root := range rootOrder {
+	for _, root := range rootsToValidate {
 		vres := r.runDocdagValidate(root)
 		if vres.missingBinary || vres.returncode != 0 {
 			fmt.Fprint(r.stderr, formatValidateBlocked(root, vres))
 			return 2
 		}
-		summaries = append(summaries, vres.summaryLine)
-		bindingADRs, err := r.loadBindingADRs(root)
-		if err != nil {
-			return r.writePreToolInternalError(err)
-		}
-		for _, scope := range pendingByRoot[root] {
-			sections = append(sections, scopeSection{
-				scope: scope,
-				adrs:  governingADRsForScope(scope, bindingADRs),
-			})
-		}
 	}
 
-	for _, root := range rootOrder {
+	for _, root := range prodAllowedRoots {
 		fp := fpCache[root]
-		for _, scope := range pendingByRoot[root] {
+		for _, scope := range prodAllowedByRoot[root] {
 			if err := r.writeReceipt(sessionID, agentID, root, scope, fp); err != nil {
 				return r.writePreToolInternalError(err)
 			}
 		}
 	}
+	for _, root := range testRootOrder {
+		fp := fpCache[root]
+		if err := r.writeReceipt(sessionID, agentID, root, testReceiptScope, fp); err != nil {
+			return r.writePreToolInternalError(err)
+		}
+	}
 
-	fmt.Fprint(r.stderr, buildHookBrief(summaries, sections))
-	return 2
+	return 0
 }
 
 func (r *runner) handleSessionStart(payload map[string]any) int {
@@ -1041,7 +1278,7 @@ func (r *runner) handleSessionStart(payload map[string]any) int {
 	}
 
 	fmt.Fprintf(r.stdout,
-		"adr_preflight_enabled: %s. The first edit to each top-level directory in this session is held once to surface its governing binding ADRs before retrying.\n",
+		"adr_preflight_enabled: %s. ADR-first gate active: production edits require a valid new/updated docs/ADR/NNNNNN.md (status: proposed before code -> accepted after tests pass; tests and docs/ exempt). Check binding ADRs via docdag context <id> (or --section Consequences), draft via docdag new \"<title>\" --dry-run --format json + docs/ADR/template.md, then implement.\n",
 		vres.summaryLine,
 	)
 	return 0

@@ -40,7 +40,7 @@ func TestHelpListsAllSubcommands(t *testing.T) {
 		"hygiene", "ratchet", "suppressions", "suppression-diff",
 		"generated", "screener", "packet", "corpus", "selfcheck",
 		"canary", "entrypoint-canary", "postmortem", "migration-gate", "adr-gate",
-		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time",
+		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time", "guard-adr-read",
 		"harness-run", "agy-hook", "preflight", "pytest-rand", "gate",
 	}
 	help := out.String()

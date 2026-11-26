@@ -1,5 +1,5 @@
 {
-  "description": "ADR preflight gate: validates the DocDag ADR graph at session start and shows binding ADRs before the first edit in each top-level directory.",
+  "description": "ADR-first preflight gate: validates the DocDag ADR graph at session start and blocks production edits until a valid new/updated docs/ADR/NNNNNN.md exists (tests and docs/ exempt).",
   "hooks": {
     "SessionStart": [
       {
@@ -87,6 +87,17 @@
             "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-exec",
             "timeout": 10,
             "statusMessage": "Checking unsafe autofix and worker execution commands"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" guard-adr-read",
+            "timeout": 10,
+            "statusMessage": "Checking shell ADR reads"
           }
         ]
       }

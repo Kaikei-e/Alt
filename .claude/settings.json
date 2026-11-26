@@ -1,0 +1,147 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push:*)",
+      "Bash(git -c *:*)",
+      "Bash(git -C *:*)",
+      "Bash(gh repo sync:*)",
+      "Bash(gh release upload:*)",
+      "Bash(gh release create:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run rerun:*)",
+      "Bash(git remote update:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch *push*)",
+      "Edit(.git/**)",
+      "Write(.git/**)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Edit(*.env)",
+      "Edit(!.env.example)",
+      "Edit(!.env.template)",
+      "Edit(!.env.sample)",
+      "Edit(*.pem)",
+      "Edit(*.key)",
+      "Edit(**/secrets/**)",
+      "Edit(**/.kisage/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || { echo \"adr_preflight_disabled: $s not found in this checkout; code edits are not gated.\"; exit 0; }; \"$s\" preflight --hook",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || { echo \"agent_harness_selfcheck_disabled: $s not found in this checkout; the protected-path and event-time edit guards are not active.\"; exit 0; }; \"$s\" selfcheck --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -f \"$f\" ] || exit 0; cd \"$(dirname \"$f\")\" || exit 0; case \"$f\" in *.go) gofmt -w \"$f\" ;; *.py) uv run --no-sync ruff format --quiet \"$f\" ;; *.ts|*.tsx|*.svelte) npx --no-install biome format --write \"$f\" ;; esac >/dev/null 2>&1; exit 0",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || exit 0; \"$s\" layers --hook"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -n \"$f\" ] && [ -f \"$f\" ] || exit 0; f_abs=$(cd \"$(dirname \"$f\")\" && printf '%s/%s' \"$(pwd -P)\" \"$(basename \"$f\")\") || exit 0; case \"$f_abs\" in */docs/ADR/*.md) command -v docdag >/dev/null 2>&1 || exit 0; root=$(git -C \"$(dirname \"$f_abs\")\" rev-parse --show-toplevel 2>/dev/null || printf '%s' \"${CLAUDE_PROJECT_DIR:-$(pwd)}\"); out=$(cd \"$root\" && docdag validate --touching \"$f_abs\" 2>&1) || { printf '%s\\n' \"$out\" >&2; exit 2; } ;; */docdag.yaml) command -v docdag >/dev/null 2>&1 || exit 0; root=$(git -C \"$(dirname \"$f_abs\")\" rev-parse --show-toplevel 2>/dev/null || printf '%s' \"${CLAUDE_PROJECT_DIR:-$(pwd)}\"); out=$(cd \"$root\" && docdag lint --strict --config \"$f_abs\" 2>&1) || { printf '%s\\n' \"$out\" >&2; exit 2; } ;; esac; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if printf '%s' \"$cmd\" | grep -qiE '(^|[[:space:]&;|`(]|\\$\\()(git([[:space:]]+-[cC][[:space:]]+[^[:space:]]+)*[[:space:]]+push|gh[[:space:]]+(repo[[:space:]]+sync|release[[:space:]]+(upload|create)|pr[[:space:]]+(create|merge)|workflow[[:space:]]+run|run[[:space:]]+rerun)|git[[:space:]]+remote[[:space:]]+(update|set-url|add)|git[[:space:]]+fetch[[:space:]]+.*push)([[:space:]]|$|;|&|\\||`|\\))'; then printf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED: git/gh push-class commands are forbidden by user policy. Ask the user to run push manually.\"}}'; exit 2; fi",
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-ops",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-exec",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-adr-read",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-protected",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-event-time",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" guard-scope",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\" preflight --hook",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || exit 0; \"$s\" harness-run subagent-stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

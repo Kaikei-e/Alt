@@ -14,13 +14,14 @@ import (
 
 // Test seams for external command hooks in agy.go.
 var (
-	agyRunSelfcheckFn = defaultAgyRunSelfcheck
-	agyRunPreflightFn = defaultAgyRunPreflight
-	agyRunLayersFn    = defaultAgyRunLayers
-	agyFormatFileFn   = defaultAgyFormatFile
+	agyRunSelfcheckFn      = defaultAgyRunSelfcheck
+	agyRunPreflightFn      = defaultAgyRunPreflight
+	agyRunLayersFn         = defaultAgyRunLayers
+	agyRunDocdagValidateFn = defaultAgyRunDocdagValidate
+	agyFormatFileFn        = defaultAgyFormatFile
 )
 
-// RunAgyHook implements `alt-harness agy-hook <session-start|pre-shell|pre-edit|post-edit|stop>`.
+// RunAgyHook implements `alt-harness agy-hook <session-start|pre-shell|pre-adr-read|pre-edit|post-edit|stop>`.
 // Antigravity treats any non-zero exit code as a hook crash, so every hook subcommand
 // emits valid JSON on stdout and returns exit code 0.
 func RunAgyHook(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -34,7 +35,7 @@ func RunAgyHook(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		ctx = context.Background()
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(stdout, `{"decision":"deny","reason":"usage: alt-harness agy-hook <session-start|pre-shell|pre-edit|post-edit|stop>"}`)
+		fmt.Fprintln(stdout, `{"decision":"deny","reason":"usage: alt-harness agy-hook <session-start|pre-shell|pre-adr-read|pre-edit|post-edit|stop>"}`)
 		return 0
 	}
 	sub := args[0]
@@ -44,6 +45,8 @@ func RunAgyHook(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return runAgySessionStart(ctx, stdin, stdout)
 	case "pre-shell":
 		return runAgyPreShell(ctx, rest, stdin, stdout)
+	case "pre-adr-read":
+		return runAgyPreAdrRead(ctx, stdin, stdout)
 	case "pre-edit":
 		return runAgyPreEdit(ctx, stdin, stdout)
 	case "post-edit":
@@ -336,6 +339,71 @@ func runAgyPreShell(ctx context.Context, args []string, stdin io.Reader, stdout 
 	return 0
 }
 
+func runAgyPreAdrRead(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
+	_ = ctx
+	if os.Getenv("ALT_ADR_PREFLIGHT") == "disabled" {
+		writeAgyJSON(stdout, map[string]any{"decision": "allow"})
+		return 0
+	}
+	payload, err := readAgyPayload(stdin)
+	if err != nil {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   fmt.Sprintf("BLOCKED: adr-read hook payload could not be parsed (%v).", err),
+		})
+		return 0
+	}
+	toolName, toolArgs, ok := agyToolCall(payload)
+	if !ok {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   "BLOCKED: adr-read hook payload missing toolCall/tool_name.",
+		})
+		return 0
+	}
+	if toolName != "run_command" && toolName != "Bash" && toolName != "shell" {
+		writeAgyJSON(stdout, map[string]any{"decision": "allow"})
+		return 0
+	}
+	if toolArgs == nil {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   fmt.Sprintf("BLOCKED: missing tool args for %s.", toolName),
+		})
+		return 0
+	}
+	cmdStr, cmdList, cmdOK := extractAgyCommand(toolArgs)
+	if !cmdOK {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   fmt.Sprintf("BLOCKED: missing or invalid command for %s.", toolName),
+		})
+		return 0
+	}
+
+	cwd := agyCwd(payload)
+	sessionID := agySessionID(payload)
+	agentID, _ := payload["agent_id"].(string)
+
+	held, reason, evalErr := evaluateAdrRead(cmdStr, cmdList, cwd, sessionID, agentID)
+	if evalErr != nil {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   fmt.Sprintf("BLOCKED: adr-read guard failed (%v).", evalErr),
+		})
+		return 0
+	}
+	if held {
+		writeAgyJSON(stdout, map[string]any{
+			"decision": "deny",
+			"reason":   reason,
+		})
+		return 0
+	}
+	writeAgyJSON(stdout, map[string]any{"decision": "allow"})
+	return 0
+}
+
 func extractAgyCommand(args map[string]any) (string, []string, bool) {
 	if raw, ok := args["CommandLine"]; ok {
 		if s, ok := raw.(string); ok {
@@ -546,18 +614,20 @@ func runAgyPreEdit(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
 		}
 	}
 
-	// 4. ADR preflight hook (first edit per scope held once with receipt).
+	// 4. ADR-first preflight gate (fail-closed on any non-zero exit code).
 	// Batch all non-artifact paths into a single preflight invocation so multi-file
-	// edits (e.g., apply_patch across multiple scopes) record receipts for every
-	// unacknowledged scope in one hold and succeed on the immediate retry.
+	// edits (e.g., apply_patch across multiple scopes) are evaluated together.
 	sessionID := agySessionID(payload)
 	agentID, _ := payload["agent_id"].(string)
 	if pfPayload := buildAgyPreflightPayload(paths, cwd, repo, artifactDir, sessionID, agentID); pfPayload != nil {
-		_, pfStderr, pfCode := agyRunPreflightFn(ctx, repo, pfPayload)
-		if pfCode == 2 {
+		pfStdout, pfStderr, pfCode := agyRunPreflightFn(ctx, repo, pfPayload)
+		if pfCode != 0 {
 			reason := strings.TrimSpace(pfStderr)
 			if reason == "" {
-				reason = "ADR PREFLIGHT: edit held; review governing ADRs and retry."
+				reason = strings.TrimSpace(pfStdout)
+			}
+			if reason == "" {
+				reason = fmt.Sprintf("ADR PREFLIGHT BLOCKED: preflight exited with code %d.", pfCode)
 			}
 			writeAgyJSON(stdout, map[string]any{"decision": "deny", "reason": reason})
 			return 0
@@ -699,6 +769,17 @@ func runAgyStop(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
 			})
 			return 0
 		}
+		if code, output := agyRunDocdagValidateFn(ctx, repo); code != 0 {
+			reason := strings.TrimSpace(output)
+			if reason == "" {
+				reason = "DocDag validation failed (docdag validate); fix ADR / docdag.yaml findings before stopping."
+			}
+			writeAgyJSON(stdout, map[string]any{
+				"decision": "continue",
+				"reason":   reason,
+			})
+			return 0
+		}
 	}
 
 	writeAgyJSON(stdout, map[string]any{"decision": "allow"})
@@ -786,6 +867,40 @@ func defaultAgyRunLayers(ctx context.Context, repoRoot string) (int, string) {
 		code = cmd.ProcessState.ExitCode()
 	}
 	return code, string(out)
+}
+
+func defaultAgyRunDocdagValidate(ctx context.Context, repoRoot string) (int, string) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return 0, ""
+	}
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		return 0, ""
+	}
+	statusCmd := exec.CommandContext(ctx, gitBin, "-C", repoRoot, "--no-optional-locks", "status", "--porcelain", "--", "docs/ADR", "docdag.yaml")
+	statusOut, err := statusCmd.Output()
+	if err != nil || strings.TrimSpace(string(statusOut)) == "" {
+		return 0, ""
+	}
+	docdagBin, err := exec.LookPath("docdag")
+	if err != nil {
+		return 127, "docdag is not on PATH; cannot validate modified docs/ADR or docdag.yaml."
+	}
+	cmd := exec.CommandContext(ctx, docdagBin, "validate")
+	cmd.Dir = repoRoot
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return 0, string(out)
+	}
+	code := 1
+	if cmd.ProcessState != nil {
+		code = cmd.ProcessState.ExitCode()
+	}
+	msg := strings.TrimSpace(string(out))
+	if msg == "" {
+		msg = err.Error()
+	}
+	return code, fmt.Sprintf("docdag validate failed (exit %d):\n%s", code, msg)
 }
 
 func defaultAgyFormatFile(ctx context.Context, repoRoot, filePath string) {

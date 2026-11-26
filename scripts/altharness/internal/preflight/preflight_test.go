@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-const validateSummary = "OK: 4 docs, 1 typed edges, no cycles"
+const (
+	validateSummary   = "OK: 4 docs, 1 typed edges, no cycles"
+	adrRequiredPrefix = "ADR PREFLIGHT BLOCKED (ADR required before code edits)"
+)
 
 // TestMain lets the compiled test binary act as a fast, zero-Python docdag stub
 // when invoked with ALT_DOCDAG_STUB_MODE=1.
@@ -195,7 +198,7 @@ func newFixture(t *testing.T) *preflightFixture {
 	mustWriteFile(t, filepath.Join(adrDir, "000003.md"), renderADR("000003", "Tag generator pipeline rules", "affected_services: [tag-generator]", "accepted"))
 	mustWriteFile(t, filepath.Join(adrDir, "000004.md"), renderADR("000004", "Superseded backend record", "affected_services: [alt-backend]", "superseded"))
 
-	f.git("init", "-q")
+	f.git("init", "-q", "-b", "main")
 	f.git("config", "user.name", "Test User")
 	f.git("config", "user.email", "test@example.com")
 	f.git("config", "commit.gpgsign", "false")
@@ -278,6 +281,17 @@ func (f *preflightFixture) addBindingADR(adrID, title string, services []string,
 	}
 	f.bindingRows = append(f.bindingRows, row)
 	f.configureDocdag(stubConfig{ReportFields: true})
+}
+
+func (f *preflightFixture) draftProposedADR(adrID, title string, services []string) string {
+	f.t.Helper()
+	rel := fmt.Sprintf("docs/ADR/%s.md", adrID)
+	mustWriteFile(
+		f.t,
+		filepath.Join(f.repo, filepath.FromSlash(rel)),
+		renderADR(adrID, title, fmt.Sprintf("affected_services: [%s]", strings.Join(services, ", ")), "proposed"),
+	)
+	return rel
 }
 
 func (f *preflightFixture) docdagInvocations() []stubInvocation {
@@ -439,7 +453,7 @@ func findFixLines(s string) []string {
 	return out
 }
 
-func Test01FirstPretooluseHoldsAndListsGoverningADRs(t *testing.T) {
+func Test01FirstPretooluseBlocksWithoutADRAndListsGoverningADRs(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")
@@ -451,7 +465,7 @@ func Test01FirstPretooluseHoldsAndListsGoverningADRs(t *testing.T) {
 	if res.stdout != "" {
 		t.Fatalf("stdout=%q want empty", res.stdout)
 	}
-	if !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("stderr=%q", res.stderr)
 	}
 	if !strings.Contains(firstLine(res.stderr), "alt-backend") {
@@ -461,8 +475,12 @@ func Test01FirstPretooluseHoldsAndListsGoverningADRs(t *testing.T) {
 		validateSummary,
 		"  000002  Harvester and MQ hub contract",
 		"  000001  Backend baseline architecture",
-		"docdag context",
-		"--depth 2 --budget 1500",
+		"docdag context <id> --depth 2 --budget 1500",
+		`docdag new "<title>" --dry-run --format json`,
+		"docs/ADR/template.md",
+		"status: proposed",
+		"docdag validate --touching docs/ADR/NNNNNN.md",
+		"Guide: .agents/skills/alt-adr-writer/SKILL.md",
 		"./scripts/altharness/alt-harness preflight --service alt-backend",
 	} {
 		if !strings.Contains(res.stderr, want) {
@@ -472,51 +490,69 @@ func Test01FirstPretooluseHoldsAndListsGoverningADRs(t *testing.T) {
 	if strings.Index(res.stderr, "  000002  ") >= strings.Index(res.stderr, "  000001  ") {
 		t.Errorf("expected 000002 before 000001:\n%s", res.stderr)
 	}
-	for _, forbid := range []string{"000003", "000004"} {
+	for _, forbid := range []string{"000003", "000004", "Receipt recorded"} {
 		if strings.Contains(res.stderr, forbid) {
 			t.Errorf("stderr should not contain %q:\n%s", forbid, res.stderr)
 		}
 	}
 	lower := strings.ToLower(res.stderr)
-	if !strings.Contains(lower, "supersede") || !strings.Contains(lower, "retry") {
-		t.Errorf("missing supersede/retry guidance:\n%s", res.stderr)
+	if !strings.Contains(lower, "superseding") || !strings.Contains(lower, "retry") {
+		t.Errorf("missing superseding/retry guidance:\n%s", res.stderr)
 	}
 	if len(res.stderr) >= 6000 {
 		t.Errorf("stderr len=%d >= 6000", len(res.stderr))
 	}
 }
 
-func Test02RepeatPretooluseExits0WithoutInvokingDocdag(t *testing.T) {
+func Test02BlindRetryStaysBlockedAndValidADRUnblocksWithCaching(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")
 	first := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if first.code != 2 || !strings.HasPrefix(first.stderr, "ADR PREFLIGHT (not an error)") {
+	if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
 		t.Fatalf("first=%+v", first)
 	}
-	callsAfterFirst := len(f.docdagInvocations())
-	if callsAfterFirst == 0 {
+	if len(f.docdagInvocations()) == 0 {
 		t.Fatalf("expected docdag invocations after first call")
 	}
 
-	second := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if second.code != 0 || second.stdout != "" || second.stderr != "" {
-		t.Fatalf("second=%+v", second)
+	// Blind retry MUST remain blocked every time (no receipt written).
+	blindRetry := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if blindRetry.code != 2 || !strings.HasPrefix(blindRetry.stderr, adrRequiredPrefix) {
+		t.Fatalf("blindRetry=%+v", blindRetry)
 	}
-	if len(f.docdagInvocations()) != callsAfterFirst {
-		t.Fatalf("docdag called again on cached receipt")
+	thirdBlind := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if thirdBlind.code != 2 || !strings.HasPrefix(thirdBlind.stderr, adrRequiredPrefix) {
+		t.Fatalf("thirdBlind=%+v", thirdBlind)
+	}
+
+	// Drafting a valid proposed ADR unblocks immediately (no double-hold) and caches receipt.
+	f.draftProposedADR("000005", "Planned backend update", []string{"alt-backend"})
+	unblocked := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if unblocked.code != 0 || unblocked.stdout != "" || unblocked.stderr != "" {
+		t.Fatalf("unblocked=%+v", unblocked)
+	}
+	callsAfterUnblock := len(f.docdagInvocations())
+
+	// Repeat edit in same scope hits receipt cache without calling docdag again.
+	cached := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if cached.code != 0 || cached.stdout != "" || cached.stderr != "" {
+		t.Fatalf("cached=%+v", cached)
+	}
+	if len(f.docdagInvocations()) != callsAfterUnblock {
+		t.Fatalf("docdag called again on cached receipt: %d vs %d", len(f.docdagInvocations()), callsAfterUnblock)
 	}
 }
 
-func Test03DifferentScopeInSameSessionIsHeld(t *testing.T) {
+func Test03DifferentScopeListsItsOwnGoverningADRsAndReceiptsSeparately(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	first := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")})
-	if first.code != 2 {
+	if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
 		t.Fatalf("first=%+v", first)
 	}
 	second := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "tag-generator/app/main.py"), "", "", "")})
-	if second.code != 2 || !strings.HasPrefix(second.stderr, "ADR PREFLIGHT (not an error)") {
+	if second.code != 2 || !strings.HasPrefix(second.stderr, adrRequiredPrefix) {
 		t.Fatalf("second=%+v", second)
 	}
 	if !strings.Contains(firstLine(second.stderr), "tag-generator") ||
@@ -525,41 +561,89 @@ func Test03DifferentScopeInSameSessionIsHeld(t *testing.T) {
 		strings.Contains(second.stderr, "  000002  ") {
 		t.Fatalf("unexpected second stderr:\n%s", second.stderr)
 	}
+
+	// With an active ADR, each scope gets its own receipt.
+	f.draftProposedADR("000005", "Cross-service plan", []string{"alt-backend", "tag-generator"})
+	if res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")}); res.code != 0 {
+		t.Fatalf("backend with ADR=%+v", res)
+	}
+	callsAfterBackend := len(f.docdagInvocations())
+	if res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "tag-generator/app/main.py"), "", "", "")}); res.code != 0 {
+		t.Fatalf("tag-generator with ADR=%+v", res)
+	}
+	if len(f.docdagInvocations()) <= callsAfterBackend {
+		t.Fatalf("expected docdag validate for unreceipted second scope")
+	}
+	callsAfterTag := len(f.docdagInvocations())
+	if res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "tag-generator/app/other.py"), "", "", "")}); res.code != 0 {
+		t.Fatalf("tag-generator cached=%+v", res)
+	}
+	if len(f.docdagInvocations()) != callsAfterTag {
+		t.Fatalf("expected cached receipt for tag-generator")
+	}
 }
 
-func Test04SameScopeWithDifferentAgentIDIsHeldAgain(t *testing.T) {
+func Test04SameScopeWithDifferentAgentIDUsesSeparateReceipt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.draftProposedADR("000005", "Subagent plan", []string{"alt-backend"})
 	first := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")})
-	if first.code != 2 {
+	if first.code != 0 {
 		t.Fatalf("first=%+v", first)
 	}
+	callsAfterMain := len(f.docdagInvocations())
 	second := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "worker-subagent-1", "")})
-	if second.code != 2 || !strings.HasPrefix(second.stderr, "ADR PREFLIGHT (not an error)") {
+	if second.code != 0 {
 		t.Fatalf("second=%+v", second)
+	}
+	if len(f.docdagInvocations()) <= callsAfterMain {
+		t.Fatalf("expected separate receipt check (docdag validate) for different agent_id")
 	}
 }
 
-func Test05ModifyingADRCorpusInvalidatesReceipt(t *testing.T) {
+func Test05ModifyingOrDeletingADRCorpusInvalidatesReceipt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	adrPath := filepath.Join(f.repo, f.draftProposedADR("000005", "Backend plan", []string{"alt-backend"}))
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")
-	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 2 {
+
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 {
 		t.Fatalf("first=%+v", res)
 	}
+	callsAfterFirst := len(f.docdagInvocations())
 	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 {
 		t.Fatalf("second=%+v", res)
 	}
-	adr1 := filepath.Join(f.repo, "docs/ADR/000001.md")
-	orig, err := os.ReadFile(adr1)
+	if len(f.docdagInvocations()) != callsAfterFirst {
+		t.Fatalf("expected cached receipt on second call")
+	}
+
+	// Modifying the drafted ADR invalidates the receipt and re-runs docdag validate.
+	orig, err := os.ReadFile(adrPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustWriteFile(t, adr1, string(orig)+"\nClarified invariant.\n")
+	mustWriteFile(t, adrPath, string(orig)+"\nClarified invariant.\n")
+	f.configureDocdag(stubConfig{ValidateExit: 1, ValidateStdout: "ERROR docs/ADR/000005.md: broken\n", ReportFields: true})
 
-	third := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if third.code != 2 || !strings.HasPrefix(third.stderr, "ADR PREFLIGHT (not an error)") {
-		t.Fatalf("third=%+v", third)
+	broken := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if broken.code != 2 || !strings.HasPrefix(broken.stderr, "ADR PREFLIGHT BLOCKED") || !strings.Contains(broken.stderr, "ERROR docs/ADR/000005.md: broken") {
+		t.Fatalf("broken=%+v", broken)
+	}
+
+	// Restoring valid ADR unblocks again.
+	f.configureDocdag(stubConfig{ValidateExit: 0, ReportFields: true})
+	if okRes := f.run([]string{"--hook"}, runOpts{stdin: payload}); okRes.code != 0 {
+		t.Fatalf("okRes=%+v", okRes)
+	}
+
+	// Deleting the active ADR immediately invalidates the receipt and re-locks the gate.
+	if err := os.Remove(adrPath); err != nil {
+		t.Fatal(err)
+	}
+	relocked := f.run([]string{"--hook"}, runOpts{stdin: payload})
+	if relocked.code != 2 || !strings.HasPrefix(relocked.stderr, adrRequiredPrefix) {
+		t.Fatalf("relocked=%+v", relocked)
 	}
 }
 
@@ -679,7 +763,7 @@ func Test11RootLevelFileGetsRepoRootScopeWithZeroADRWord(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "Makefile"), "", "", "")})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("res=%+v", res)
 	}
 	if !strings.Contains(firstLine(res.stderr), "repo-root") ||
@@ -692,12 +776,10 @@ func Test11RootLevelFileGetsRepoRootScopeWithZeroADRWord(t *testing.T) {
 func Test12RealWorktreeUsesWorktreeRootAndIsolatedReceipt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.draftProposedADR("000005", "Main checkout ADR", []string{"alt-backend"})
 	mainEdit := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/main.go"), "", "", "")
-	if res := f.run([]string{"--hook"}, runOpts{stdin: mainEdit}); res.code != 2 {
-		t.Fatalf("mainHeld=%+v", res)
-	}
 	if res := f.run([]string{"--hook"}, runOpts{stdin: mainEdit}); res.code != 0 {
-		t.Fatalf("mainRetry=%+v", res)
+		t.Fatalf("mainWithADR=%+v", res)
 	}
 
 	wtRoot := filepath.Join(f.repo, ".claude", "worktrees", "w1")
@@ -708,7 +790,7 @@ func Test12RealWorktreeUsesWorktreeRootAndIsolatedReceipt(t *testing.T) {
 
 	wtPayload := f.makePretoolPayload(filepath.Join(wtRoot, "alt-backend/x.go"), "", "", "")
 	res := f.run([]string{"--hook"}, runOpts{stdin: wtPayload})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("wt res=%+v", res)
 	}
 	fl := firstLine(res.stderr)
@@ -724,12 +806,18 @@ func Test12RealWorktreeUsesWorktreeRootAndIsolatedReceipt(t *testing.T) {
 		t.Fatalf("last cwd=%q want %q", invs[len(invs)-1].Cwd, wantCwd)
 	}
 
+	// Drafting an ADR inside the worktree unblocks the worktree immediately.
+	mustWriteFile(t, filepath.Join(wtRoot, "docs/ADR/000006.md"), renderADR("000006", "Worktree ADR", "affected_services: [alt-backend]", "proposed"))
 	if follow := f.run([]string{"--hook"}, runOpts{stdin: wtPayload}); follow.code != 0 {
 		t.Fatalf("followup=%+v", follow)
 	}
+	callsAfterFollow := len(f.docdagInvocations())
+	if cached := f.run([]string{"--hook"}, runOpts{stdin: wtPayload}); cached.code != 0 || len(f.docdagInvocations()) != callsAfterFollow {
+		t.Fatalf("cached=%+v", cached)
+	}
 }
 
-func Test13CodexApplyPatchHoldsBothScopesThenAllowsFollowup(t *testing.T) {
+func Test13CodexApplyPatchBlocksBothScopesUntilADRThenCachesBoth(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	patchCmd := "*** Begin Patch\n*** Update File: tag-generator/a.py\n@@\n-old = 1\n+old = 2\n*** Add File: mq-hub/b.go\n+package main\n*** End Patch\n"
@@ -741,7 +829,7 @@ func Test13CodexApplyPatchHoldsBothScopesThenAllowsFollowup(t *testing.T) {
 		"tool_input":      map[string]any{"command": patchCmd},
 	})
 	first := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if first.code != 2 || !strings.HasPrefix(first.stderr, "ADR PREFLIGHT (not an error)") {
+	if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
 		t.Fatalf("first=%+v", first)
 	}
 	fl := firstLine(first.stderr)
@@ -749,9 +837,23 @@ func Test13CodexApplyPatchHoldsBothScopesThenAllowsFollowup(t *testing.T) {
 		!strings.Contains(first.stderr, "  000003  ") || !strings.Contains(first.stderr, "  000002  ") {
 		t.Fatalf("unexpected stderr:\n%s", first.stderr)
 	}
+
+	// Follow-up without ADR remains blocked.
+	stillBlocked := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "mq-hub/c.go"), "sess-codex", "", "")})
+	if stillBlocked.code != 2 || !strings.HasPrefix(stillBlocked.stderr, adrRequiredPrefix) {
+		t.Fatalf("stillBlocked=%+v", stillBlocked)
+	}
+
+	// Once ADR exists, multi-scope apply_patch unblocks and writes receipts for both scopes.
+	f.draftProposedADR("000005", "Codex multi-scope plan", []string{"tag-generator", "mq-hub"})
+	allowed := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+	if allowed.code != 0 || allowed.stderr != "" {
+		t.Fatalf("allowed=%+v", allowed)
+	}
+	callsAfterAllowed := len(f.docdagInvocations())
 	second := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "mq-hub/c.go"), "sess-codex", "", "")})
-	if second.code != 0 || second.stderr != "" {
-		t.Fatalf("second=%+v", second)
+	if second.code != 0 || second.stderr != "" || len(f.docdagInvocations()) != callsAfterAllowed {
+		t.Fatalf("second=%+v calls=%d/%d", second, len(f.docdagInvocations()), callsAfterAllowed)
 	}
 }
 
@@ -760,7 +862,7 @@ func Test14GitHubDirectoryUsesCiCdAlias(t *testing.T) {
 	f := newFixture(t)
 	f.addBindingADR("000005", "CI workflow pinning policy", []string{"ci-cd"}, true)
 	res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, ".github/workflows/x.yml"), "", "", "")})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("res=%+v", res)
 	}
 	if !strings.Contains(firstLine(res.stderr), ".github") ||
@@ -773,12 +875,14 @@ func Test14GitHubDirectoryUsesCiCdAlias(t *testing.T) {
 func Test15SessionStartPrintsSummaryAndClearsSessionReceipts(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.draftProposedADR("000005", "Restart test ADR", []string{"alt-backend"})
 	editPayload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "sess-restart", "", "")
-	if res := f.run([]string{"--hook"}, runOpts{stdin: editPayload}); res.code != 2 {
-		t.Fatalf("held=%+v", res)
-	}
 	if res := f.run([]string{"--hook"}, runOpts{stdin: editPayload}); res.code != 0 {
-		t.Fatalf("allowed=%+v", res)
+		t.Fatalf("first=%+v", res)
+	}
+	callsAfterFirst := len(f.docdagInvocations())
+	if res := f.run([]string{"--hook"}, runOpts{stdin: editPayload}); res.code != 0 || len(f.docdagInvocations()) != callsAfterFirst {
+		t.Fatalf("cached=%+v", res)
 	}
 
 	otherSession := filepath.Join(f.stateDir, "other-session")
@@ -787,16 +891,17 @@ func Test15SessionStartPrintsSummaryAndClearsSessionReceipts(t *testing.T) {
 	_ = os.Chtimes(otherSession, eightDaysAgo, eightDaysAgo)
 
 	start := f.run([]string{"--hook"}, runOpts{stdin: f.makeSessionStartPayload("sess-restart")})
-	if start.code != 0 || !strings.HasPrefix(start.stdout, "adr_preflight_enabled") || !strings.Contains(start.stdout, validateSummary) {
+	if start.code != 0 || !strings.HasPrefix(start.stdout, "adr_preflight_enabled") || !strings.Contains(start.stdout, validateSummary) || !strings.Contains(start.stdout, "ADR-first gate active") {
 		t.Fatalf("start=%+v", start)
 	}
 	if _, err := os.Stat(otherSession); err != nil {
 		t.Fatalf("other session should still exist: %v", err)
 	}
 
-	heldAgain := f.run([]string{"--hook"}, runOpts{stdin: editPayload})
-	if heldAgain.code != 2 || !strings.HasPrefix(heldAgain.stderr, "ADR PREFLIGHT (not an error)") {
-		t.Fatalf("heldAgain=%+v", heldAgain)
+	callsAfterStart := len(f.docdagInvocations())
+	revalidated := f.run([]string{"--hook"}, runOpts{stdin: editPayload})
+	if revalidated.code != 0 || len(f.docdagInvocations()) <= callsAfterStart {
+		t.Fatalf("expected cleared receipt to trigger docdag validate again: res=%+v calls=%d/%d", revalidated, len(f.docdagInvocations()), callsAfterStart)
 	}
 }
 
@@ -895,7 +1000,7 @@ func Test20BriefWith30BindingADRsListsOnly8NewestAndStatesCount(t *testing.T) {
 	f.git("commit", "-q", "-m", "add 30 search-indexer ADRs")
 
 	res := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "search-indexer/app/main.go"), "", "", "")})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("res=%+v", res)
 	}
 	if !strings.Contains(res.stderr, "Scope search-indexer: 30 governing binding ADRs (8 newest shown):") {
@@ -916,14 +1021,16 @@ func Test20BriefWith30BindingADRsListsOnly8NewestAndStatesCount(t *testing.T) {
 	}
 }
 
-func Test21CommittingDocdagYamlOnlyChangeReholdsScope(t *testing.T) {
+func Test21CommittingDocdagYamlOnlyChangeInvalidatesReceipt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.draftProposedADR("000005", "Config change ADR", []string{"alt-backend"})
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")
-	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 2 {
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 {
 		t.Fatalf("first=%+v", res)
 	}
-	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 {
+	callsAfterFirst := len(f.docdagInvocations())
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 || len(f.docdagInvocations()) != callsAfterFirst {
 		t.Fatalf("second=%+v", res)
 	}
 	cfgPath := filepath.Join(f.repo, "docdag.yaml")
@@ -933,14 +1040,15 @@ func Test21CommittingDocdagYamlOnlyChangeReholdsScope(t *testing.T) {
 	f.git("commit", "-q", "-m", "update docdag.yaml only")
 
 	third := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if third.code != 2 || !strings.HasPrefix(third.stderr, "ADR PREFLIGHT (not an error)") {
-		t.Fatalf("third=%+v", third)
+	if third.code != 0 || len(f.docdagInvocations()) <= callsAfterFirst {
+		t.Fatalf("expected docdag.yaml commit to invalidate receipt and trigger re-validation: res=%+v calls=%d/%d", third, len(f.docdagInvocations()), callsAfterFirst)
 	}
 }
 
 func Test22StateDirAsRegularFileReportsInternalError(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.draftProposedADR("000005", "State blocker test", []string{"alt-backend"})
 	blocker := filepath.Join(f.tmpRoot, "state_blocker_file")
 	mustWriteFile(t, blocker, "not a directory\n")
 
@@ -1048,6 +1156,9 @@ func Test26PatchSpanningMainAndWorktreeSameScopeKeysReceiptByRoot(t *testing.T) 
 	wtRoot := filepath.Join(f.repo, ".claude", "worktrees", "w-shared")
 	f.git("worktree", "add", "-q", "-b", "wt-shared", wtRoot)
 
+	// Main checkout has an active ADR, but worktree does NOT -> spanning patch must block.
+	f.draftProposedADR("000005", "Main spanning ADR", []string{"alt-backend"})
+
 	patchCmd := fmt.Sprintf("*** Begin Patch\n*** Add File: %s\n+package a\n*** Add File: %s\n+package b\n*** End Patch\n",
 		filepath.Join(f.repo, "alt-backend/a.go"),
 		filepath.Join(wtRoot, "alt-backend/b.go"))
@@ -1059,42 +1170,43 @@ func Test26PatchSpanningMainAndWorktreeSameScopeKeysReceiptByRoot(t *testing.T) 
 		"tool_input":      map[string]any{"command": patchCmd},
 	})
 	first := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if first.code != 2 || !strings.HasPrefix(first.stderr, "ADR PREFLIGHT (not an error)") {
+	if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
 		t.Fatalf("first=%+v", first)
 	}
-	callsAfterFirst := len(f.docdagInvocations())
+
+	// Once worktree also has an active ADR, spanning patch succeeds and caches per root.
+	mustWriteFile(t, filepath.Join(wtRoot, "docs/ADR/000006.md"), renderADR("000006", "Worktree spanning ADR", "affected_services: [alt-backend]", "proposed"))
 	second := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if second.code != 0 || second.stderr != "" || len(f.docdagInvocations()) != callsAfterFirst {
-		t.Fatalf("second=%+v calls=%d/%d", second, len(f.docdagInvocations()), callsAfterFirst)
+	if second.code != 0 || second.stderr != "" {
+		t.Fatalf("second=%+v", second)
+	}
+	callsAfterSecond := len(f.docdagInvocations())
+	third := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+	if third.code != 0 || third.stderr != "" || len(f.docdagInvocations()) != callsAfterSecond {
+		t.Fatalf("third=%+v calls=%d/%d", third, len(f.docdagInvocations()), callsAfterSecond)
 	}
 }
 
-func Test27SecondEditToAlreadyDirtyADRReholdsScope(t *testing.T) {
+func Test27SecondEditToAlreadyDirtyADRInvalidatesReceipt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "", "", "")
-	if f.run([]string{"--hook"}, runOpts{stdin: payload}).code != 2 {
-		t.Fatalf("expected hold")
-	}
-	if f.run([]string{"--hook"}, runOpts{stdin: payload}).code != 0 {
-		t.Fatalf("expected allow")
-	}
 
 	adr1 := filepath.Join(f.repo, "docs/ADR/000001.md")
 	orig, _ := os.ReadFile(adr1)
 	mustWriteFile(t, adr1, string(orig)+"\nFirst dirty edit.\n")
 
-	if f.run([]string{"--hook"}, runOpts{stdin: payload}).code != 2 {
-		t.Fatalf("expected hold after first dirty edit")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 {
+		t.Fatalf("expected allow after first dirty edit: %+v", res)
 	}
-	if f.run([]string{"--hook"}, runOpts{stdin: payload}).code != 0 {
-		t.Fatalf("expected allow after first dirty edit")
+	callsAfterFirst := len(f.docdagInvocations())
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 || len(f.docdagInvocations()) != callsAfterFirst {
+		t.Fatalf("expected cached allow: %+v", res)
 	}
 
 	mustWriteFile(t, adr1, string(orig)+"\nSecond dirty edit with new bytes.\n")
-	reheld := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if reheld.code != 2 || !strings.HasPrefix(reheld.stderr, "ADR PREFLIGHT (not an error)") {
-		t.Fatalf("reheld=%+v", reheld)
+	if res := f.run([]string{"--hook"}, runOpts{stdin: payload}); res.code != 0 || len(f.docdagInvocations()) <= callsAfterFirst {
+		t.Fatalf("expected second dirty edit to invalidate receipt and re-validate: res=%+v calls=%d/%d", res, len(f.docdagInvocations()), callsAfterFirst)
 	}
 }
 
@@ -1177,7 +1289,7 @@ func Test31BriefTruncatesOver6000CharsWith12Scopes(t *testing.T) {
 		"tool_input":      map[string]any{"command": strings.Join(patchLines, "\n")},
 	})
 	res := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("res=%+v", res)
 	}
 	if len(res.stderr) >= 6000 {
@@ -1186,15 +1298,17 @@ func Test31BriefTruncatesOver6000CharsWith12Scopes(t *testing.T) {
 	for _, want := range []string{
 		"... (brief truncated; run the --service command per scope)",
 		"docdag context <id> --depth 2 --budget 1500",
-		"List all for a service:",
-		"If a planned change contradicts a binding ADR, stop and supersede it with a new ADR rather than contradicting it silently.",
+		`docdag new "<title>" --dry-run --format json`,
+		"docs/ADR/template.md",
+		"docdag validate --touching docs/ADR/NNNNNN.md",
+		"Guide: .agents/skills/alt-adr-writer/SKILL.md",
 	} {
 		if !strings.Contains(res.stderr, want) {
 			t.Errorf("missing %q:\n%s", want, res.stderr)
 		}
 	}
 	trimmedLines := strings.Split(strings.TrimSpace(res.stderr), "\n")
-	if !strings.Contains(trimmedLines[len(trimmedLines)-1], "retrying the same edit now succeeds") {
+	if !strings.Contains(trimmedLines[len(trimmedLines)-1], "Guide: .agents/skills/alt-adr-writer/SKILL.md") {
 		t.Fatalf("last line=%q", trimmedLines[len(trimmedLines)-1])
 	}
 }
@@ -1214,7 +1328,7 @@ func Test32RelativeFilePathResolvesAgainstPayloadCwd(t *testing.T) {
 		"tool_input":      map[string]any{"file_path": "app/relative.go"},
 	})
 	res := f.run([]string{"--hook"}, runOpts{stdin: string(raw), cwd: f.outsideDir})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") ||
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) ||
 		!strings.Contains(firstLine(res.stderr), "alt-backend") ||
 		!strings.Contains(res.stderr, "  000002  ") {
 		t.Fatalf("res=%+v", res)
@@ -1232,7 +1346,7 @@ func Test33NotebookPathPayloadIsGated(t *testing.T) {
 		"tool_input":      map[string]any{"notebook_path": filepath.Join(f.repo, "tag-generator/explore.ipynb")},
 	})
 	res := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if res.code != 2 || !strings.HasPrefix(res.stderr, "ADR PREFLIGHT (not an error)") ||
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) ||
 		!strings.Contains(firstLine(res.stderr), "tag-generator") ||
 		!strings.Contains(res.stderr, "  000003  ") {
 		t.Fatalf("res=%+v", res)
@@ -1251,7 +1365,7 @@ func Test34ApplyPatchDeleteAndMoveToAreGated(t *testing.T) {
 		"tool_input":      map[string]any{"command": patchCmd},
 	})
 	res := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-	if res.code != 2 {
+	if res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
 		t.Fatalf("res=%+v", res)
 	}
 	fl := firstLine(res.stderr)
@@ -1300,7 +1414,7 @@ func Test36PretooluseQueryFailureBlocksWithoutWritingReceipt(t *testing.T) {
 
 	f.configureDocdag(stubConfig{QueryExit: 0, ReportFields: true})
 	retry := f.run([]string{"--hook"}, runOpts{stdin: payload})
-	if retry.code != 2 || !strings.HasPrefix(retry.stderr, "ADR PREFLIGHT (not an error)") {
+	if retry.code != 2 || !strings.HasPrefix(retry.stderr, adrRequiredPrefix) {
 		t.Fatalf("retry=%+v", retry)
 	}
 }
@@ -1330,7 +1444,7 @@ func Test38AgyCamelCaseSessionStartAndPretoolusePayloads(t *testing.T) {
 		"cwd":            f.repo,
 	})
 	ssRes := f.run([]string{"--hook"}, runOpts{stdin: string(ssRaw)})
-	if ssRes.code != 0 || !strings.HasPrefix(ssRes.stdout, "adr_preflight_enabled:") {
+	if ssRes.code != 0 || !strings.HasPrefix(ssRes.stdout, "adr_preflight_enabled:") || !strings.Contains(ssRes.stdout, "ADR-first gate active") {
 		t.Fatalf("ssRes=%+v", ssRes)
 	}
 
@@ -1354,12 +1468,30 @@ func Test38AgyCamelCaseSessionStartAndPretoolusePayloads(t *testing.T) {
 			},
 		})
 		first := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-		if first.code != 2 || !strings.HasPrefix(first.stderr, "ADR PREFLIGHT (not an error)") {
+		if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
 			t.Fatalf("%s first=%+v", tc.toolName, first)
 		}
-		retry := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
-		if retry.code != 0 {
-			t.Fatalf("%s retry=%+v", tc.toolName, retry)
+		blindRetry := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+		if blindRetry.code != 2 || !strings.HasPrefix(blindRetry.stderr, adrRequiredPrefix) {
+			t.Fatalf("%s blindRetry=%+v", tc.toolName, blindRetry)
+		}
+	}
+
+	f.draftProposedADR("000005", "Agy camelCase plan", []string{"alt-backend", "tag-generator", "mq-hub"})
+	for _, tc := range cases {
+		raw, _ := json.Marshal(map[string]any{
+			"conversationId": "agy-conv-42",
+			"hookEventName":  "PreToolUse",
+			"cwd":            f.repo,
+			"toolCall": map[string]any{
+				"id":   "tc-2",
+				"name": tc.toolName,
+				"args": tc.args,
+			},
+		})
+		allowed := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+		if allowed.code != 0 || allowed.stderr != "" {
+			t.Fatalf("%s allowed=%+v", tc.toolName, allowed)
 		}
 	}
 }
@@ -1383,17 +1515,15 @@ func Test39CLIUsageAndXDGStateFallback(t *testing.T) {
 	}
 
 	// XDG_STATE_HOME fallback when ALT_ADR_PREFLIGHT_STATE_DIR is unset.
+	f.draftProposedADR("000005", "XDG receipt test", []string{"alt-backend"})
 	xdgDir := filepath.Join(f.tmpRoot, "xdg_state")
 	payload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "sess-xdg", "", "")
 	env := map[string]*string{
 		"ALT_ADR_PREFLIGHT_STATE_DIR": nil,
 		"XDG_STATE_HOME":              strPtr(xdgDir),
 	}
-	if res := f.run([]string{"--hook"}, runOpts{stdin: payload, envOverrides: env}); res.code != 2 {
-		t.Fatalf("first xdg=%+v", res)
-	}
 	if res := f.run([]string{"--hook"}, runOpts{stdin: payload, envOverrides: env}); res.code != 0 {
-		t.Fatalf("second xdg=%+v", res)
+		t.Fatalf("first xdg=%+v", res)
 	}
 	if _, err := os.Stat(filepath.Join(xdgDir, "alt-adr-preflight", "sess-xdg")); err != nil {
 		t.Fatalf("expected receipt under XDG_STATE_HOME: %v", err)
@@ -1435,5 +1565,272 @@ func Test40RealRepoServiceAltBackendContains001010(t *testing.T) {
 	}
 	if !strings.Contains(outBuf.String(), "001010") {
 		t.Fatalf("stdout missing 001010:\n%s", outBuf.String())
+	}
+}
+
+func Test41IsTestRelpathClassification(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		relPath string
+		want    bool
+	}{
+		// Path segments.
+		{"tests/test_smoke.py", true},
+		{"alt-backend/app/test/helper.go", true},
+		{"alt-frontend-sv/src/__tests__/card.svelte", true},
+		{"e2e/login.ts", true},
+		{"alt-backend/app/testdata/sample.json", true},
+		{"tag-generator/fixtures/feed.xml", true},
+		// Go.
+		{"alt-backend/app/handler_test.go", true},
+		{"scripts/altharness/internal/preflight/preflight_test.go", true},
+		// Python.
+		{"news-creator/app/test_summary.py", true},
+		{"news-creator/app/summary_test.py", true},
+		{"tag-generator/app/conftest.py", true},
+		// TS / JS / Svelte / Deno.
+		{"alt-frontend-sv/src/lib/a.test.ts", true},
+		{"alt-frontend-sv/src/lib/a.spec.ts", true},
+		{"alt-frontend-sv/src/lib/a.svelte.test.ts", true},
+		{"alt-frontend-sv/src/lib/a.test.tsx", true},
+		{"alt-frontend-sv/src/lib/a.spec.tsx", true},
+		{"alt-frontend-sv/src/lib/a.test.js", true},
+		{"alt-frontend-sv/src/lib/a.spec.js", true},
+		{"alt-frontend-sv/src/lib/a.test.mjs", true},
+		{"auth-token-manager/token_test.ts", true},
+		{"auth-token-manager/view_test.tsx", true},
+		// Rust.
+		{"rask-log-forwarder/src/parser_test.rs", true},
+		// Shell.
+		{"scripts/lint/run_test.sh", true},
+		{"scripts/test-lint.sh", true},
+
+		// Non-test production paths (must NOT substring-match).
+		{"scripts/altharness/internal/pytestrand/scanner.go", false},
+		{"alt-backend/app/testing/clock.go", false},
+		{"alt-backend/app/testutil/mock.go", false},
+		{"alt-backend/app/latest/main.go", false},
+		{"alt-backend/app/contest.go", false},
+		{"news-creator/app/attest_service.py", false},
+		{"alt-frontend-sv/src/testing.ts", false},
+		{"alt-frontend-sv/src/test.svelte", false},
+		{"scripts/test.sh", false},
+		{"alt-backend/app/main.go", false},
+		{"docs/ADR/001032.md", false},
+		{"", false},
+		{".", false},
+	}
+	for _, tc := range cases {
+		if got := isTestRelpath(tc.relPath); got != tc.want {
+			t.Errorf("isTestRelpath(%q) = %v, want %v", tc.relPath, got, tc.want)
+		}
+	}
+}
+
+func Test42TestOnlyEditsExemptFromADRRequirementButValidateGraph(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	// No active ADR exists, yet editing a Go test file succeeds (and validates docdag once).
+	testEdit1 := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/handler_test.go"), "sess-tdd", "", "")
+	res1 := f.run([]string{"--hook"}, runOpts{stdin: testEdit1})
+	if res1.code != 0 || res1.stdout != "" || res1.stderr != "" {
+		t.Fatalf("testEdit1=%+v", res1)
+	}
+	callsAfterFirst := len(f.docdagInvocations())
+	if callsAfterFirst == 0 {
+		t.Fatalf("expected docdag validate to run for first test edit")
+	}
+
+	// Second test edit in same root (even different service/language) hits __tests__ cache.
+	testEdit2 := f.makePretoolPayload(filepath.Join(f.repo, "news-creator/app/test_summary.py"), "sess-tdd", "", "")
+	res2 := f.run([]string{"--hook"}, runOpts{stdin: testEdit2})
+	if res2.code != 0 || len(f.docdagInvocations()) != callsAfterFirst {
+		t.Fatalf("testEdit2=%+v calls=%d/%d", res2, len(f.docdagInvocations()), callsAfterFirst)
+	}
+
+	// Production edit is STILL blocked because __tests__ receipt does not cover prod scopes.
+	prodEdit := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/handler.go"), "sess-tdd", "", "")
+	prodRes := f.run([]string{"--hook"}, runOpts{stdin: prodEdit})
+	if prodRes.code != 2 || !strings.HasPrefix(prodRes.stderr, adrRequiredPrefix) {
+		t.Fatalf("prodRes=%+v", prodRes)
+	}
+
+	// Broken docdag graph MUST fail-closed even for test-only edits (new session to bypass cache).
+	f.configureDocdag(stubConfig{ValidateExit: 1, ValidateStdout: "ERROR docs/ADR/000001.md: broken\n", ReportFields: true})
+	brokenTest := f.run([]string{"--hook"}, runOpts{stdin: f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/handler_test.go"), "sess-tdd-broken", "", "")})
+	if brokenTest.code != 2 || !strings.HasPrefix(brokenTest.stderr, "ADR PREFLIGHT BLOCKED") || !strings.Contains(brokenTest.stderr, "ERROR docs/ADR/000001.md: broken") {
+		t.Fatalf("brokenTest=%+v", brokenTest)
+	}
+
+	// Missing docdag on PATH MUST fail-closed even for test-only edits.
+	missingDocdag := f.run([]string{"--hook"}, runOpts{
+		stdin:     f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/handler_test.go"), "sess-tdd-missing", "", ""),
+		pathValue: f.buildPathWithoutDocdag(),
+	})
+	if missingDocdag.code != 2 || !strings.Contains(missingDocdag.stderr, "docdag is not on PATH") {
+		t.Fatalf("missingDocdag=%+v", missingDocdag)
+	}
+}
+
+func Test43MixedTestAndProdPatchBlocksWithoutRecordingReceipt(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	patchCmd := "*** Begin Patch\n*** Add File: alt-backend/app/handler_test.go\n+package app\n*** Add File: alt-backend/app/handler.go\n+package app\n*** End Patch\n"
+	raw, _ := json.Marshal(map[string]any{
+		"session_id":      "sess-mixed",
+		"cwd":             f.repo,
+		"hook_event_name": "PreToolUse",
+		"tool_name":       "apply_patch",
+		"tool_input":      map[string]any{"command": patchCmd},
+	})
+	first := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+	if first.code != 2 || !strings.HasPrefix(first.stderr, adrRequiredPrefix) {
+		t.Fatalf("first=%+v", first)
+	}
+	second := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+	if second.code != 2 || !strings.HasPrefix(second.stderr, adrRequiredPrefix) {
+		t.Fatalf("second=%+v", second)
+	}
+
+	// Drafting valid ADR unblocks mixed patch immediately.
+	f.draftProposedADR("000005", "Mixed patch ADR", []string{"alt-backend"})
+	allowed := f.run([]string{"--hook"}, runOpts{stdin: string(raw)})
+	if allowed.code != 0 || allowed.stderr != "" {
+		t.Fatalf("allowed=%+v", allowed)
+	}
+}
+
+func Test44DetectActiveADRsWorktreeEdgeCasesAndInvalidADRBlocks(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	prodPayload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "sess-edge", "", "")
+
+	// 1. Empty 0-byte ADR file must NOT satisfy the gate.
+	emptyADR := filepath.Join(f.repo, "docs/ADR/000010.md")
+	mustWriteFile(t, emptyADR, "")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("empty ADR should stay blocked: %+v", res)
+	}
+	_ = os.Remove(emptyADR)
+
+	// 1b. Symlink to a non-empty file must NOT satisfy the gate (must be a regular file).
+	symlinkADR := filepath.Join(f.repo, "docs/ADR/000013.md")
+	if err := os.Symlink(filepath.Join(f.repo, "docs/ADR/000001.md"), symlinkADR); err != nil {
+		t.Fatal(err)
+	}
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("symlink ADR should stay blocked: %+v", res)
+	}
+	_ = os.Remove(symlinkADR)
+
+	// 2. Non-ADR file under docs/ADR/ (e.g. template.md) must NOT satisfy the gate.
+	mustWriteFile(t, filepath.Join(f.repo, "docs/ADR/template.md"), "# template\n")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("template.md should not satisfy gate: %+v", res)
+	}
+
+	// 3. Staged deletion (git rm --cached, file still on disk) must NOT satisfy the gate.
+	f.git("rm", "--cached", "-q", "docs/ADR/000001.md")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("staged deletion should not satisfy gate: %+v", res)
+	}
+	f.git("reset", "-q", "HEAD", "--", "docs/ADR/000001.md")
+
+	// 4. Worktree deletion (rm) must NOT satisfy the gate.
+	orig001, err := os.ReadFile(filepath.Join(f.repo, "docs/ADR/000001.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(f.repo, "docs/ADR/000001.md"))
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("worktree deletion should not satisfy gate: %+v", res)
+	}
+	mustWriteFile(t, filepath.Join(f.repo, "docs/ADR/000001.md"), string(orig001))
+
+	// 5. Invalid drafted ADR stays blocked on docdag validate failure; fixing unblocks immediately.
+	f.draftProposedADR("000011", "Broken draft", []string{"alt-backend"})
+	f.configureDocdag(stubConfig{ValidateExit: 1, ValidateStdout: "ERROR docs/ADR/000011.md: missing Decision\n", ReportFields: true})
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.Contains(res.stderr, "ERROR docs/ADR/000011.md: missing Decision") {
+		t.Fatalf("invalid drafted ADR must fail-closed: %+v", res)
+	}
+	f.configureDocdag(stubConfig{ValidateExit: 0, ReportFields: true})
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 0 {
+		t.Fatalf("fixed drafted ADR should unblock immediately: %+v", res)
+	}
+	_ = os.Remove(filepath.Join(f.repo, "docs/ADR/000011.md"))
+
+	// 6. Rename into docs/ADR/000012.md satisfies the gate.
+	mustWriteFile(t, filepath.Join(f.repo, "docs/ADR/draft.md"), renderADR("000012", "Renamed ADR", "affected_services: [alt-backend]", "proposed"))
+	f.git("add", "docs/ADR/draft.md")
+	f.git("commit", "-q", "-m", "add draft")
+	f.git("mv", "docs/ADR/draft.md", "docs/ADR/000012.md")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 0 {
+		t.Fatalf("renamed ADR should satisfy gate: %+v", res)
+	}
+}
+
+func Test45FeatureBranchCommittedADRVsMainMasterIsolation(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	prodPayload := f.makePretoolPayload(filepath.Join(f.repo, "alt-backend/app/x.go"), "sess-branch", "", "")
+
+	// 1. Committed ADR on main MUST NOT satisfy the gate.
+	f.addBindingADR("000005", "Committed on main", []string{"alt-backend"}, true)
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("committed ADR on main must NOT satisfy gate: %+v", res)
+	}
+
+	// 2. Feature branch with no ADR commit yet is still blocked.
+	f.git("checkout", "-q", "-b", "feat/adr-first")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("clean feature branch without ADR must be blocked: %+v", res)
+	}
+
+	// 3. Committing a proposed ADR on the feature branch satisfies the gate even with a clean worktree.
+	rel := f.draftProposedADR("000006", "Feature branch ADR", []string{"alt-backend"})
+	f.git("add", rel)
+	f.git("commit", "-q", "-m", "docs(ADR): propose 000006")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 0 {
+		t.Fatalf("committed ADR on feature branch should unblock: %+v", res)
+	}
+
+	// 4. Staged deletion of the branch-committed ADR (while still on disk) re-locks the gate.
+	f.git("rm", "--cached", "-q", rel)
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("staged deletion of feature-branch ADR must re-lock: %+v", res)
+	}
+	f.git("reset", "-q", "HEAD", "--", rel)
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 0 {
+		t.Fatalf("restored feature-branch ADR should unblock: %+v", res)
+	}
+
+	// 5. Fast-forward merging into main (identical tree!) MUST immediately re-lock on main.
+	f.git("checkout", "-q", "main")
+	f.git("merge", "-q", "--ff-only", "feat/adr-first")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("after switching to main with identical tree, gate must re-lock: %+v", res)
+	}
+
+	// 6. Committed ADR on master also MUST NOT satisfy the gate.
+	f.git("branch", "-m", "main", "master")
+	if res := f.run([]string{"--hook"}, runOpts{stdin: prodPayload}); res.code != 2 || !strings.HasPrefix(res.stderr, adrRequiredPrefix) {
+		t.Fatalf("committed ADR on master must NOT satisfy gate: %+v", res)
+	}
+}
+
+func Test46SessionStartEmitsCompactADRFirstContract(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	res := f.run([]string{"--hook"}, runOpts{stdin: f.makeSessionStartPayload("sess-contract")})
+	if res.code != 0 {
+		t.Fatalf("res=%+v", res)
+	}
+	want := fmt.Sprintf(
+		"adr_preflight_enabled: %s. ADR-first gate active: production edits require a valid new/updated docs/ADR/NNNNNN.md (status: proposed before code -> accepted after tests pass; tests and docs/ exempt). Check binding ADRs via docdag context <id> (or --section Consequences), draft via docdag new \"<title>\" --dry-run --format json + docs/ADR/template.md, then implement.\n",
+		validateSummary,
+	)
+	if res.stdout != want {
+		t.Fatalf("stdout mismatch:\ngot:  %q\nwant: %q", res.stdout, want)
 	}
 }

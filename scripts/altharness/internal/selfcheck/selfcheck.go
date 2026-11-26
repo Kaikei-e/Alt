@@ -58,6 +58,7 @@ var validAltHarnessSubcommands = map[string]struct{}{
 	"guard-ops":         {},
 	"guard-protected":   {},
 	"guard-event-time":  {},
+	"guard-adr-read":    {},
 	"harness-run":       {},
 	"agy-hook":          {},
 	"gate":              {},
@@ -292,7 +293,7 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 		return 0
 	}
 	total := 0
-	var hasSessionStart, hasPreShell, hasPreEdit, hasPostEdit, hasStop bool
+	var hasSessionStart, hasPreShell, hasPreAdrRead, hasPreEdit, hasPostEdit, hasStop bool
 
 	names := make([]string, 0, len(cfg))
 	for k := range cfg {
@@ -389,6 +390,9 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 								if subArgs[0] == "pre-shell" && matcherMatches(matcher, "run_command") {
 									hasPreShell = true
 								}
+								if subArgs[0] == "pre-adr-read" && matcherMatches(matcher, "run_command") {
+									hasPreAdrRead = true
+								}
 								if subArgs[0] == "pre-edit" && matcherMatches(matcher, "write_file") && matcherMatches(matcher, "edit_file") {
 									hasPreEdit = true
 								}
@@ -412,6 +416,9 @@ func checkAgyHookFile(root, label string, cfg map[string]any, findings *[]Findin
 	}
 	if !hasPreShell {
 		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness agy-hook pre-shell with a matcher matching "run_command"`})
+	}
+	if !hasPreAdrRead {
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness agy-hook pre-adr-read with a matcher matching "run_command"`})
 	}
 	if !hasPreEdit {
 		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness agy-hook pre-edit with a matcher matching "write_file" and "edit_file"`})
@@ -544,7 +551,7 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 	}
 	total := 0
 	foundSub := map[string]bool{}
-	bashOps, bashExec := false, false
+	bashOps, bashExec, bashAdrRead := false, false, false
 	for event, entries := range hooksMap {
 		for _, pair := range iterHooks(entries) {
 			hook := pair.hook
@@ -575,6 +582,9 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 				if ((isAlt && sub == "guard-exec") || (isClaude && strings.Contains(cmd, "deny-unsafe-commands.sh"))) && matcherMatches(pair.matcher, "Bash") {
 					bashExec = true
 				}
+				if isAlt && sub == "guard-adr-read" && matcherMatches(pair.matcher, "Bash") {
+					bashAdrRead = true
+				}
 			}
 			checkHookCommandRefs(root, label, cmd, findings)
 		}
@@ -589,6 +599,9 @@ func checkHookFile(root, label string, cfg map[string]any, isClaude bool, findin
 	}
 	if !bashExec {
 		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness guard-exec with a matcher matching "Bash"`})
+	}
+	if !bashAdrRead {
+		*findings = append(*findings, Finding{"H4", label, `PreToolUse hooks do not reference alt-harness guard-adr-read with a matcher matching "Bash"`})
 	}
 	return total
 }
