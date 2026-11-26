@@ -430,11 +430,11 @@ check(
 
 sys.stdout.write("production inventory pin\n")
 EXPECTED_ACCIDENTAL_OSU = 16
-EXPECTED_LONG_RUNNING_OSU = 67
+EXPECTED_LONG_RUNNING_OSU = 68
 FROZEN_LONG_RUNNING_CAP = 63
-EXPECTED_DECLARED_TOTAL = 82
+EXPECTED_DECLARED_TOTAL = 83
 EXPECTED_EPHEMERAL_ONESHOTS = 10
-EXPECTED_DEFAULT_RENDER_COUNT = 77
+EXPECTED_DEFAULT_RENDER_COUNT = 78
 STALE_RENDER_COUNT = 87
 
 PROD_INV = audit.load_units_inventory(SCRIPTS / "ops-surface-inventory.yaml")
@@ -461,12 +461,12 @@ check(
     and PROD_INV["accidental_osu_baseline"] == EXPECTED_ACCIDENTAL_OSU,
 )
 check(
-    "production long-running OSU stays at frozen cap 63 plus four security boundaries",
+    "production long-running OSU stays at frozen cap 63 plus five excepted platform units",
     len(prod_classified["long_running"]) == EXPECTED_LONG_RUNNING_OSU
     and PROD_INV["long_running_osu_baseline"] == FROZEN_LONG_RUNNING_CAP,
 )
 check(
-    "declared total is 82 (sovereign and evaluator cert writers moved in-process)",
+    "declared total is 83",
     len(prod_services) == EXPECTED_DECLARED_TOTAL
     and prod_baseline["counts"]["declared_total"] == EXPECTED_DECLARED_TOTAL,
 )
@@ -477,13 +477,13 @@ check(
 )
 prod_inv = audit.inventory(prod_services)
 check(
-    "production default render count is declared_total - profiled (77)",
+    "production default render count is declared_total - profiled (78)",
     prod_inv["counts"].get("compose_config_default_profiles") == EXPECTED_DEFAULT_RENDER_COUNT
     and prod_inv["counts"]["declared_total"] - len(prod_inv["profiled"])
     == EXPECTED_DEFAULT_RENDER_COUNT,
 )
 check(
-    "production full render count is declared_total (82)",
+    "production full render count is declared_total (83)",
     prod_inv["counts"].get("compose_config_full_profiles") == EXPECTED_DECLARED_TOTAL
     and prod_inv["counts"]["declared_total"] == EXPECTED_DECLARED_TOTAL,
 )
@@ -598,7 +598,7 @@ ok_payload, ok_found = audit.prepare_baseline_write(
     budget_found=[],
 )
 check(
-    "--write-baseline preserves the 24-edge allowlist and writes computed 77/82",
+    "--write-baseline preserves the 24-edge allowlist and writes computed 78/83",
     ok_found == []
     and ok_payload is not None
     and ok_payload["init_edges_allowlist"] == prod_baseline["init_edges_allowlist"]

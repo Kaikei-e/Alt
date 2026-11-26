@@ -1,0 +1,22 @@
+# blackbox_exporter modules for the east-west mTLS listeners.
+#
+# The module presents no client certificate and has no key to present. Every
+# listener negotiates TLS 1.3 with this Go client (the Go and Python servers
+# require it; recap-worker's rustls accepts 1.2 too but the client offers 1.3),
+# and a TLS 1.3 server sends its Certificate message before it asks for or
+# verifies the client's, so the handshake exposes the served leaf without
+# giving the prober an identity the peer allowlists would have to know about.
+# A TLS 1.2-only listener aborts the handshake instead, which surfaces as
+# probe_success 0 rather than as a quiet absence.
+#
+# ca_file is the public root published by step-ca-bootstrap. Verifying against
+# it turns a wrong-name or wrong-CA certificate into a failed probe.
+
+modules:
+  mtls_server_cert:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      tls: true
+      tls_config:
+        ca_file: /trust/ca-bundle.pem

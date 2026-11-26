@@ -311,3 +311,53 @@ scrape_configs:
           service: 'alt-butterfly-facade'
     scrape_interval: 15s
     metrics_path: /metrics
+
+  # Certificate each east-west TLS listener presents in the handshake, probed
+  # from outside the process. `subject` is the pki_enrollment_* subject label,
+  # so rules/tls-handshake-alerts.yml can compare the presented not_after with
+  # the one the service reports. One series per listener: auth-hub and
+  # rag-orchestrator each terminate TLS on two ports. Keep the target count in
+  # lockstep with TlsHandshakeProbeFleetIncomplete (scripts/tests/
+  # test-tls-handshake-probe.py fails on a one-sided edit).
+  - job_name: 'tls-handshake'
+    metrics_path: /probe
+    params:
+      module: [mtls_server_cert]
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['alt-data-hub:9443']
+        labels: {subject: 'alt-data-hub'}
+      - targets: ['auth-hub:9443', 'auth-hub:8443']
+        labels: {subject: 'auth-hub'}
+      - targets: ['search-indexer:9443']
+        labels: {subject: 'search-indexer'}
+      - targets: ['pre-processor:9443']
+        labels: {subject: 'pre-processor'}
+      - targets: ['tag-generator:9443']
+        labels: {subject: 'tag-generator'}
+      - targets: ['recap-worker:9443']
+        labels: {subject: 'recap-worker'}
+      - targets: ['acolyte-orchestrator:9443']
+        labels: {subject: 'acolyte-orchestrator'}
+      - targets: ['recap-subworker:9443']
+        labels: {subject: 'recap-subworker'}
+      - targets: ['news-creator:9443']
+        labels: {subject: 'news-creator'}
+      - targets: ['rag-orchestrator:9010', 'rag-orchestrator:9011']
+        labels: {subject: 'rag-orchestrator'}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: 'blackbox-exporter'
+    static_configs:
+      - targets: ['blackbox-exporter:9115']
+        labels:
+          service: 'blackbox-exporter'
+    scrape_interval: 15s
+    metrics_path: /metrics

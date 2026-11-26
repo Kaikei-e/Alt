@@ -109,6 +109,47 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Dials every east-west TLS listener and reports the certificate it presents
+  # (rules/tls-handshake-alerts.yml). It holds no client identity: the module
+  # in observability/blackbox/blackbox.yml verifies the server against the
+  # public trust bundle only, so no leaf or key is issued to it and no peer
+  # allowlist needs a monitoring entry. Prometheus reaches it over alt-network.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.28.0
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    mem_limit: 64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    configs:
+      - source: blackbox_yml
+        target: /etc/blackbox_exporter/config.yml
+        mode: 0444
+    volumes:
+      - pki_trust_bundle:/trust:ro
+    networks:
+      - alt-network
+    # No depends_on on step-ca-bootstrap (a new init edge is budgeted): an
+    # unpublished bundle keeps this unhealthy and every probe failing.
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /trust/ca-bundle.pem && wget -q --spider http://localhost:9115/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - rask.group=observability
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   grafana:
     image: grafana/grafana:11.4.0
     restart: unless-stopped
@@ -218,6 +259,8 @@ configs:
     file: ../observability/prometheus/prometheus.yml
   alertmanager_yml:
     file: ../observability/alertmanager/alertmanager.yml
+  blackbox_yml:
+    file: ../observability/blackbox/blackbox.yml
   grafana_ini:
     file: ../observability/grafana/grafana.ini
 

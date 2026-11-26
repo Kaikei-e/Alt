@@ -63,6 +63,13 @@ units:
   auth-token-manager:
     class: essential
     kind: app
+  blackbox-exporter:
+    class: platform
+    kind: platform
+    # Sees the certificate each listener presents, which the in-process
+    # pki_enrollment_* gauges cannot; the one prober replaces per-service checks.
+    exception: X-PLATFORM-SHARED
+    sunset: "2027-06-30"
   cadvisor:
     class: platform
     kind: platform

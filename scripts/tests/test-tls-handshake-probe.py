@@ -13,6 +13,7 @@ Run:
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -20,9 +21,12 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-
-from compose_include import production_services  # noqa: E402 - needs the sys.path entry above
+_spec = importlib.util.spec_from_file_location("compose_include", ROOT / "scripts" / "compose_include.py")
+assert _spec is not None
+assert _spec.loader is not None
+_compose_include = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_compose_include)
+production_services = _compose_include.production_services
 
 PROM_CONFIG = ROOT / "observability" / "prometheus" / "prometheus.yml"
 RULES = ROOT / "observability" / "prometheus" / "rules" / "tls-handshake-alerts.yml"
@@ -205,7 +209,12 @@ check("no-new-privileges", "no-new-privileges:true" in (bb.get("security_opt") o
 check("read-only root filesystem", bb.get("read_only") is True)
 check("runs as a non-root user", str(bb.get("user", "")).split(":")[0] not in ("", "0", "root"))
 check("memory limit set", bb.get("mem_limit") is not None)
-check("has a healthcheck", bool(bb.get("healthcheck")))
+hc = " ".join(str(x) for x in (bb.get("healthcheck") or {}).get("test", []))
+check(
+    "healthcheck fails while the trust bundle is missing",
+    "/trust/ca-bundle.pem" in hc and "9115" in hc,
+    hc,
+)
 check("publishes no host port", not bb.get("ports"))
 check("sits on alt-network", "alt-network" in (bb.get("networks") or []))
 volumes = [str(v) for v in bb.get("volumes") or []]
@@ -213,10 +222,6 @@ check(
     "mounts only the public trust bundle, read-only",
     volumes == ["pki_trust_bundle:/trust:ro"],
     str(volumes),
-)
-check(
-    "waits for the trust bundle to be published",
-    "step-ca-bootstrap" in (bb.get("depends_on") or {}),
 )
 
 sys.stdout.write("alert rules\n")

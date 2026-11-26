@@ -371,8 +371,8 @@ tests:
               summary: "TLS handshake probe to news-creator:9443 is failing"
               description: |
                 blackbox_exporter cannot complete a TLS handshake with news-creator:9443
-                (subject news-creator). Until it can, the presented-certificate checks for
-                this listener are blind.
+                (subject news-creator). Until it can, the presented-certificate
+                checks for this listener are blind.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
   # An unreachable prober pages instead of leaving the alerts silent.

@@ -302,6 +302,8 @@ retire_alt_pki_agent_leftovers() {
 | leftover pki-agent が up / `PkiAgentFleetIncomplete` | `docker ps` + `label=com.docker.compose.project=alt` かつ service `pki-agent-*` — 0 件が正常。Prometheus の pki-agent scrape には頼らない（`:9510` job は無い） |
 | Prometheus `PkiEnrollmentCertExpirySoon` / `PkiEnrollmentWorkloadMetricsAbsent` | 親の ops `:9110`（scrape は tts-speaker を除く 16 親）: `docker logs alt-<subject>-1` |
 | Prometheus `PkiEnrollmentRenewalFailing` | step-ca が健全か、subject-scoped JWK provisioner 衝突か |
+| Prometheus `TlsHandshakeCertDivergesFromReported` | ディスク上の leaf は更新済みだがプロセスが古い証明書を提示している（メモリ上の stale cert）。`instance` の親を force-recreate（Step 4） |
+| Prometheus `TlsHandshakeProbeFailing` / `TlsHandshakeProbeFleetIncomplete` / `TlsHandshakeProbeScrapeDown` / `TlsHandshakeProbeNoExpiry` / `TlsHandshakeReportedCertMissing` | 外形 probe 自体が盲目。`blackbox-exporter` コンテナ（`/trust/ca-bundle.pem` の有無を healthcheck が見る）と `tls-handshake` job の target 12 本を確認 |
 
 ## Step 1: ステート把握
 
