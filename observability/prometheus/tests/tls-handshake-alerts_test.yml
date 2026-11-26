@@ -7,10 +7,12 @@
 # Kept outside /etc/prometheus/rules for the same reason as the other test
 # files: a test file inside the rules glob is a fatal config error.
 #
-# Cadence follows production: the probe scrapes every 60s and the :9110 ops
-# endpoints every 15s, so the tests tick every 15s and a probe value spans four
-# ticks. A failed scrape is a `stale` marker (the series is gone until the next
-# good scrape); `_` would leave the series visible through the 5m lookback.
+# Cadence follows production: probe series (probe_success, the probe's expiry
+# and the probe job's `up`) carry one sample per 60s scrape, and the :9110 ops
+# series one per 15s, so the tests tick every 15s and a probe sample sits on
+# every fourth tick. A failed scrape is a `stale` marker (the series is gone
+# until the next good scrape); a bare gap would keep the series visible
+# through the 5m lookback.
 # pki-agent-alerts.yml is loaded too, so the tests can say which alert owns a
 # fault when the two files overlap.
 
@@ -27,11 +29,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x120'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x120'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3 1x3 1x3 1x3 0x3'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _'
     alert_rule_test:
       - eval_time: 4m
         alertname: TlsHandshakeListenerFailing
@@ -98,17 +100,17 @@ tests:
                 (container, /trust/ca-bundle.pem, network) and then step-ca.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # The canary succeeds only one minute in four (step-ca restarting): the canary ticket opens, and
-  # the listener page is held back only while the canary has not succeeded for 3m, so a broken
-  # listener still pages.
+  # The canary succeeds one probe in four (step-ca restarting): every run of three failures is
+  # 3m without a success, so the guard holds the listener page back each time and `for` keeps
+  # restarting. Only the canary ticket opens; the page does not come.
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x120'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x120'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3 0x3 0x3 0x3 1x3'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _'
     alert_rule_test:
       - eval_time: 9m
         alertname: TlsHandshakeCanaryFailing
@@ -129,10 +131,32 @@ tests:
                 be trusted, so the listener-failure page is held back. Check blackbox-exporter
                 (container, /trust/ca-bundle.pem, network) and then step-ca.
                 Runbook: docs/runbooks/pki-agent-recovery.md
-      - eval_time: 7m
+      - eval_time: 9m
         alertname: TlsHandshakeListenerFailing
         exp_alerts: []
-      - eval_time: 9m
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+
+  # The canary fails two probes in a row and then succeeds, repeatedly: two failures are never 3m
+  # without a success, so the guard never engages and the listener page comes and stays. (The canary
+  # ticket opens as well, since any failure in 5m counts.)
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 8m
         alertname: TlsHandshakeListenerFailing
         exp_alerts:
           - exp_labels:
@@ -160,7 +184,7 @@ tests:
                 Failing listeners: news-creator:9443
                 If the whole service is down, PkiEnrollmentOpsDown fires separately.
                 Runbook: docs/runbooks/pki-agent-recovery.md
-      - eval_time: 18m
+      - eval_time: 20m
         alertname: TlsHandshakeListenerFailing
         exp_alerts:
           - exp_labels:
@@ -180,11 +204,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 4m
         alertname: TlsHandshakeListenerFailing
@@ -237,11 +261,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _ 0x3 0x3 stale _x2 _'
+        values: '0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x160'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 4m
         alertname: TlsHandshakeListenerFailing
@@ -280,8 +304,8 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '10000x160'
-      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000'
     alert_rule_test:
       - eval_time: 1m
@@ -327,11 +351,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 4m
         alertname: TlsHandshakeListenerFailing
@@ -370,11 +394,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x160'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x35 0x3 1x80'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 8m
         alertname: TlsHandshakeListenerFailing
@@ -453,15 +477,15 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '10000x11 stale'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ stale'
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '1x11 0x120'
-      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '10000x11 stale'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x11 stale'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 2m
         alertname: TlsHandshakeCertExpirySoon
@@ -479,7 +503,7 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '0x160'
       - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
@@ -487,7 +511,7 @@ tests:
       - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '0+15x160'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 12m
         alertname: TlsHandshakeListenerFailing
@@ -519,11 +543,11 @@ tests:
       - series: 'up{job="news-creator-ops",instance="news-creator:9110"}'
         values: '0x160'
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x7 stale'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 12m
         alertname: TlsHandshakeListenerFailing
@@ -550,19 +574,19 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '1x160'
       - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '1x160'
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '1x160'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
     alert_rule_test:
       - eval_time: 12m
         alertname: TlsHandshakeListenerFailing
@@ -595,15 +619,15 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '600x3 600x3 600x3 600x3 600x3 600x3 600x3 600x3 600x3 600x3 stale'
+        values: '600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ stale'
       - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3 0x3'
-      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '80000x240'
       - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '1x240'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x240'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 3m
         alertname: TlsHandshakeCertExpirySoon
@@ -674,12 +698,13 @@ tests:
                 serving a stale certificate.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # Presented certificate short while the disk side reports plenty: pages.
+  # Presented certificate short while the disk side reports plenty: pages. Only not_after is
+  # reported, no remaining_seconds series, so the page does not depend on that metric.
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '10000x40'
-      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '80000x40'
     alert_rule_test:
       - eval_time: 1m
@@ -707,7 +732,7 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '10000x40'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
       - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '10000x40'
       - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
@@ -744,9 +769,9 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3 50057000x3'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _'
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _'
       - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x119 50057000x120'
       - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
@@ -754,7 +779,7 @@ tests:
       - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '1x240'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x240'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 31m
         alertname: TlsHandshakeCertDivergesFromReported
@@ -780,17 +805,17 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '1x3 1x3 1x3 1x3 1x3 0x3 0x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3 1x3'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 stale _x2 _ stale _x2 _ 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3 50000000x3'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ stale _ _ _ stale _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _'
       - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
-        values: '1x20 stale _x2 _ 1x160'
+        values: '1x20 stale _x2 1x160'
       - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
-        values: '50000000x20 stale _x2 _ 50000000x160'
+        values: '50000000x20 stale _x2 50000000x160'
       - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
-        values: '80000x20 stale _x2 _ 80000x160'
+        values: '80000x20 stale _x2 80000x160'
       - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
-        values: '1x200'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 8m
         alertname: TlsHandshakeListenerFailing
@@ -810,9 +835,9 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '0+15x120'
       - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
@@ -847,15 +872,15 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '50057000x120'
+        values: '50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50057000x120'
       - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '1x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x120'
       - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
@@ -889,13 +914,13 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
       - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '1x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
     alert_rule_test:
@@ -920,11 +945,11 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '50000000x120'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
       - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 11m
         alertname: TlsHandshakeProbeNoExpiry
@@ -947,29 +972,29 @@ tests:
   - interval: 15s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
-        values: '1x120'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
       - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
-        values: '_x60 1x60'
+        values: '_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _'
     alert_rule_test:
       - eval_time: 5m
         alertname: TlsHandshakeProbeFleetIncomplete
@@ -1034,9 +1059,9 @@ tests:
       - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
         values: '0x160'
       - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
     alert_rule_test:
       - eval_time: 11m
         alertname: TlsHandshakeProberDown
@@ -1104,11 +1129,11 @@ tests:
       - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
         values: '1x160'
       - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '0x160'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
       - series: 'up{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '1x160'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
     alert_rule_test:
       - eval_time: 6m
         alertname: TlsHandshakeProbeScrapeFailing

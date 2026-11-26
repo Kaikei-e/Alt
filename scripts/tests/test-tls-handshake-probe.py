@@ -33,6 +33,7 @@ production_services = _compose_include.production_services
 PROM_CONFIG = ROOT / "observability" / "prometheus" / "prometheus.yml"
 RULES = ROOT / "observability" / "prometheus" / "rules" / "tls-handshake-alerts.yml"
 BLACKBOX = ROOT / "observability" / "blackbox" / "blackbox.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "observability-validate.yaml"
 
 JOB = "tls-handshake"
 MODULE = "mtls_server_cert"
@@ -348,6 +349,25 @@ for target, (cert_vars, key_vars, source) in LISTENER_PATHS.items():
             effective is not None and effective == env.get(enrolled_var),
             f"listener={effective!r} enrollment={env.get(enrolled_var)!r}",
         )
+
+
+
+def path_glob_matches(pattern: str, path: str) -> bool:
+    regex = re.escape(pattern).replace(r"\*\*", "\0").replace(r"\*", "[^/]*").replace("\0", ".*")
+    return re.fullmatch(regex, path) is not None
+
+
+workflow = load(WORKFLOW)
+triggers = workflow.get("on") or workflow.get(True) or {}
+for event in ("push", "pull_request"):
+    event_paths = (triggers.get(event) or {}).get("paths") or []
+    sources = {src for _, _, src in LISTENER_PATHS.values()}
+    uncovered = sorted(src for src in sources if not any(path_glob_matches(g, src) for g in event_paths))
+    check(
+        f"workflow {event} paths cover every listener source the contract reads",
+        not uncovered,
+        f"not covered: {uncovered}",
+    )
 
 step_ca_nets = set((services.get("step-ca") or {}).get("networks") or [])
 prober_nets = set((services.get("blackbox-exporter") or {}).get("networks") or [])
