@@ -298,6 +298,22 @@ Each service has its own `CLAUDE.md` with service-specific commands and rules. R
 | Learn from past incidents and design shifts | [Postmortems](docs/postmortems/README.md) · [Case studies](docs/case-studies/README.md) |
 | Contribute code, by hand or with an agent | [CLAUDE.md](CLAUDE.md) |
 
+## Acknowledgments
+
+Alt is built on the work of other open-source projects. A few of them shape it so deeply that they are named here, with thanks to the people who maintain them.
+
+Alt keeps its articles and its knowledge event log in [PostgreSQL](https://www.postgresql.org/). [pgvector](https://github.com/pgvector/pgvector) lets Ask Augur search your reading by meaning, and [Meilisearch](https://www.meilisearch.com/) powers search across articles, recaps and tags. Events travel between services on [Redis](https://redis.io/) Streams, and logs are kept in [ClickHouse](https://clickhouse.com/).
+
+Alt needs no cloud LLM key because [Ollama](https://ollama.com/), and [llama.cpp](https://github.com/ggml-org/llama.cpp) underneath it, run the models on your own machine. The models are the work of others too. [Gemma 4](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf) from Google writes the summaries and answers. [BGE-M3](https://huggingface.co/BAAI/bge-m3) from BAAI produces the embeddings. The [Ruri v3 reranker](https://huggingface.co/cl-nagoya/ruri-v3-reranker-310m) from Nagoya University orders what retrieval finds. [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) by Aratako reads articles aloud in Japanese.
+
+Japanese text has no spaces between words. To split it, Alt relies on [MeCab](https://taku910.github.io/mecab/) through [fugashi](https://github.com/polm/fugashi) with the [UniDic](https://clrd.ninjal.ac.jp/unidic/) dictionary from NINJAL, on [Kagome](https://github.com/ikawaha/kagome) and on [Lindera](https://github.com/lindera/lindera).
+
+Sign-in is handled by [Ory Kratos](https://github.com/ory/kratos). The internal certificate authority that lets services trust each other is [step-ca](https://github.com/smallstep/certificates) from Smallstep. Services talk over [Connect](https://connectrpc.com/), and [Pact](https://pact.io/) checks that their contracts still hold.
+
+Alt is also starting to adopt [Tauto](https://github.com/Hihaheho/tauto) from Hihaheho, a minimal language for AI to build and prove correct software.
+
+Beyond these, Alt depends on many libraries from the Go, Rust, Python and Svelte ecosystems. They are listed in each service's `go.mod`, `Cargo.toml`, `pyproject.toml` or `package.json`. Every project and model is distributed under its own license. If Alt uses your work and credits it wrongly or not at all, please open an issue.
+
 ## License
 
 Alt is licensed under the [Apache License 2.0](LICENSE).
