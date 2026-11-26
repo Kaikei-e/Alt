@@ -204,7 +204,7 @@ sys.exit(0 if sys.version_info >= (3, 12) and ver.split(".", 1)[0] == "6" else 1
 	}
 	script := "#!/usr/bin/env bash\nexec uv run --quiet --no-project --python 3.14 --with 'pyyaml==6.*' python \"$@\"\n"
 	path := filepath.Join(bin, "python3")
-	if err := os.WriteFile(path, []byte(script), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(path, []byte(script)); err != nil {
 		fmt.Fprintf(stderr, "ERROR: %s\n", err.Error())
 		return nil, 1
 	}

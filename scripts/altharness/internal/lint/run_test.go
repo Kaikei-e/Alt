@@ -107,7 +107,7 @@ func TestLauncherOlderMtimeRevertAndReadOnlySandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	launcher := filepath.Join(modDir, "alt-harness")
-	if err := os.WriteFile(launcher, launcherBytes, fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(launcher, launcherBytes); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(modDir, "go.mod"), []byte("module testlauncher\n\ngo 1.24\n"), fsperm.File); err != nil {

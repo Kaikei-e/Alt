@@ -229,7 +229,7 @@ func TestVerifyLedgerTemp(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := "#!/bin/bash\nif [ \"$1\" = \"--list\" ]; then\n  printf '%s\\n' svc-a svc-py\n  exit 0\nfi\necho unexpected >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(lintDir, "run.sh"), []byte(script), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(lintDir, "run.sh"), []byte(script)); err != nil {
 		t.Fatal(err)
 	}
 	pyDir := filepath.Join(root, "svc-py")
@@ -347,11 +347,11 @@ func TestVerifyLedgerTemp(t *testing.T) {
 	})
 
 	t.Run("run.sh failure fails closed", func(t *testing.T) {
-		if err := os.WriteFile(filepath.Join(lintDir, "run.sh"), []byte("#!/bin/bash\necho boom >&2\nexit 3\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(filepath.Join(lintDir, "run.sh"), []byte("#!/bin/bash\necho boom >&2\nexit 3\n")); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			_ = os.WriteFile(filepath.Join(lintDir, "run.sh"), []byte(script), fsperm.Dir)
+			_ = fsperm.WriteExecutable(filepath.Join(lintDir, "run.sh"), []byte(script))
 		})
 		ledger := filepath.Join(root, "valid.toml")
 		code, _, stderr := runAudit(t, "verify-ledger", "--repo-root", root, "--ledger", ledger)
@@ -529,7 +529,7 @@ func TestActionlintCanaryStub(t *testing.T) {
 	dir := t.TempDir()
 	stub := filepath.Join(dir, "actionlint")
 	script := "#!/bin/sh\nfor tok in \"$@\"; do\n  if [ -f \"$tok\" ] && grep -q invalid_context \"$tok\"; then\n    echo \"$tok:7:23: undefined variable \\\"invalid_context\\\" [expression]\"\n    exit 1\n  fi\ndone\nexit 0\n"
-	if err := os.WriteFile(stub, []byte(script), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(stub, []byte(script)); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runAudit(t, "actionlint-canary", "--actionlint-bin", stub)
@@ -537,7 +537,7 @@ func TestActionlintCanaryStub(t *testing.T) {
 		t.Fatalf("exit %d stdout=%s stderr=%s", code, stdout, stderr)
 	}
 	silent := filepath.Join(dir, "silent")
-	if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 		t.Fatal(err)
 	}
 	code, _, stderr = runAudit(t, "actionlint-canary", "--actionlint-bin", silent)
@@ -575,7 +575,7 @@ cat >"$sarif" <<'EOF'
 EOF
 exit 1
 `
-		if err := os.WriteFile(good, []byte(goodScript), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(good, []byte(goodScript)); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := runAudit(t, "go-canary", "--project-dir", proj, "--config", cfg, "--golangci-lint-bin", good)
@@ -584,7 +584,7 @@ exit 1
 		}
 
 		silent := filepath.Join(dir, "golangci-silent")
-		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, _, stderr = runAudit(t, "go-canary", "--project-dir", proj, "--config", cfg, "--golangci-lint-bin", silent)
@@ -657,7 +657,7 @@ exit 1
 			t.Fatal(err)
 		}
 		good := filepath.Join(dir, "cargo-good")
-		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'error: equal expressions as operands to `==` (clippy::eq_op)' >&2\nexit 101\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(good, []byte("#!/bin/sh\necho 'error: equal expressions as operands to `==` (clippy::eq_op)' >&2\nexit 101\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := runAudit(t, "rust-canary", "--project-dir", proj, "--cargo-bin", good, "--target-dir", filepath.Join(dir, "target"))
@@ -665,7 +665,7 @@ exit 1
 			t.Fatalf("rust good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
 		}
 		silent := filepath.Join(dir, "cargo-silent")
-		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, _, stderr = runAudit(t, "rust-canary", "--project-dir", proj, "--cargo-bin", silent, "--target-dir", filepath.Join(dir, "target"))
@@ -678,7 +678,7 @@ exit 1
 		t.Parallel()
 		dir := t.TempDir()
 		good := filepath.Join(dir, "biome-good")
-		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'lint/suspicious/noDebugger' >&2\nexit 1\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(good, []byte("#!/bin/sh\necho 'lint/suspicious/noDebugger' >&2\nexit 1\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := runAudit(t, "frontend-canary", "--project-dir", dir, "--biome-bin", good)
@@ -686,7 +686,7 @@ exit 1
 			t.Fatalf("frontend good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
 		}
 		silent := filepath.Join(dir, "biome-silent")
-		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, _, stderr = runAudit(t, "frontend-canary", "--project-dir", dir, "--biome-bin", silent)
@@ -699,7 +699,7 @@ exit 1
 		t.Parallel()
 		dir := t.TempDir()
 		good := filepath.Join(dir, "deno-good")
-		if err := os.WriteFile(good, []byte("#!/bin/sh\necho '(no-debugger) debugger statement is not allowed' >&2\nexit 1\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(good, []byte("#!/bin/sh\necho '(no-debugger) debugger statement is not allowed' >&2\nexit 1\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := runAudit(t, "deno-canary", "--project-dir", dir, "--deno-bin", good)
@@ -707,7 +707,7 @@ exit 1
 			t.Fatalf("deno good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
 		}
 		silent := filepath.Join(dir, "deno-silent")
-		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, _, stderr = runAudit(t, "deno-canary", "--project-dir", dir, "--deno-bin", silent)
@@ -720,7 +720,7 @@ exit 1
 		t.Parallel()
 		dir := t.TempDir()
 		good := filepath.Join(dir, "buf-good")
-		if err := os.WriteFile(good, []byte("#!/bin/sh\necho 'canary.proto:5:6:Enum name \"bad_enum\" should be PascalCase' >&2\nexit 100\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(good, []byte("#!/bin/sh\necho 'canary.proto:5:6:Enum name \"bad_enum\" should be PascalCase' >&2\nexit 100\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := runAudit(t, "proto-canary", "--buf-bin", good)
@@ -728,7 +728,7 @@ exit 1
 			t.Fatalf("proto good: code=%d stdout=%s stderr=%s", code, stdout, stderr)
 		}
 		silent := filepath.Join(dir, "buf-silent")
-		if err := os.WriteFile(silent, []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(silent, []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		code, _, stderr = runAudit(t, "proto-canary", "--buf-bin", silent)
@@ -755,7 +755,7 @@ exit 1
 		if err := os.MkdirAll(filepath.Join(src, "scripts", "lint"), fsperm.Dir); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(src, "scripts", "lint", "run.sh"), []byte("#!/bin/sh\nexit 0\n"), fsperm.Dir); err != nil {
+		if err := fsperm.WriteExecutable(filepath.Join(src, "scripts", "lint", "run.sh"), []byte("#!/bin/sh\nexit 0\n")); err != nil {
 			t.Fatal(err)
 		}
 		dst := t.TempDir()

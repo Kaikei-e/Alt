@@ -74,7 +74,7 @@ func TestCheckAgyHookFileSchema(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(script), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(script, []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(script, []byte("#!/usr/bin/env bash\n")); err != nil {
 		t.Fatal(err)
 	}
 

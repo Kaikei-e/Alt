@@ -244,7 +244,7 @@ func writeFakePytestScript(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	script := "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'PWD=%s\\nSEED=%s\\nARGS=%s\\n' \"$PWD\" \"${ALT_PYTEST_RANDOM_SEED:-}\" \"$*\"\n"
-	if err := os.WriteFile(path, []byte(script), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(path, []byte(script)); err != nil {
 		t.Fatal(err)
 	}
 }

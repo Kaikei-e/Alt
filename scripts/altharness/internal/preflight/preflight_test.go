@@ -263,7 +263,7 @@ func (f *preflightFixture) writeDocdagStub() {
 	stubPath := filepath.Join(f.binDir, "docdag")
 	script := fmt.Sprintf("#!/bin/sh\nALT_DOCDAG_STUB_MODE=1 ALT_DOCDAG_STUB_CONFIG=%q ALT_DOCDAG_STUB_LOG=%q exec %q \"$@\"\n",
 		f.docdagConfig, f.docdagLog, exe)
-	if err := os.WriteFile(stubPath, []byte(script), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(stubPath, []byte(script)); err != nil {
 		f.t.Fatal(err)
 	}
 }

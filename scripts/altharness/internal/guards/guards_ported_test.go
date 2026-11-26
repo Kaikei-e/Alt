@@ -1074,7 +1074,7 @@ func TestAgyPreflightRunnerInProcessAndBinary(t *testing.T) {
 		"  exit 0\n" +
 		"fi\n" +
 		"exit 1\n"
-	if err := os.WriteFile(launcher, []byte(stub), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(launcher, []byte(stub)); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()

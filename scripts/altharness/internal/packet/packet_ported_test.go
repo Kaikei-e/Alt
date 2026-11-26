@@ -110,7 +110,7 @@ func writeStubRunSh(t *testing.T, repo string, exitCode int, sleepSec string) {
 		body += "sleep " + sleepSec + "\n"
 	}
 	body += "exit " + string(rune('0'+exitCode)) + "\n"
-	if err := os.WriteFile(p, []byte(body), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(p, []byte(body)); err != nil {
 		t.Fatal(err)
 	}
 }

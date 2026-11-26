@@ -293,7 +293,7 @@ func TestAdrRunsWithoutPython3(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo, "docs", "ADR"), fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n")); err != nil {
 		t.Fatal(err)
 	}
 	gitExec := func(args ...string) string {
@@ -330,10 +330,10 @@ func TestAdrRunsWithoutPython3(t *testing.T) {
 	if err := os.Symlink(gitPath, filepath.Join(stubBin, "git")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(stubBin, "docdag"), []byte("#!/bin/sh\necho stub-docdag \"$@\"\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(stubBin, "docdag"), []byte("#!/bin/sh\necho stub-docdag \"$@\"\n")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(stubBin, "go"), []byte("#!/bin/sh\nprintf '%s: go1.27.4\\n\\tpath\\tgithub.com/Kaikei-e/DocDag/cmd/docdag\\n\\tmod\\tgithub.com/Kaikei-e/DocDag\\tv0.6.0\\th1:stub\\n' \"$3\"\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(stubBin, "go"), []byte("#!/bin/sh\nprintf '%s: go1.27.4\\n\\tpath\\tgithub.com/Kaikei-e/DocDag/cmd/docdag\\n\\tmod\\tgithub.com/Kaikei-e/DocDag\\tv0.6.0\\th1:stub\\n' \"$3\"\n")); err != nil {
 		t.Fatal(err)
 	}
 	// Restricted PATH has git, docdag, go — deliberately NO python3!
@@ -395,7 +395,7 @@ func TestLintRunPolicyFlagReachesInProcessRustRunner(t *testing.T) {
 	if err := os.MkdirAll(crateDir, fsperm.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n"), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\n")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(crateDir, "Cargo.toml"), []byte("[package]\nname = \"svc-rust\"\nversion = \"0.1.0\"\n"), fsperm.File); err != nil {
@@ -412,7 +412,7 @@ func TestLintRunPolicyFlagReachesInProcessRustRunner(t *testing.T) {
 		"if [ \"${1:-}\" = \"clippy\" ] && [[ \"$*\" == *\"--offline\"* ]]; then echo \"error: clippy::eq_op\" >&2; exit 1; fi\n" +
 		"echo \"$*\" >> " + cargoLog + "\n" +
 		"exit 0\n"
-	if err := os.WriteFile(filepath.Join(stubBin, "cargo"), []byte(cargoScript), fsperm.Dir); err != nil {
+	if err := fsperm.WriteExecutable(filepath.Join(stubBin, "cargo"), []byte(cargoScript)); err != nil {
 		t.Fatal(err)
 	}
 
