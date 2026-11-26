@@ -207,6 +207,25 @@ def env_map(svc: dict) -> dict[str, str]:
     return out
 
 
+# How each listener source language reads an environment variable. A name that
+# only survives in a comment or a string is not a read.
+ENV_READS = {
+    ".go": (r'\w*[Ee]nv\w*\(\s*"{n}"', r'env:"{n}[",]'),
+    ".py": (
+        r'(?:os\.environ\.get|os\.getenv|\benv\.get)\(\s*["\']{n}["\']',
+        r'os\.environ\[\s*["\']{n}["\']\s*\]',
+    ),
+    ".rs": (r'env::var(?:_os)?\(\s*"{n}"',),
+}
+LINE_COMMENT = {".go": r"//[^\n]*", ".rs": r"//[^\n]*", ".py": r"#[^\n]*"}
+
+
+def reads_env(source: str, name: str, code: str) -> bool:
+    suffix = Path(source).suffix
+    code = re.sub(LINE_COMMENT[suffix], "", code)
+    return any(re.search(p.format(n=re.escape(name)), code) for p in ENV_READS[suffix])
+
+
 def parse_duration_s(value: str) -> float:
     m = re.fullmatch(r"(\d+)(ms|s|m|h)", str(value))
     if not m:
@@ -317,11 +336,11 @@ for target, (cert_vars, key_vars, source) in LISTENER_PATHS.items():
         ("cert", cert_vars, "CERT_PATH"),
         ("key", key_vars, "KEY_PATH"),
     ):
-        missing = [n for n in names if n not in code]
+        missing = [n for n in names if not reads_env(source, n, code)]
         check(
-            f"{target}: {source} reads {'/'.join(names)}",
+            f"{target}: {source} reads {'/'.join(names)} as environment variables",
             not missing,
-            f"not found in source: {missing}",
+            f"no environment read of: {missing}",
         )
         effective = next((env[n] for n in names if env.get(n)), None)
         check(
