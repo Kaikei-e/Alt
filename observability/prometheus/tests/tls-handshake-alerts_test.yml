@@ -451,7 +451,7 @@ tests:
       - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="old-container:9110",service="auth-hub",subject="auth-hub"}'
         values: '40000000x120'
     alert_rule_test:
-      - eval_time: 15m
+      - eval_time: 9m
         alertname: TlsHandshakeCertDivergesFromReported
         exp_alerts: []
       - eval_time: 21m

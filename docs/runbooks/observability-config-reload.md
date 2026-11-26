@@ -63,6 +63,7 @@ make observability-reload-install
 | `observability/prometheus/rules/*.yml` | Prometheus (`rule_files` glob 経由) | reload |
 | `observability/prometheus/tests/*_test.yml` | promtool のみ。**Prometheus は読まない** | — (rules/ に置くと config 全体が壊れる) |
 | `observability/alertmanager/alertmanager.yml` | Alertmanager | reload |
+| `observability/blackbox/blackbox.yml` | blackbox-exporter (`configs:` で mount) | **コンテナ再作成** (`up -d --force-recreate --no-deps blackbox-exporter`)。`observability-drift-check` の比較対象外なので、差分は自動では見つからない |
 | `observability/grafana/dashboards/*.json` | Grafana | 自動ポーリング (`updateIntervalSeconds: 30`) |
 | `observability/grafana/provisioning/datasources/*.yaml` | Grafana | **起動時のみ** → コンテナ再作成が必要 |
 | `observability/grafana/provisioning/alerting/*.yaml` | Grafana | **起動時のみ** → コンテナ再作成が必要 |
@@ -185,6 +186,36 @@ docker kill -s HUP "$PROM_CID"
 # 再作成が必要な場合 (compose の port 再 bind の都合上 --force-recreate を付ける)
 docker compose -f compose/compose.yaml -p alt up -d --force-recreate prometheus
 ```
+
+### 2.4 blackbox-exporter を初めて有効化する順序
+
+`scrape_configs` の `tls-handshake` job は prober が居ない状態で読み込むと、
+prober 停止と本数不一致の ticket が出る (page は出ない)。次の順に行う。
+
+```bash
+# 1. prober を単独で起動する (他サービスを巻き込まない)
+docker compose -f compose/compose.yaml -p alt up -d --no-deps blackbox-exporter
+
+# 2. prober から 12 本の probe が成功することを確認する (healthy になるまで待つ)
+docker compose -f compose/compose.yaml -p alt ps blackbox-exporter
+docker run --rm --network alt_alt-network alpine:3.21 \
+  wget -qO- 'http://blackbox-exporter:9115/probe?module=mtls_server_cert&target=auth-hub:9443' \
+  | grep -E '^(probe_success|probe_ssl_earliest_cert_expiry)'
+
+# 3. その後で Prometheus に設定とルールを読ませる
+make observability-reload
+```
+
+### 2.5 導入直後の確認 (Prometheus UI か `/api/v1/query`)
+
+本番の証明書チェーンでは計測していないので、次の 4 点を初回に確かめる。
+
+| 確認 | PromQL / コマンド | 期待値 |
+|---|---|---|
+| 12 本とも成功 | `count(probe_success{job="tls-handshake"} == 1)` と `count(probe_success{job="tls-handshake"} == 0)` | 前者 12、後者は空 |
+| 提示と報告の差が数秒以内 (最短期限が leaf であること) | `abs(probe_ssl_earliest_cert_expiry{job="tls-handshake"} - on(subject) group_left() max by (subject) (pki_enrollment_cert_not_after_seconds))` | 全系列 5 以下 |
+| 交渉された TLS が 1.3 (Rust の recap-worker を含む) | `probe_tls_version_info{job="tls-handshake",version!="TLS 1.3"}` | 空 |
+| probe 由来のログ行数 | `docker compose -f compose/compose.yaml -p alt logs --since 24h <service> \| grep -c 'TLS handshake error'` (クライアント認証を要求する Go の listener) | listener あたり 1 日約 1,440 行、6 本合計で約 8,600 行 |
 
 ---
 

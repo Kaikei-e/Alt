@@ -114,6 +114,7 @@ services:
   # in observability/blackbox/blackbox.yml verifies the server against the
   # public trust bundle only, so no leaf or key is issued to it and no peer
   # allowlist needs a monitoring entry. Prometheus reaches it over alt-network.
+  # TLS expiry only: no HTTP or synthetic modules are added to this process.
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.28.0
     restart: unless-stopped

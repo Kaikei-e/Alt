@@ -1,46 +1,31 @@
 # Alerting rules for the certificate a TLS listener actually presents.
 #
 # pki_enrollment_cert_not_after_seconds is what the service reads from its own
-# disk. It cannot see a process that keeps serving an older certificate after
-# the renewed one landed on disk, which is how PM-2026-029 and PM-2026-032
-# stayed invisible. blackbox_exporter dials each listener and reports the
-# not_after of the leaf in the handshake; these rules compare the two and
-# page when the probe cannot tell us (failing, missing, or with nothing to
-# compare against).
+# disk; it cannot see a listener that keeps presenting an older leaf (the
+# PM-2026-029 shape). blackbox_exporter dials each listener and reports the
+# not_after of the leaf in the handshake. These rules compare the two, and
+# raise a ticket when the probe itself cannot tell us anything.
 #
-# Timing, from the code: leaf TTL 24h (pki-agent bootstrap), renewal at 66% of
-# the lifetime so a rotation moves not_after by ~15h50m, the in-process gauge
-# updates the moment the new leaf is written, and the listener reloads it on
-# the next handshake (probe interval 60s). A healthy rotation therefore
-# diverges for about two minutes; a stale process diverges until the old leaf
-# expires, ~8h later.
+# Severity: a page needs a person within hours, a ticket does not. Only a
+# presented certificate about to expire and a single listener failing its
+# handshake page; everything that says "the prober is blind or misconfigured"
+# is a ticket so one prober fault cannot page twelve times.
+#
+# Timing: leaf TTL is 24h and renewal at 66% moves not_after by ~15h50m. A
+# healthy rotation leaves the two values apart for about two minutes (probe
+# interval 60s plus the listener's reload cadence), which `for: 10m` outlasts.
 
 groups:
   - name: tls_handshake_cert
     interval: 30s
     rules:
-      - alert: TlsHandshakeCertDivergesFromReported
-        expr: |
-          abs(
-            probe_ssl_earliest_cert_expiry{job="tls-handshake"}
-            - on(subject) group_left()
-            max by (subject) (pki_enrollment_cert_not_after_seconds)
-          ) > 300
-        for: 10m
-        labels:
-          severity: page
-          stack: mtls
-        annotations:
-          summary: "{{ $labels.subject }} presents a different certificate on {{ $labels.instance }} than it reports"
-          description: |
-            The not_after seen in the TLS handshake on {{ $labels.instance }} differs by
-            {{ humanizeDuration $value }} from pki_enrollment_cert_not_after_seconds for
-            {{ $labels.subject }}. The renewed leaf is on disk but the process is still
-            presenting an older one (stale in-memory certificate).
-            Runbook: docs/runbooks/pki-agent-recovery.md
-
+      # Skipped when the disk side is also under 4h: PkiEnrollmentCertExpirySoon
+      # already pages for that, and one cause should not page twice.
       - alert: TlsHandshakeCertExpirySoon
-        expr: probe_ssl_earliest_cert_expiry{job="tls-handshake"} - time() < 4 * 3600
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="tls-handshake"} - time() < 4 * 3600)
+          unless on(subject)
+          (min by (subject) (pki_enrollment_cert_remaining_seconds) < 4 * 3600)
         for: 2m
         labels:
           severity: page
@@ -49,11 +34,17 @@ groups:
           summary: "{{ $labels.instance }} presents a certificate that expires in under 4h"
           description: |
             The certificate presented in the TLS handshake on {{ $labels.instance }}
-            has {{ humanizeDuration $value }} left, whatever the service reports.
+            has {{ humanizeDuration $value }} left while the on-disk leaf reported for {{ $labels.subject }} still
+            has more than 4h, so the process is serving a stale certificate.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
+      # Fewer than 3 failing at once: a listener (or one service's two ports).
+      # From 3 up the cause is the prober, see TlsHandshakeProbeMassFailure.
       - alert: TlsHandshakeProbeFailing
-        expr: probe_success{job="tls-handshake"} == 0
+        expr: |
+          probe_success{job="tls-handshake"} == 0
+          unless on()
+          (count(probe_success{job="tls-handshake"} == 0) >= 3)
         for: 5m
         labels:
           severity: page
@@ -66,26 +57,83 @@ groups:
             checks for this listener are blind.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      - alert: TlsHandshakeProbeScrapeDown
-        expr: up{job=~"tls-handshake|blackbox-exporter"} == 0
+      - alert: TlsHandshakeProbeMassFailure
+        expr: count(probe_success{job="tls-handshake"} == 0) >= 3
         for: 5m
         labels:
-          severity: page
+          severity: ticket
           stack: mtls
         annotations:
-          summary: "{{ $labels.job }} scrape failing for {{ $labels.instance }}"
+          summary: "TLS handshake probes are failing for {{ $value }} listeners"
           description: |
-            Prometheus gets no result for {{ $labels.instance }} from job {{ $labels.job }};
-            blackbox_exporter is down or unreachable, so no handshake is being probed.
+            Three or more listeners fail their TLS handshake probe together, which points at
+            the prober (trust bundle, configuration) rather than at the listeners. Check
+            the blackbox-exporter container and /trust/ca-bundle.pem first.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # Only while enrollment reports healthy: a corrupt on-disk leaf makes the
+      # Rust implementation report not_after as "now", which is not a stale listener.
+      - alert: TlsHandshakeCertDivergesFromReported
+        expr: |
+          abs(
+            probe_ssl_earliest_cert_expiry{job="tls-handshake"}
+            - on(subject) group_left()
+            max by (subject) (pki_enrollment_cert_not_after_seconds)
+          ) > 300
+          and on(subject)
+          (min by (subject) (pki_enrollment_healthy) == 1)
+        for: 10m
+        labels:
+          severity: ticket
+          stack: mtls
+        annotations:
+          summary: "{{ $labels.subject }} presents a different certificate on {{ $labels.instance }} than it reports"
+          description: |
+            The not_after seen in the TLS handshake on {{ $labels.instance }} differs by
+            {{ humanizeDuration $value }} from pki_enrollment_cert_not_after_seconds for
+            {{ $labels.subject }} while enrollment reports healthy. Possible causes: the listener and
+            enrollment read different certificate paths, a clock that moved backwards, a
+            stopped reload poll, or a listener that bypasses reload. Check these before
+            recreating anything.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      - alert: TlsHandshakeProberDown
+        expr: up{job="blackbox-exporter"} == 0
+        for: 5m
+        labels:
+          severity: ticket
+          stack: mtls
+        annotations:
+          summary: "blackbox-exporter is not answering scrapes"
+          description: |
+            Prometheus cannot scrape blackbox-exporter, so no handshake is being probed and
+            the probe alerts have nothing to evaluate.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # With the prober down every target reports up=0 too; that is one cause.
+      - alert: TlsHandshakeProbeScrapeFailing
+        expr: |
+          count(up{job="tls-handshake"} == 0)
+          unless on()
+          (up{job="blackbox-exporter"} == 0)
+        for: 5m
+        labels:
+          severity: ticket
+          stack: mtls
+        annotations:
+          summary: "{{ $value }} TLS handshake probe scrapes are failing"
+          description: |
+            Prometheus gets no result for the TLS handshake probe from blackbox-exporter while
+            the prober itself is up. Check the tls-handshake targets in Prometheus.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
       # count() is the only signal that a target dropped out of the scrape
-      # config or the prober stopped answering; `or vector(0)` covers all gone.
+      # config; `or vector(0)` covers every series gone.
       - alert: TlsHandshakeProbeFleetIncomplete
         expr: (count(count by (instance) (probe_success{job="tls-handshake"})) or vector(0)) != 12
         for: 10m
         labels:
-          severity: page
+          severity: ticket
           stack: mtls
         annotations:
           summary: "TLS handshake probe covers {{ $value }} listeners (want exactly 12)"
@@ -102,7 +150,7 @@ groups:
           probe_ssl_earliest_cert_expiry{job="tls-handshake"}
         for: 10m
         labels:
-          severity: page
+          severity: ticket
           stack: mtls
         annotations:
           summary: "{{ $labels.instance }} handshake succeeded but exposed no certificate expiry"
@@ -111,20 +159,24 @@ groups:
             certificate checks for {{ $labels.instance }} are blind.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # Without this the divergence rule above is an empty join, i.e. silent.
+      # Without this the divergence rule is an empty join, i.e. silent.
       - alert: TlsHandshakeReportedCertMissing
         expr: |
           probe_ssl_earliest_cert_expiry{job="tls-handshake"}
           unless on(subject)
-          pki_enrollment_cert_not_after_seconds
+          (
+            max by (subject) (pki_enrollment_cert_not_after_seconds)
+            and on(subject)
+            min by (subject) (pki_enrollment_healthy)
+          )
         for: 10m
         labels:
-          severity: page
+          severity: ticket
           stack: mtls
         annotations:
-          summary: "{{ $labels.subject }} reports no pki_enrollment_cert_not_after_seconds"
+          summary: "{{ $labels.subject }} reports no certificate state to compare against"
           description: |
-            {{ $labels.instance }} presents a certificate but no
-            pki_enrollment_cert_not_after_seconds series exists for subject
-            {{ $labels.subject }}, so the reported-versus-presented comparison cannot run.
+            probe_ssl_earliest_cert_expiry exists for {{ $labels.instance }} but pki_enrollment_cert_not_after_seconds
+            or pki_enrollment_healthy is missing for subject {{ $labels.subject }}, so the
+            reported-versus-presented comparison cannot run.
             Runbook: docs/runbooks/pki-agent-recovery.md

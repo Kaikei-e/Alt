@@ -461,7 +461,7 @@ check(
     and PROD_INV["accidental_osu_baseline"] == EXPECTED_ACCIDENTAL_OSU,
 )
 check(
-    "production long-running OSU stays at frozen cap 63 plus five excepted platform units",
+    "production long-running OSU stays at frozen cap 63 plus five excepted units (three platform, two essential)",
     len(prod_classified["long_running"]) == EXPECTED_LONG_RUNNING_OSU
     and PROD_INV["long_running_osu_baseline"] == FROZEN_LONG_RUNNING_CAP,
 )

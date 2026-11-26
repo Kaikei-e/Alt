@@ -302,8 +302,12 @@ retire_alt_pki_agent_leftovers() {
 | leftover pki-agent が up / `PkiAgentFleetIncomplete` | `docker ps` + `label=com.docker.compose.project=alt` かつ service `pki-agent-*` — 0 件が正常。Prometheus の pki-agent scrape には頼らない（`:9510` job は無い） |
 | Prometheus `PkiEnrollmentCertExpirySoon` / `PkiEnrollmentWorkloadMetricsAbsent` | 親の ops `:9110`（scrape は tts-speaker を除く 16 親）: `docker logs alt-<subject>-1` |
 | Prometheus `PkiEnrollmentRenewalFailing` | step-ca が健全か、subject-scoped JWK provisioner 衝突か |
-| Prometheus `TlsHandshakeCertDivergesFromReported` | ディスク上の leaf は更新済みだがプロセスが古い証明書を提示している（メモリ上の stale cert）。`instance` の親を force-recreate（Step 4） |
-| Prometheus `TlsHandshakeProbeFailing` / `TlsHandshakeProbeFleetIncomplete` / `TlsHandshakeProbeScrapeDown` / `TlsHandshakeProbeNoExpiry` / `TlsHandshakeReportedCertMissing` | 外形 probe 自体が盲目。`blackbox-exporter` コンテナ（`/trust/ca-bundle.pem` の有無を healthcheck が見る）と `tls-handshake` job の target 12 本を確認 |
+| Prometheus `TlsHandshakeCertDivergesFromReported` (ticket) | ハンドシェイクで提示される期限と、サービスが報告する期限が食い違っている。再作成の前に、(1) `pki_enrollment_healthy` が 1 で `PkiEnrollmentRenewalFailing` などの発行失敗アラートが鳴っていないこと、(2) compose 上で listener が読む証明書パスと報告側の `CERT_PATH` が一致していること（`scripts/tests/test-tls-handshake-probe.py` が見ている表）、(3) ホストの時計が戻っていないこと、を確認する。それでも提示だけが古ければ、対象の親だけを `docker compose -f compose/compose.yaml -p alt up -d --no-deps --force-recreate <subject>` で再作成する（Step 4） |
+| Prometheus `TlsHandshakeCertExpirySoon` (page) | ディスク側は 4 時間以上残っているのに提示だけが期限切れ間近。上の乖離と同じ確認のあと、対象の親を `--no-deps` 付きで単独再作成する。ディスク側も短い場合は `PkiEnrollmentCertExpirySoon` が担当（Step 1〜4） |
+| Prometheus `TlsHandshakeProbeFailing` (page) | 1〜2 本の listener がハンドシェイクできない。`instance` のサービスのログ（`docker logs alt-<service>-1`）と listener の起動状態を見る。2 ポートとも落ちていれば同一サービスの停止 |
+| Prometheus `TlsHandshakeProbeMassFailure` / `TlsHandshakeProberDown` / `TlsHandshakeProbeScrapeFailing` / `TlsHandshakeProbeFleetIncomplete` / `TlsHandshakeProbeNoExpiry` / `TlsHandshakeReportedCertMissing` (ticket) | probe 側が盲目になっている。`blackbox-exporter` コンテナ（healthcheck が `/trust/ca-bundle.pem` の有無を見る）、`tls-handshake` job の target 12 本、報告側 `pki_enrollment_*` の系列を確認する。有効化手順は `observability-config-reload.md` §2.4 |
+
+prober（`blackbox-exporter`）の IP から毎分届く「クライアント証明書なし」のハンドシェイクエラーは、probe の仕様による正常なログである（クライアント認証を要求する Go の listener に出る）。
 
 ## Step 1: ステート把握
 
@@ -375,7 +379,7 @@ docker run --rm --network alt_alt-network \
 retire_alt_pki_agent_leftovers
 
 docker compose -f compose/compose.yaml -p alt \
-  up -d --force-recreate <subject>
+  up -d --no-deps --force-recreate <subject>
 docker logs alt-<subject>-1 --tail 20
 ```
 
