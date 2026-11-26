@@ -141,7 +141,7 @@ pact_consumer = { version = "1.4.11", default-features = false, features = ["dat
 pact_models = "1.3.17"
 unicode-width = "0.2"
 prost = "0.14"
-opentelemetry-proto = { version = "0.32", features = ["gen-tonic-messages"] }
+opentelemetry-proto = { version = "0.33", features = ["gen-tonic-messages"] }
 
 
 [[bench]]
