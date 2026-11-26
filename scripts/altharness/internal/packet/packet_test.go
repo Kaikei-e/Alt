@@ -873,3 +873,202 @@ func TestGoMultilineRawStringWhitespaceDetected(t *testing.T) {
 		t.Fatalf("Go raw string whitespace edit counted %d modified functions, want 1", n)
 	}
 }
+
+func TestVerifySequencePacketAutoLoadsBaseCommitAndMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("packet auto-loads base_commit, packet_id, and behavior_preserving", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		if err := os.WriteFile(filepath.Join(repo, "app.sh"), []byte("echo 1\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "base")
+		base := gitHead(t, repo)
+
+		if err := os.WriteFile(filepath.Join(repo, "test_app.sh"), []byte("test \"$(sh app.sh)\" = 1\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "c1: characterization test")
+
+		if err := os.WriteFile(filepath.Join(repo, "app.sh"), []byte("val=1\necho \"$val\"\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "c2: behavior-preserving refactor")
+
+		pkt := basePacketMap()
+		pkt["packet_id"] = "V01-AUTO-PRESERVE"
+		pkt["base_commit"] = base
+		pkt["behavior_preserving"] = true
+		pktPath := writeJSONFile(t, tmp, "preserve.json", pkt)
+
+		rc, out, errB := runPacketCLI("verify-sequence", "--packet", pktPath, "--test-command", "sh test_app.sh", "--repo-root", repo)
+		if rc != exitOK || !strings.Contains(out, "packet_id=V01-AUTO-PRESERVE") {
+			t.Fatalf("auto-load preserve failed: rc=%d out=%q err=%q", rc, out, errB)
+		}
+
+		// --bugfix with --packet must STILL load base_commit & packet_id, and reject already-green C1.
+		rc, out, errB = runPacketCLI("verify-sequence", "--packet", pktPath, "--bugfix", "--test-command", "sh test_app.sh", "--repo-root", repo, "--format", "json")
+		if rc != exitInvalid || !strings.Contains(out, "SEQUENCE_BUGFIX_NOT_RED") || !strings.Contains(out, `"packet_id": "V01-AUTO-PRESERVE"`) {
+			t.Fatalf("--packet + --bugfix should reject already-green C1 with packet_id: rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("packet behavior_preserving=false and --behavior-preserving override", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		if err := os.WriteFile(filepath.Join(repo, "app.sh"), []byte("echo broken\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "base buggy")
+		base := gitHead(t, repo)
+
+		if err := os.WriteFile(filepath.Join(repo, "test_app.sh"), []byte("test \"$(sh app.sh)\" = fixed\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "c1: red test")
+
+		if err := os.WriteFile(filepath.Join(repo, "app.sh"), []byte("echo fixed\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "c2: green fix")
+
+		pkt := basePacketMap()
+		pkt["packet_id"] = "V01-AUTO-BUGFIX"
+		pkt["base_commit"] = base
+		pkt["task_kind"] = "bugfix"
+		pkt["behavior_preserving"] = false
+		pktPath := writeJSONFile(t, tmp, "bugfix.json", pkt)
+
+		rc, out, errB := runPacketCLI("verify-sequence", "--packet", pktPath, "--test-command", "sh test_app.sh", "--repo-root", repo)
+		if rc != exitOK || !strings.Contains(out, "packet_id=V01-AUTO-BUGFIX") {
+			t.Fatalf("auto-load bugfix failed: rc=%d out=%q err=%q", rc, out, errB)
+		}
+
+		// --behavior-preserving override still reads base_commit & packet_id and fails baseline.
+		rc, out, errB = runPacketCLI("verify-sequence", "--packet", pktPath, "--behavior-preserving", "--test-command", "sh test_app.sh", "--repo-root", repo, "--format", "json")
+		if rc != exitInvalid || !strings.Contains(out, "SEQUENCE_BASELINE_TEST_FAILED") || !strings.Contains(out, `"packet_id": "V01-AUTO-BUGFIX"`) {
+			t.Fatalf("--packet + --behavior-preserving should fail baseline with packet_id: rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("packet missing or unsafe base_commit fails closed", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+
+		pktMissing := basePacketMap()
+		pktMissing["packet_id"] = "V01-NO-BASE"
+		missingPath := writeJSONFile(t, tmp, "missing_base.json", pktMissing)
+		rc, _, errB := runPacketCLI("verify-sequence", "--packet", missingPath, "--test-command", "true", "--repo-root", repo)
+		if rc != exitInvalid || !strings.Contains(errB, "MISSING_BASE_COMMIT") {
+			t.Fatalf("missing packet base_commit rc=%d err=%q", rc, errB)
+		}
+
+		pktEvil := basePacketMap()
+		pktEvil["packet_id"] = "V01-EVIL-BASE"
+		pktEvil["base_commit"] = "--upload-pack=evil"
+		evilPath := writeJSONFile(t, tmp, "evil_base.json", pktEvil)
+		rc, _, errB = runPacketCLI("verify-sequence", "--packet", evilPath, "--test-command", "true", "--repo-root", repo)
+		if rc != exitInvalid || !strings.Contains(errB, "INVALID_BASE_COMMIT") {
+			t.Fatalf("unsafe packet base_commit rc=%d err=%q", rc, errB)
+		}
+	})
+}
+
+func TestVerifySequenceCorpusCasesC06C15C18(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot()
+	cases := []struct {
+		id         string
+		beforeName string
+		afterName  string
+		targetName string
+	}{
+		{id: "C-06", beforeName: "before.py", afterName: "after.py", targetName: "hybrid_priority_semaphore.py"},
+		{id: "C-15", beforeName: "before.go", afterName: "after.go", targetName: "server.go"},
+		{id: "C-18", beforeName: "before.sh", afterName: "after.sh", targetName: "check-compose-variables.sh"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+			caseDir := filepath.Join(root, "scripts", "harness", "corpus", tc.id)
+			beforeBytes, err := os.ReadFile(filepath.Join(caseDir, tc.beforeName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			afterBytes, err := os.ReadFile(filepath.Join(caseDir, tc.afterName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			testBytes, err := os.ReadFile(filepath.Join(caseDir, "test_characterization.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			repo := initGitRepo(t)
+			targetPath := filepath.Join(repo, tc.targetName)
+			if strings.HasSuffix(tc.targetName, ".sh") {
+				if err := fsperm.WriteExecutable(targetPath, beforeBytes); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(targetPath, beforeBytes, fsperm.File); err != nil {
+				t.Fatal(err)
+			}
+			runGitCmd(t, repo, "add", tc.targetName)
+			runGitCmd(t, repo, "commit", "-q", "-m", "base: "+tc.id+" before")
+			base := gitHead(t, repo)
+
+			testPath := filepath.Join(repo, "test_characterization.sh")
+			if err := fsperm.WriteExecutable(testPath, testBytes); err != nil {
+				t.Fatal(err)
+			}
+			runGitCmd(t, repo, "add", "test_characterization.sh")
+			runGitCmd(t, repo, "commit", "-q", "-m", "c1: add characterization test")
+
+			// Commit 2 introduces the corpus regression -> must fail SEQUENCE_FINAL_TEST_FAILED.
+			if strings.HasSuffix(tc.targetName, ".sh") {
+				if err := fsperm.WriteExecutable(targetPath, afterBytes); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(targetPath, afterBytes, fsperm.File); err != nil {
+				t.Fatal(err)
+			}
+			runGitCmd(t, repo, "add", tc.targetName)
+			runGitCmd(t, repo, "commit", "-q", "-m", "c2: apply regression")
+
+			pkt := basePacketMap()
+			pkt["packet_id"] = "CORPUS-" + tc.id
+			pkt["base_commit"] = base
+			pkt["behavior_preserving"] = true
+			pktPath := writeJSONFile(t, t.TempDir(), "packet.json", pkt)
+
+			rc, out, errB := runPacketCLI("verify-sequence", "--packet", pktPath, "--test-command", "bash ./test_characterization.sh", "--repo-root", repo)
+			if rc != exitInvalid || !strings.Contains(errB, "SEQUENCE_FINAL_TEST_FAILED") {
+				t.Fatalf("%s expected SEQUENCE_FINAL_TEST_FAILED, rc=%d out=%q err=%q", tc.id, rc, out, errB)
+			}
+
+			// Mutating Commit 1 test in a follow-up commit must fail SEQUENCE_TEST_MUTATED_IN_IMPL.
+			if err := fsperm.WriteExecutable(testPath, []byte("#!/usr/bin/env bash\nexit 0\n")); err != nil {
+				t.Fatal(err)
+			}
+			runGitCmd(t, repo, "add", "test_characterization.sh")
+			runGitCmd(t, repo, "commit", "-q", "-m", "c3: tamper characterization test")
+			rc, out, errB = runPacketCLI("verify-sequence", "--packet", pktPath, "--test-command", "bash ./test_characterization.sh", "--repo-root", repo)
+			if rc != exitInvalid || !strings.Contains(errB, "SEQUENCE_TEST_MUTATED_IN_IMPL") {
+				t.Fatalf("%s expected SEQUENCE_TEST_MUTATED_IN_IMPL, rc=%d out=%q err=%q", tc.id, rc, out, errB)
+			}
+		})
+	}
+}

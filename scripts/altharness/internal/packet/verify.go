@@ -679,3 +679,44 @@ func runTestInDetachedWorktree(ctx context.Context, repo, checkout, testCommand 
 	snippet := runeTail(strings.TrimSpace(validUTF8(snippetSrc)), 240)
 	return rc, snippet, nil
 }
+
+type sequenceConfig struct {
+	preserving bool
+	packetID   any
+	baseCommit string
+}
+
+// resolveSequenceConfig loads packet_id, base_commit, and behavior_preserving
+// from packetPath when provided, while letting explicit CLI flags override
+// base_commit or mode without discarding packet metadata.
+func resolveSequenceConfig(flagBase string, hasFlagBase, bugfix, preserving bool, packetPath string) (sequenceConfig, error) {
+	cfg := sequenceConfig{
+		preserving: true,
+		baseCommit: flagBase,
+	}
+	if packetPath != "" {
+		doc, err := loadDocument(packetPath)
+		if err != nil {
+			return sequenceConfig{}, err
+		}
+		if v, ok := doc.Data["packet_id"]; ok {
+			cfg.packetID = v
+		}
+		if !hasFlagBase {
+			if bc, ok := asString(doc.Data["base_commit"]); ok {
+				cfg.baseCommit = bc
+			}
+		}
+		if bp, ok := doc.Data["behavior_preserving"].(bool); ok {
+			cfg.preserving = bp
+		} else if doc.Data["task_kind"] == "bugfix" {
+			cfg.preserving = false
+		}
+	}
+	if bugfix {
+		cfg.preserving = false
+	} else if preserving {
+		cfg.preserving = true
+	}
+	return cfg, nil
+}

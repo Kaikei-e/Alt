@@ -4,7 +4,7 @@ category = "control-flow-drop"
 language = "python"
 before_file = "before.py"
 after_file = "after.py"
-support_files = []
+support_files = ["test_characterization.sh"]
 evaluation_mode = "diff"
 
 [origin]
@@ -17,7 +17,11 @@ notes = "Splitting HybridPrioritySemaphore.acquire into private helpers in news-
 
 [detection]
 planned_checks = ["CHECK-01", "VERIFY-01"]
-active_checks = ["CHECK-01"]
+active_checks = ["CHECK-01", "VERIFY-01"]
 currently_caught = true
-current_method = "CHECK-01"
-expected_signal = "python.control_flow_return_change"
+current_method = "CHECK-01+VERIFY-01"
+expected_signal = ""
+
+[detection.expected_signals]
+CHECK-01 = "python.control_flow_return_change"
+VERIFY-01 = "SEQUENCE_FINAL_TEST_FAILED"
