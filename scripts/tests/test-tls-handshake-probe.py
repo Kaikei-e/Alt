@@ -21,7 +21,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("compose_include", ROOT / "scripts" / "compose_include.py")
+_spec = importlib.util.spec_from_file_location(
+    "compose_include", ROOT / "scripts" / "compose_include.py"
+)
 assert _spec is not None
 assert _spec.loader is not None
 _compose_include = importlib.util.module_from_spec(_spec)
@@ -51,16 +53,78 @@ EXPECTED_TARGETS = {
     "rag-orchestrator:9011": "rag-orchestrator",
 }
 
+# Environment variables that turn on an inbound TLS listener.
+LISTENER_KEYS = (
+    "MTLS_LISTEN",
+    "MTLS_PORT",
+    "INBOUND_MTLS",
+    "INBOUND_TLS_ENABLED",
+    "FRONTEND_TLS_LISTEN",
+    "DATAHUB_LISTEN_ADDR",
+)
+
+# What each listener reads for its certificate and key, in precedence order.
+# The variable names differ per service, so this is read from each service's
+# listener code; enrollment writes CERT_PATH / KEY_PATH.
+LISTENER_PATHS = {
+    "alt-data-hub:9443": (("DATAHUB_TLS_CERT_FILE",), ("DATAHUB_TLS_KEY_FILE",)),
+    "auth-hub:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "auth-hub:8443": (("FRONTEND_TLS_CERT_FILE",), ("FRONTEND_TLS_KEY_FILE",)),
+    "search-indexer:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "pre-processor:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "tag-generator:9443": (
+        ("INBOUND_TLS_CERT_FILE", "MTLS_CERT_FILE"),
+        ("INBOUND_TLS_KEY_FILE", "MTLS_KEY_FILE"),
+    ),
+    "recap-worker:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "acolyte-orchestrator:9443": (
+        ("INBOUND_TLS_CERT_FILE", "MTLS_CERT_FILE"),
+        ("INBOUND_TLS_KEY_FILE", "MTLS_KEY_FILE"),
+    ),
+    "recap-subworker:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "news-creator:9443": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "rag-orchestrator:9010": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+    "rag-orchestrator:9011": (("MTLS_CERT_FILE",), ("MTLS_KEY_FILE",)),
+}
+
+
+def _default_of(value: str) -> str:
+    m = re.fullmatch(r"\$\{[^:}]+:-([^}]*)\}", value)
+    return m.group(1) if m else value
+
+
+def _opens_no_listener(svc: dict) -> bool:
+    env = env_map(svc)
+    return not any(k in env for k in LISTENER_KEYS)
+
+
+def _closed_by_default(svc: dict) -> bool:
+    return _default_of(env_map(svc).get("MTLS_LISTEN", "true")).lower() == "false"
+
+
+def _profile_gated(svc: dict) -> bool:
+    return bool(svc.get("profiles"))
+
+
 # Every compose service that enrolls a leaf (CERT_SUBJECT) and is not probed
-# must be named here with the reason it has no TLS server listener to probe.
+# must be named here with its reason and the compose fact that makes it true.
 UNPROBED_SUBJECTS = {
-    "alt-backend": "cmd/backend opens no TLS listener; the data plane is alt-data-hub",
-    "alt-harvester": "outbound mTLS client only",
-    "alt-notifier": "outbound mTLS client only",
-    "recap-evaluator": "outbound mTLS client only",
-    "knowledge-sovereign": "serves bearer-token plaintext on :9500; the leaf is client-side",
-    "alt-butterfly-facade": "inbound mTLS listener is closed by default (MTLS_LISTEN=false)",
-    "tts-speaker": "opt-in compose profile `tts`, not part of the default stack",
+    "alt-backend": (
+        "cmd/backend opens no TLS listener; the data plane is alt-data-hub",
+        _opens_no_listener,
+    ),
+    "alt-harvester": ("outbound mTLS client only", _opens_no_listener),
+    "alt-notifier": ("outbound mTLS client only", _opens_no_listener),
+    "recap-evaluator": ("outbound mTLS client only", _opens_no_listener),
+    "knowledge-sovereign": (
+        "bearer-token plaintext on :9500; the leaf is client-side",
+        _opens_no_listener,
+    ),
+    "alt-butterfly-facade": (
+        "inbound mTLS listener is closed by default (MTLS_LISTEN)",
+        _closed_by_default,
+    ),
+    "tts-speaker": ("opt-in compose profile, not part of the default stack", _profile_gated),
 }
 
 _counts = {"passed": 0, "failed": 0}
@@ -117,7 +181,10 @@ prom = load(PROM_CONFIG)
 job = scrape_job(prom, JOB)
 check("prometheus.yml has the tls-handshake job", bool(job))
 check("job probes through /probe", job.get("metrics_path") == "/probe")
-check("job selects the client-identity-free module", (job.get("params") or {}).get("module") == [MODULE])
+check(
+    "job selects the client-identity-free module",
+    (job.get("params") or {}).get("module") == [MODULE],
+)
 
 targets: dict[str, str] = {}
 for sc in job.get("static_configs") or []:
@@ -180,12 +247,38 @@ check(
 stale = (probed_subjects | UNPROBED_SUBJECTS.keys()) - enrolled
 check("no stale subject in the inventory", not stale, f"stale: {sorted(stale)}")
 
+by_subject = {env_map(svc).get("CERT_SUBJECT"): svc for svc in services.values()}
+for subject, (reason, holds) in UNPROBED_SUBJECTS.items():
+    svc = by_subject.get(subject)
+    check(f"{subject}: exclusion holds in compose ({reason})", svc is not None and holds(svc))
+
+check(
+    "every probe target has a listener path entry", LISTENER_PATHS.keys() == EXPECTED_TARGETS.keys()
+)
+for target, (cert_vars, key_vars) in LISTENER_PATHS.items():
+    env = env_map(services.get(target.split(":")[0]) or {})
+    for kind, names, enrolled_var in (
+        ("cert", cert_vars, "CERT_PATH"),
+        ("key", key_vars, "KEY_PATH"),
+    ):
+        effective = next((env[n] for n in names if env.get(n)), None)
+        check(
+            f"{target}: listener {kind} path ({'/'.join(names)}) equals {enrolled_var}",
+            effective is not None and effective == env.get(enrolled_var),
+            f"listener={effective!r} enrollment={env.get(enrolled_var)!r}",
+        )
+
 sys.stdout.write("prober module\n")
 module = (load(BLACKBOX).get("modules") or {}).get(MODULE) or {}
 tcp = module.get("tcp") or {}
 tls_cfg = tcp.get("tls_config") or {}
-check("module uses the tcp prober with TLS", module.get("prober") == "tcp" and tcp.get("tls") is True)
-check("module verifies against the published trust bundle", tls_cfg.get("ca_file") == "/trust/ca-bundle.pem")
+check(
+    "module uses the tcp prober with TLS", module.get("prober") == "tcp" and tcp.get("tls") is True
+)
+check(
+    "module verifies against the published trust bundle",
+    tls_cfg.get("ca_file") == "/trust/ca-bundle.pem",
+)
 check("module never skips verification", not tls_cfg.get("insecure_skip_verify"))
 check(
     "module carries no client certificate or key",
@@ -232,17 +325,19 @@ for group in rules_doc.get("groups") or []:
     for rule in group.get("rules") or []:
         exprs[rule["alert"]] = " ".join(str(rule["expr"]).split())
         sev[rule["alert"]] = (rule.get("labels") or {}).get("severity", "")
-EXPECTED_ALERTS = {
-    "TlsHandshakeCertDivergesFromReported",
-    "TlsHandshakeCertExpirySoon",
-    "TlsHandshakeProbeFailing",
-    "TlsHandshakeProbeScrapeDown",
-    "TlsHandshakeProbeFleetIncomplete",
-    "TlsHandshakeProbeNoExpiry",
-    "TlsHandshakeReportedCertMissing",
+EXPECTED_SEVERITY = {
+    "TlsHandshakeCertExpirySoon": "page",
+    "TlsHandshakeProbeFailing": "page",
+    "TlsHandshakeCertDivergesFromReported": "ticket",
+    "TlsHandshakeProbeMassFailure": "ticket",
+    "TlsHandshakeProberDown": "ticket",
+    "TlsHandshakeProbeScrapeFailing": "ticket",
+    "TlsHandshakeProbeFleetIncomplete": "ticket",
+    "TlsHandshakeProbeNoExpiry": "ticket",
+    "TlsHandshakeReportedCertMissing": "ticket",
 }
-check("all expected alerts exist", exprs.keys() == EXPECTED_ALERTS, str(sorted(exprs)))
-check("every alert pages", all(v == "page" for v in sev.values()), str(sev))
+check("all expected alerts exist", exprs.keys() == EXPECTED_SEVERITY.keys(), str(sorted(exprs)))
+check("severities match the decision table", sev == EXPECTED_SEVERITY, str(sev))
 pin = re.search(r"!=\s*(\d+)\s*$", exprs.get("TlsHandshakeProbeFleetIncomplete", ""))
 check(
     "fleet pin equals the number of probe targets",

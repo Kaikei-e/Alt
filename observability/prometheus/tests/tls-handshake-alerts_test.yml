@@ -5,7 +5,8 @@
 #   promtool test rules observability/prometheus/tests/tls-handshake-alerts_test.yml
 #
 # Kept outside /etc/prometheus/rules for the same reason as the other test
-# files: a test file inside the rules glob is a fatal config error.
+# files: a test file inside the rules glob is a fatal config error. Reported
+# series carry the labels of the real :9110 scrape (job, instance, service).
 
 rule_files:
   - ../rules/tls-handshake-alerts.yml
@@ -13,7 +14,7 @@ rule_files:
 evaluation_interval: 30s
 
 tests:
-  # Healthy fleet; a rotation reaches the handshake 2m after the service reports it.
+  # Healthy fleet; a rotation reaches the handshake 2m after the service reports it, nothing fires during or after.
   - interval: 30s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
@@ -64,27 +65,85 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x60 50057000x80'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
         values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
+      - eval_time: 30m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
       - eval_time: 45m
         alertname: TlsHandshakeCertDivergesFromReported
         exp_alerts: []
@@ -95,7 +154,16 @@ tests:
         alertname: TlsHandshakeProbeFailing
         exp_alerts: []
       - eval_time: 45m
-        alertname: TlsHandshakeProbeScrapeDown
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProberDown
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProbeScrapeFailing
         exp_alerts: []
       - eval_time: 45m
         alertname: TlsHandshakeProbeFleetIncomplete
@@ -106,8 +174,35 @@ tests:
       - eval_time: 45m
         alertname: TlsHandshakeReportedCertMissing
         exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProberDown
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProbeScrapeFailing
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeProbeNoExpiry
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts: []
 
-  # Stale in-memory certificate: the reported not_after moved, the handshake did not.
+  # Stale certificate: the reported not_after moved, the handshake did not (ticket).
   - interval: 30s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
@@ -158,26 +253,66 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x20 50057000x100'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
         values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
       - eval_time: 15m
         alertname: TlsHandshakeCertDivergesFromReported
@@ -186,7 +321,7 @@ tests:
         alertname: TlsHandshakeCertDivergesFromReported
         exp_alerts:
           - exp_labels:
-              severity: page
+              severity: ticket
               stack: mtls
               job: tls-handshake
               instance: alt-data-hub:9443
@@ -196,11 +331,522 @@ tests:
               description: |
                 The not_after seen in the TLS handshake on alt-data-hub:9443 differs by
                 15h 50m 0s from pki_enrollment_cert_not_after_seconds for
-                alt-data-hub. The renewed leaf is on disk but the process is still
-                presenting an older one (stale in-memory certificate).
+                alt-data-hub while enrollment reports healthy. Possible causes: the listener and
+                enrollment read different certificate paths, a clock that moved backwards, a
+                stopped reload poll, or a listener that bypasses reload. Check these before
+                recreating anything.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # Presented certificate under 4h from expiry fires even when the report agrees.
+  # Two-port subject with a duplicate reported series: only the stale port diverges and the join does not error.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50057000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50057000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="old-container:9110",service="auth-hub",subject="auth-hub"}'
+        values: '40000000x120'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: auth-hub:8443
+              subject: auth-hub
+            exp_annotations:
+              summary: "auth-hub presents a different certificate on auth-hub:8443 than it reports"
+              description: |
+                The not_after seen in the TLS handshake on auth-hub:8443 differs by
+                15h 50m 0s from pki_enrollment_cert_not_after_seconds for
+                auth-hub while enrollment reports healthy. Possible causes: the listener and
+                enrollment read different certificate paths, a clock that moved backwards, a
+                stopped reload poll, or a listener that bypasses reload. Check these before
+                recreating anything.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Corrupt on-disk certificate (recap-worker): reported not_after is now and healthy is 0, so no divergence is raised.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0+30x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts: []
+
+  # A missing reported series raises a ticket instead of silencing the divergence alert.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator reports no certificate state to compare against"
+              description: |
+                probe_ssl_earliest_cert_expiry exists for news-creator:9443 but pki_enrollment_cert_not_after_seconds
+                or pki_enrollment_healthy is missing for subject news-creator, so the
+                reported-versus-presented comparison cannot run.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+
+  # A missing healthy series alone also raises it.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator reports no certificate state to compare against"
+              description: |
+                probe_ssl_earliest_cert_expiry exists for news-creator:9443 but pki_enrollment_cert_not_after_seconds
+                or pki_enrollment_healthy is missing for subject news-creator, so the
+                reported-versus-presented comparison cannot run.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Presented certificate under 4h while the disk side is healthy pages.
   - interval: 30s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
@@ -251,27 +897,70 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
-        values: '10000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
+      - eval_time: 1m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
       - eval_time: 3m
         alertname: TlsHandshakeCertExpirySoon
         exp_alerts:
@@ -285,10 +974,248 @@ tests:
               summary: "news-creator:9443 presents a certificate that expires in under 4h"
               description: |
                 The certificate presented in the TLS handshake on news-creator:9443
-                has 2h 43m 40s left, whatever the service reports.
+                has 2h 43m 40s left while the on-disk leaf reported for news-creator still
+                has more than 4h, so the process is serving a stale certificate.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # A failing handshake pages; the other listeners stay quiet.
+  # Presented and on-disk both under 4h: the disk-side alert owns it, this one stays quiet.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+
+  # A duplicate on-disk series with plenty left does not hide a short one.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="old-container:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+
+  # One failing listener pages individually; no aggregate.
   - interval: 30s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
@@ -337,26 +1264,66 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
         values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
       - eval_time: 6m
         alertname: TlsHandshakeProbeFailing
@@ -374,30 +1341,11 @@ tests:
                 (subject news-creator). Until it can, the presented-certificate
                 checks for this listener are blind.
                 Runbook: docs/runbooks/pki-agent-recovery.md
-
-  # An unreachable prober pages instead of leaving the alerts silent.
-  - interval: 30s
-    input_series:
-      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '0x120'
-    alert_rule_test:
       - eval_time: 6m
-        alertname: TlsHandshakeProbeScrapeDown
-        exp_alerts:
-          - exp_labels:
-              severity: page
-              stack: mtls
-              job: tls-handshake
-              instance: news-creator:9443
-              subject: news-creator
-            exp_annotations:
-              summary: "tls-handshake scrape failing for news-creator:9443"
-              description: |
-                Prometheus gets no result for news-creator:9443 from job tls-handshake;
-                blackbox_exporter is down or unreachable, so no handshake is being probed.
-                Runbook: docs/runbooks/pki-agent-recovery.md
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
 
-  # A missing target pages through the fleet pin.
+  # Both ports of one service failing (2 listeners) are two individual pages, no aggregate.
   - interval: 30s
     input_series:
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
@@ -420,8 +1368,10 @@ tests:
         values: '1x120'
       - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
         values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '0x120'
       - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
-        values: '1x120'
+        values: '0x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
@@ -442,57 +1392,450 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
         values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
-        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
-      - eval_time: 5m
-        alertname: TlsHandshakeProbeFleetIncomplete
-        exp_alerts: []
-      - eval_time: 11m
-        alertname: TlsHandshakeProbeFleetIncomplete
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeFailing
         exp_alerts:
           - exp_labels:
               severity: page
               stack: mtls
+              job: tls-handshake
+              instance: rag-orchestrator:9010
+              subject: rag-orchestrator
             exp_annotations:
-              summary: "TLS handshake probe covers 11 listeners (want exactly 12)"
+              summary: "TLS handshake probe to rag-orchestrator:9010 is failing"
               description: |
-                Each of the 12 east-west TLS listeners must report probe_success. A missing
-                series means a target dropped out of the scrape config or blackbox_exporter
-                stopped answering; `or vector(0)` fires when every series is absent.
+                blackbox_exporter cannot complete a TLS handshake with rag-orchestrator:9010
+                (subject rag-orchestrator). Until it can, the presented-certificate
+                checks for this listener are blind.
                 Runbook: docs/runbooks/pki-agent-recovery.md
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: rag-orchestrator:9011
+              subject: rag-orchestrator
+            exp_annotations:
+              summary: "TLS handshake probe to rag-orchestrator:9011 is failing"
+              description: |
+                blackbox_exporter cannot complete a TLS handshake with rag-orchestrator:9011
+                (subject rag-orchestrator). Until it can, the presented-certificate
+                checks for this listener are blind.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
 
-  # No probe series at all still pages through vector(0).
+  # Three failing listeners is the boundary: no individual page, one aggregate ticket.
   - interval: 30s
     input_series:
-      - series: 'up{job="prometheus"}'
-        values: '1x40'
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probes are failing for 3 listeners"
+              description: |
+                Three or more listeners fail their TLS handshake probe together, which points at
+                the prober (trust bundle, configuration) rather than at the listeners. Check
+                the blackbox-exporter container and /trust/ca-bundle.pem first.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # All twelve failing: zero pages, one aggregate ticket.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probes are failing for 12 listeners"
+              description: |
+                Three or more listeners fail their TLS handshake probe together, which points at
+                the prober (trust bundle, configuration) rather than at the listeners. Check
+                the blackbox-exporter container and /trust/ca-bundle.pem first.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Prometheus loaded the config before the prober exists: tickets only, never a page.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '0x120'
+      - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
+        values: '0x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeScrapeFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProberDown
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: blackbox-exporter
+              instance: blackbox-exporter:9115
+              service: blackbox-exporter
+            exp_annotations:
+              summary: "blackbox-exporter is not answering scrapes"
+              description: |
+                Prometheus cannot scrape blackbox-exporter, so no handshake is being probed and
+                the probe alerts have nothing to evaluate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
       - eval_time: 11m
         alertname: TlsHandshakeProbeFleetIncomplete
         exp_alerts:
           - exp_labels:
-              severity: page
+              severity: ticket
               stack: mtls
             exp_annotations:
               summary: "TLS handshake probe covers 0 listeners (want exactly 12)"
@@ -502,95 +1845,67 @@ tests:
                 stopped answering; `or vector(0)` fires when every series is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # A successful probe without an expiry series pages.
+  # No probe series of any kind: the fleet pin still raises a ticket and nothing pages.
   - interval: 30s
     input_series:
-      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
-        values: '1x120'
-      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
-        values: '1x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
-        values: '50000000x120'
-      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
-        values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
-        values: '50000000x120'
+      - series: 'up{job="prometheus"}'
+        values: '1x40'
     alert_rule_test:
       - eval_time: 11m
-        alertname: TlsHandshakeProbeNoExpiry
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProberDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeMassFailure
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
         exp_alerts:
           - exp_labels:
-              severity: page
+              severity: ticket
               stack: mtls
-              job: tls-handshake
-              instance: news-creator:9443
-              subject: news-creator
             exp_annotations:
-              summary: "news-creator:9443 handshake succeeded but exposed no certificate expiry"
+              summary: "TLS handshake probe covers 0 listeners (want exactly 12)"
               description: |
-                probe_success is 1 yet probe_ssl_earliest_cert_expiry is absent, so the
-                certificate checks for news-creator:9443 are blind.
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # A missing reported series pages instead of silencing the divergence alert.
+  # Scrape failures with a live prober are one ticket carrying the count.
   - interval: 30s
     input_series:
+      - series: 'up{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+      - series: 'up{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'up{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
+        values: '1x120'
       - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
         values: '1x120'
       - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
@@ -639,38 +1954,330 @@ tests:
         values: '50000000x120'
       - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
         values: '50000000x120'
-      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
         values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
     alert_rule_test:
-      - eval_time: 11m
-        alertname: TlsHandshakeReportedCertMissing
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeScrapeFailing
         exp_alerts:
           - exp_labels:
-              severity: page
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "2 TLS handshake probe scrapes are failing"
+              description: |
+                Prometheus gets no result for the TLS handshake probe from blackbox-exporter while
+                the prober itself is up. Check the tls-handshake targets in Prometheus.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 6m
+        alertname: TlsHandshakeProberDown
+        exp_alerts: []
+
+  # A missing target raises a ticket through the fleet pin.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 11 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A successful probe without an expiry series raises a ticket.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="search-indexer",instance="search-indexer:9110",service="search-indexer",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="pre-processor-ops",instance="pre-processor:9110",service="pre-processor",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="tag-generator",instance="tag-generator:9110",service="tag-generator",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="acolyte-orchestrator",instance="acolyte-orchestrator:9110",service="acolyte-orchestrator",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="recap-subworker-ops",instance="recap-subworker:9110",service="recap-subworker",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '80000x120'
+      - series: 'pki_enrollment_healthy{job="rag-orchestrator-ops",instance="rag-orchestrator:9110",service="rag-orchestrator",subject="rag-orchestrator"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeNoExpiry
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
               stack: mtls
               job: tls-handshake
               instance: news-creator:9443
               subject: news-creator
             exp_annotations:
-              summary: "news-creator reports no pki_enrollment_cert_not_after_seconds"
+              summary: "news-creator:9443 handshake succeeded but exposed no certificate expiry"
               description: |
-                news-creator:9443 presents a certificate but no
-                pki_enrollment_cert_not_after_seconds series exists for subject
-                news-creator, so the reported-versus-presented comparison cannot run.
+                probe_success is 1 yet probe_ssl_earliest_cert_expiry is absent, so the
+                certificate checks for news-creator:9443 are blind.
                 Runbook: docs/runbooks/pki-agent-recovery.md
