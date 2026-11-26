@@ -1,0 +1,676 @@
+# promtool unit tests for the externally observed mTLS handshake alerts.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/tls-handshake-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules for the same reason as the other test
+# files: a test file inside the rules glob is a fatal config error.
+
+rule_files:
+  - ../rules/tls-handshake-alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  # Healthy fleet; a rotation reaches the handshake 2m after the service reports it.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x64 50057000x76'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x60 50057000x80'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProbeScrapeDown
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeProbeNoExpiry
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts: []
+
+  # Stale in-memory certificate: the reported not_after moved, the handshake did not.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x20 50057000x100'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: alt-data-hub:9443
+              subject: alt-data-hub
+            exp_annotations:
+              summary: "alt-data-hub presents a different certificate on alt-data-hub:9443 than it reports"
+              description: |
+                The not_after seen in the TLS handshake on alt-data-hub:9443 differs by
+                15h 50m 0s from pki_enrollment_cert_not_after_seconds for
+                alt-data-hub. The renewed leaf is on disk but the process is still
+                presenting an older one (stale in-memory certificate).
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Presented certificate under 4h from expiry fires even when the report agrees.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '10000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443
+                has 2h 43m 40s left, whatever the service reports.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A failing handshake pages; the other listeners stay quiet.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "TLS handshake probe to news-creator:9443 is failing"
+              description: |
+                blackbox_exporter cannot complete a TLS handshake with news-creator:9443
+                (subject news-creator). Until it can, the presented-certificate checks for
+                this listener are blind.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # An unreachable prober pages instead of leaving the alerts silent.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeScrapeDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "tls-handshake scrape failing for news-creator:9443"
+              description: |
+                Prometheus gets no result for news-creator:9443 from job tls-handshake;
+                blackbox_exporter is down or unreachable, so no handshake is being probed.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A missing target pages through the fleet pin.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 11 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # No probe series at all still pages through vector(0).
+  - interval: 30s
+    input_series:
+      - series: 'up{job="prometheus"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 0 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A successful probe without an expiry series pages.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeNoExpiry
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 handshake succeeded but exposed no certificate expiry"
+              description: |
+                probe_success is 1 yet probe_ssl_earliest_cert_expiry is absent, so the
+                certificate checks for news-creator:9443 are blind.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A missing reported series pages instead of silencing the divergence alert.
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="search-indexer"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="pre-processor"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="tag-generator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-worker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="acolyte-orchestrator"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="recap-subworker"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_cert_not_after_seconds{subject="rag-orchestrator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator reports no pki_enrollment_cert_not_after_seconds"
+              description: |
+                news-creator:9443 presents a certificate but no
+                pki_enrollment_cert_not_after_seconds series exists for subject
+                news-creator, so the reported-versus-presented comparison cannot run.
+                Runbook: docs/runbooks/pki-agent-recovery.md
