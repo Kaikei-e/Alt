@@ -351,7 +351,6 @@ for target, (cert_vars, key_vars, source) in LISTENER_PATHS.items():
         )
 
 
-
 def path_glob_matches(pattern: str, path: str) -> bool:
     regex = re.escape(pattern).replace(r"\*\*", "\0").replace(r"\*", "[^/]*").replace("\0", ".*")
     return re.fullmatch(regex, path) is not None
@@ -362,7 +361,9 @@ triggers = workflow.get("on") or workflow.get(True) or {}
 for event in ("push", "pull_request"):
     event_paths = (triggers.get(event) or {}).get("paths") or []
     sources = {src for _, _, src in LISTENER_PATHS.values()}
-    uncovered = sorted(src for src in sources if not any(path_glob_matches(g, src) for g in event_paths))
+    uncovered = sorted(
+        src for src in sources if not any(path_glob_matches(g, src) for g in event_paths)
+    )
     check(
         f"workflow {event} paths cover every listener source the contract reads",
         not uncovered,

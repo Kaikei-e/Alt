@@ -26,12 +26,14 @@ groups:
       # Only while the disk side reported 4h or more within the last 2m:
       # shorter means PkiEnrollmentCertExpirySoon owns it, and no disk series
       # means the service is down (PkiEnrollmentOpsDown), where an old presented
-      # value would be a misdiagnosis.
+      # value would be a misdiagnosis. The disk side is read from not_after, the
+      # series TlsHandshakeReportedCertMissing already watches, so a missing
+      # series cannot silence this page unnoticed.
       - alert: TlsHandshakeCertExpirySoon
         expr: |
           (last_over_time(probe_ssl_earliest_cert_expiry{job="tls-handshake"}[1h]) - time() < 4 * 3600)
           and on(subject)
-          (min by (subject) (last_over_time(pki_enrollment_cert_remaining_seconds[2m])) >= 4 * 3600)
+          (min by (subject) (last_over_time(pki_enrollment_cert_not_after_seconds[2m])) - time() >= 4 * 3600)
         for: 2m
         labels:
           severity: page
