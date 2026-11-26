@@ -354,6 +354,27 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  # Canary: the same module and trust bundle against step-ca, which every
+  # service already verifies at enrollment. When this fails the prober (bundle,
+  # config, network) is at fault, not the listeners, so rules/
+  # tls-handshake-alerts.yml holds back the listener page. Separate job so it
+  # never counts toward the 12-listener pin above.
+  - job_name: 'tls-handshake-canary'
+    metrics_path: /probe
+    params:
+      module: [mtls_server_cert]
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['step-ca:9000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   - job_name: 'blackbox-exporter'
     static_configs:
       - targets: ['blackbox-exporter:9115']

@@ -7,9 +7,9 @@
 # raise a ticket when the probe itself cannot tell us anything.
 #
 # Severity: a page needs a person within hours, a ticket does not. Only a
-# presented certificate about to expire and a single listener failing its
-# handshake page; everything that says "the prober is blind or misconfigured"
-# is a ticket so one prober fault cannot page twelve times.
+# presented certificate about to expire and listeners of live processes that
+# cannot handshake page; everything that says "the prober is blind or
+# misconfigured" is a ticket, and a step-ca canary tells the two apart.
 #
 # Timing: leaf TTL is 24h and renewal at 66% moves not_after by ~15h50m. A
 # healthy rotation leaves the two values apart for about two minutes (probe
@@ -19,11 +19,15 @@ groups:
   - name: tls_handshake_cert
     interval: 30s
     rules:
+      # Evaluated on the last value of the past hour: once the presented
+      # certificate really expires the handshake fails verification and
+      # probe_ssl_earliest_cert_expiry disappears, which would resolve the page
+      # at the moment of failure. TlsHandshakeListenerFailing takes over 5m later.
       # Skipped when the disk side is also under 4h: PkiEnrollmentCertExpirySoon
       # already pages for that, and one cause should not page twice.
       - alert: TlsHandshakeCertExpirySoon
         expr: |
-          (probe_ssl_earliest_cert_expiry{job="tls-handshake"} - time() < 4 * 3600)
+          (last_over_time(probe_ssl_earliest_cert_expiry{job="tls-handshake"}[1h]) - time() < 4 * 3600)
           unless on(subject)
           (min by (subject) (pki_enrollment_cert_remaining_seconds) < 4 * 3600)
         for: 2m
@@ -33,42 +37,61 @@ groups:
         annotations:
           summary: "{{ $labels.instance }} presents a certificate that expires in under 4h"
           description: |
-            The certificate presented in the TLS handshake on {{ $labels.instance }}
-            has {{ humanizeDuration $value }} left while the on-disk leaf reported for {{ $labels.subject }} still
-            has more than 4h, so the process is serving a stale certificate.
+            The certificate presented in the TLS handshake on {{ $labels.instance }} expires in
+            {{ humanizeDuration $value }} (negative once it has expired) while the on-disk leaf
+            reported for {{ $labels.subject }} still has more than 4h, so the process is serving a
+            stale certificate.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # Fewer than 3 failing at once: a listener (or one service's two ports).
-      # From 3 up the cause is the prober, see TlsHandshakeProbeMassFailure.
-      - alert: TlsHandshakeProbeFailing
+      # One series however many listeners fail, so a failure count that moves
+      # between 1 and 3 never restarts `for`. Services whose process reports no
+      # enrollment state are left to PkiEnrollmentOpsDown. Held back while the
+      # canary fails, because then every listener result is suspect.
+      - alert: TlsHandshakeListenerFailing
         expr: |
-          probe_success{job="tls-handshake"} == 0
+          count(
+            probe_success{job="tls-handshake"} == 0
+            and on(subject)
+            count by (subject) (pki_enrollment_healthy)
+          ) > 0
           unless on()
-          (count(probe_success{job="tls-handshake"} == 0) >= 3)
+          (probe_success{job="tls-handshake-canary"} == 0)
         for: 5m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "TLS handshake probe to {{ $labels.instance }} is failing"
+          summary: "{{ $value }} TLS listener(s) cannot complete a handshake"
           description: |
-            blackbox_exporter cannot complete a TLS handshake with {{ $labels.instance }}
-            (subject {{ $labels.subject }}). Until it can, the presented-certificate
-            checks for this listener are blind.
+            Handshake probes fail for listeners of services that still report enrollment
+            state, so the process is up but its TLS listener is not serving.
+            Failing listeners:{{ range query `probe_success{job="tls-handshake"} == 0 and on(subject) count by (subject) (pki_enrollment_healthy)` | sortByLabel "instance" }} {{ .Labels.instance }}{{ end }}
+            If the whole service is down, PkiEnrollmentOpsDown fires separately.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      - alert: TlsHandshakeProbeMassFailure
-        expr: count(probe_success{job="tls-handshake"} == 0) >= 3
+      # step-ca is what every service verifies against with the same bundle, so a
+      # failure here is the prober (bundle, config, network) or step-ca itself.
+      # A missing series counts, unless the prober is down: that is ProberDown.
+      - alert: TlsHandshakeCanaryFailing
+        expr: |
+          probe_success{job="tls-handshake-canary"} == 0
+          or
+          (
+            absent(probe_success{job="tls-handshake-canary"})
+            unless on()
+            (up{job="blackbox-exporter"} == 0)
+          )
         for: 5m
         labels:
           severity: ticket
           stack: mtls
         annotations:
-          summary: "TLS handshake probes are failing for {{ $value }} listeners"
+          summary: "TLS handshake canary against step-ca is failing"
           description: |
-            Three or more listeners fail their TLS handshake probe together, which points at
-            the prober (trust bundle, configuration) rather than at the listeners. Check
-            the blackbox-exporter container and /trust/ca-bundle.pem first.
+            The prober cannot complete a verified handshake with step-ca using the trust
+            bundle every service uses, or reports nothing for it. Listener results cannot
+            be trusted, so the listener-failure page is held back. Check blackbox-exporter
+            (container, /trust/ca-bundle.pem, network) and then step-ca.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
       # Only while enrollment reports healthy: a corrupt on-disk leaf makes the
