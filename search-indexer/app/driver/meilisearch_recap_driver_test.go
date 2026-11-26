@@ -21,7 +21,7 @@ func (s *recapTestServiceManager) Index(_ string) meilisearch.IndexManager {
 	return s.idx
 }
 
-func (s *recapTestServiceManager) CreateIndexWithContext(_ context.Context, cfg *meilisearch.IndexConfig) (*meilisearch.TaskInfo, error) {
+func (s *recapTestServiceManager) CreateIndex(_ context.Context, cfg *meilisearch.IndexConfig) (*meilisearch.TaskInfo, error) {
 	s.createCalled = true
 	s.createdConfig = cfg
 	if s.createIndexErr != nil {
@@ -46,7 +46,7 @@ func TestMeilisearchRecapDriver_EnsureIndex_NonNotFoundFetchInfoError(t *testing
 		{
 			name: "timeout error",
 			err: &meilisearch.Error{
-				ErrCode:     meilisearch.MeilisearchTimeoutError,
+				ErrCode:     meilisearch.TimeoutError,
 				OriginError: context.DeadlineExceeded,
 			},
 		},
@@ -63,11 +63,11 @@ func TestMeilisearchRecapDriver_EnsureIndex_NonNotFoundFetchInfoError(t *testing
 			if err == nil {
 				t.Fatalf("EnsureIndex() error = nil, want error for FetchInfo failure %v", tt.err)
 			}
-			if fakeIdx.called("AddDocuments") || fakeIdx.called("AddDocumentsNoContext") {
+			if fakeIdx.called("AddDocuments") {
 				t.Fatal("EnsureIndex() must not add documents when FetchInfo fails with a non-404 error")
 			}
 			if sm.createCalled {
-				t.Fatal("EnsureIndex() must not call CreateIndexWithContext when FetchInfo fails with a non-404 error")
+				t.Fatal("EnsureIndex() must not call CreateIndex when FetchInfo fails with a non-404 error")
 			}
 		})
 	}
@@ -76,7 +76,7 @@ func TestMeilisearchRecapDriver_EnsureIndex_NonNotFoundFetchInfoError(t *testing
 func TestMeilisearchRecapDriver_EnsureIndex_CreatesIndexExplicitlyWhenNotFound(t *testing.T) {
 	fakeIdx := newFakeRecapIndexManager(t)
 	notFoundErr := &meilisearch.Error{StatusCode: 404}
-	notFoundErr.MeilisearchApiError.Code = "index_not_found"
+	notFoundErr.APIError.Code = "index_not_found"
 	fakeIdx.fetchInfoErr = notFoundErr
 
 	sm := &recapTestServiceManager{idx: fakeIdx}
@@ -86,12 +86,12 @@ func TestMeilisearchRecapDriver_EnsureIndex_CreatesIndexExplicitlyWhenNotFound(t
 		t.Fatalf("EnsureIndex() unexpected error = %v", err)
 	}
 	if !sm.createCalled {
-		t.Fatal("EnsureIndex() did not call CreateIndexWithContext when index was not found")
+		t.Fatal("EnsureIndex() did not call CreateIndex when index was not found")
 	}
 	if sm.createdConfig == nil || sm.createdConfig.Uid != "recaps" || sm.createdConfig.PrimaryKey != "id" {
-		t.Fatalf("CreateIndexWithContext config = %+v, want Uid=\"recaps\" PrimaryKey=\"id\"", sm.createdConfig)
+		t.Fatalf("CreateIndex config = %+v, want Uid=\"recaps\" PrimaryKey=\"id\"", sm.createdConfig)
 	}
-	if fakeIdx.called("AddDocuments") || fakeIdx.called("AddDocumentsNoContext") {
+	if fakeIdx.called("AddDocuments") {
 		t.Fatal("EnsureIndex() must not insert a dummy document to create the index")
 	}
 }
@@ -101,12 +101,12 @@ type taskByUIDRecapIndexManager struct {
 	tasks map[int64]*meilisearch.Task
 }
 
-func (m *taskByUIDRecapIndexManager) WaitForTaskWithContext(ctx context.Context, taskUID int64, interval time.Duration) (*meilisearch.Task, error) {
+func (m *taskByUIDRecapIndexManager) WaitForTask(ctx context.Context, taskUID int64, interval time.Duration) (*meilisearch.Task, error) {
 	if task, ok := m.tasks[taskUID]; ok {
 		m.record("WaitForTask", ctx)
 		return task, nil
 	}
-	return m.fakeRecapIndexManager.WaitForTaskWithContext(ctx, taskUID, interval)
+	return m.fakeRecapIndexManager.WaitForTask(ctx, taskUID, interval)
 }
 
 func TestMeilisearchRecapDriver_EnsureIndex_TreatsIndexAlreadyExistsTaskAsSuccess(t *testing.T) {

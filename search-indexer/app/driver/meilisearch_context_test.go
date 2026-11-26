@@ -60,42 +60,42 @@ func (f *fakeIndexManager) ctxFor(name string) context.Context {
 	return f.calls[name]
 }
 
-func (f *fakeIndexManager) FetchInfoWithContext(ctx context.Context) (*meilisearch.IndexResult, error) {
+func (f *fakeIndexManager) FetchInfo(ctx context.Context) (*meilisearch.IndexResult, error) {
 	f.record("FetchInfo", ctx)
 	return &meilisearch.IndexResult{}, nil
 }
 
-func (f *fakeIndexManager) AddDocumentsWithContext(ctx context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) AddDocuments(ctx context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 	f.record("AddDocuments", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) DeleteDocumentWithContext(ctx context.Context, _ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) DeleteDocument(ctx context.Context, _ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 	f.record("DeleteDocument", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) DeleteDocumentsWithContext(ctx context.Context, _ []string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) DeleteDocuments(ctx context.Context, _ []string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 	f.record("DeleteDocuments", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateSearchableAttributesWithContext(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateSearchableAttributes(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateSearchableAttributes", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateFilterableAttributesWithContext(ctx context.Context, _ *[]interface{}) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateFilterableAttributes(ctx context.Context, _ *[]interface{}) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateFilterableAttributes", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateRankingRulesWithContext(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateRankingRules(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateRankingRules", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateLocalizedAttributes(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
 	f.mu.Lock()
 	f.localizedAttrs = attrs
 	f.mu.Unlock()
@@ -103,17 +103,17 @@ func (f *fakeIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Cont
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateSearchCutoffMsWithContext(ctx context.Context, _ int64) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateSearchCutoffMs(ctx context.Context, _ int64) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateSearchCutoffMs", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateSynonymsWithContext(ctx context.Context, _ *map[string][]string) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateSynonyms(ctx context.Context, _ *map[string][]string) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateSynonyms", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) SearchWithContext(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (f *fakeIndexManager) Search(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
 	f.mu.Lock()
 	f.lastSearchReq = req
 	resp := f.searchResp
@@ -125,7 +125,7 @@ func (f *fakeIndexManager) SearchWithContext(ctx context.Context, _ string, req 
 	return &meilisearch.SearchResponse{}, nil
 }
 
-func (f *fakeIndexManager) WaitForTaskWithContext(ctx context.Context, _ int64, _ time.Duration) (*meilisearch.Task, error) {
+func (f *fakeIndexManager) WaitForTask(ctx context.Context, _ int64, _ time.Duration) (*meilisearch.Task, error) {
 	f.record("WaitForTask", ctx)
 	if f.waitBlock {
 		<-ctx.Done()
@@ -189,10 +189,10 @@ func TestMeilisearchDriver_IndexDocuments_BoundsWaitByTimeoutNotJustInterval(t *
 
 	waitCtx := fake.ctxFor("WaitForTask")
 	if waitCtx == nil {
-		t.Fatal("WaitForTaskWithContext was never called")
+		t.Fatal("WaitForTask was never called")
 	}
 	if _, ok := waitCtx.Deadline(); !ok {
-		t.Fatal("WaitForTaskWithContext must be called with a context carrying a deadline (bounded wait)")
+		t.Fatal("WaitForTask must be called with a context carrying a deadline (bounded wait)")
 	}
 }
 
@@ -211,10 +211,10 @@ func TestMeilisearchDriver_IndexDocuments_PropagatesCallerContext(t *testing.T) 
 	}
 
 	if got := markerOf(fake.ctxFor("AddDocuments")); got != "caller-marker" {
-		t.Fatalf("AddDocumentsWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("AddDocuments ctx marker = %q, want the caller's context to propagate", got)
 	}
 	if got := markerOf(fake.ctxFor("WaitForTask")); got != "caller-marker" {
-		t.Fatalf("WaitForTaskWithContext ctx marker = %q, want it derived from the caller's context", got)
+		t.Fatalf("WaitForTask ctx marker = %q, want it derived from the caller's context", got)
 	}
 }
 
@@ -232,7 +232,7 @@ func TestMeilisearchDriver_DeleteDocuments_PropagatesCallerContext(t *testing.T)
 	}
 
 	if got := markerOf(fake.ctxFor("DeleteDocuments")); got != "caller-marker" {
-		t.Fatalf("DeleteDocumentsWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("DeleteDocuments ctx marker = %q, want the caller's context to propagate", got)
 	}
 }
 
@@ -250,13 +250,13 @@ func TestMeilisearchDriver_SearchByUserID_PropagatesCallerContext(t *testing.T) 
 	}
 
 	if got := markerOf(fake.ctxFor("Search")); got != "caller-marker" {
-		t.Fatalf("SearchWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("Search ctx marker = %q, want the caller's context to propagate", got)
 	}
 }
 
 // TestMeilisearchDriver_IndexDocuments_FailsOnTaskStatusFailed reproduces the
 // HIGH data-loss finding: waitForTask discarded the *meilisearch.Task it got
-// back and only looked at err, but meilisearch-go's WaitForTaskWithContext
+// back and only looked at err, but meilisearch-go's WaitForTask
 // returns a nil error once the task reaches a terminal status -- including
 // TaskStatusFailed (e.g. a primary-key/schema violation on the Meilisearch
 // side). IndexDocuments must surface that as an error so the consumer never
@@ -307,10 +307,10 @@ func TestMeilisearchDriver_RegisterSynonyms_PropagatesCallerContext(t *testing.T
 	}
 
 	if got := markerOf(fake.ctxFor("UpdateSynonyms")); got != "caller-marker" {
-		t.Fatalf("UpdateSynonymsWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("UpdateSynonyms ctx marker = %q, want the caller's context to propagate", got)
 	}
 	if got := markerOf(fake.ctxFor("WaitForTask")); got != "caller-marker" {
-		t.Fatalf("WaitForTaskWithContext ctx marker = %q, want it derived from the caller's context", got)
+		t.Fatalf("WaitForTask ctx marker = %q, want it derived from the caller's context", got)
 	}
 }
 

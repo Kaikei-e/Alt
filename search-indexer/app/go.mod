@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ikawaha/kagome-dict/ipa v1.2.6
 	github.com/ikawaha/kagome/v2 v2.11.0
-	github.com/meilisearch/meilisearch-go v0.36.3
+	github.com/meilisearch/meilisearch-go v0.37.0
 	github.com/pact-foundation/pact-go/v2 v2.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2

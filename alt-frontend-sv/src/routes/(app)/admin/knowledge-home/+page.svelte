@@ -38,7 +38,9 @@ import {
 import { useSovereignAdmin } from "#lib/hooks/useSovereignAdmin.svelte.js";
 import { browser } from "$app/env";
 
-let { data } = $props<{
+let {
+	data,
+}: {
 	data: {
 		adminData: {
 			health:
@@ -57,7 +59,7 @@ let { data } = $props<{
 		};
 		error: string | null;
 	};
-}>();
+} = $props();
 
 let activeTab = $state("overview");
 let revealed = $state(false);

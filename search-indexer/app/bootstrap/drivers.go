@@ -111,7 +111,7 @@ func meilisearchHTTPClient() *http.Client {
 func probeMeilisearchHealth(ctx context.Context, client meilisearch.ServiceManager) error {
 	healthCtx, cancel := context.WithTimeout(ctx, config.MeiliTimeout)
 	defer cancel()
-	_, err := client.HealthWithContext(healthCtx)
+	_, err := client.Health(healthCtx)
 	return err
 }
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // mockPgx implements PgxIface for unit-testing the dedupe registry and
@@ -147,6 +148,7 @@ func (r *fakeEmptyRows) Scan(dest ...any) error                       { return n
 func (r *fakeEmptyRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeEmptyRows) RawValues() [][]byte                          { return nil }
 func (r *fakeEmptyRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeEmptyRows) TypeMap() *pgtype.Map                         { return nil }
 
 type mockRows struct {
 	idx       int
@@ -171,3 +173,4 @@ func (r *mockRows) Scan(dest ...any) error {
 func (r *mockRows) Values() ([]any, error) { return nil, nil }
 func (r *mockRows) RawValues() [][]byte    { return nil }
 func (r *mockRows) Conn() *pgx.Conn        { return nil }
+func (r *mockRows) TypeMap() *pgtype.Map   { return nil }

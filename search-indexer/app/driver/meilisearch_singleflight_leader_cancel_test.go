@@ -11,7 +11,7 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 )
 
-// stallingSearchIndex holds every SearchWithContext open until release is
+// stallingSearchIndex holds every Search open until release is
 // closed or the caller's context dies. That is the only way to keep a
 // singleflight window provably open while a second caller joins it -- a
 // non-blocking fake would finish the flight before the follower arrives and
@@ -19,7 +19,7 @@ import (
 type stallingSearchIndex struct {
 	meilisearch.IndexManager
 
-	entered chan context.Context // one value per SearchWithContext invocation
+	entered chan context.Context // one value per Search invocation
 	release chan struct{}
 
 	mu    sync.Mutex
@@ -33,7 +33,7 @@ func newStallingSearchIndex() *stallingSearchIndex {
 	}
 }
 
-func (s *stallingSearchIndex) SearchWithContext(ctx context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (s *stallingSearchIndex) Search(ctx context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
 	s.mu.Lock()
 	s.calls++
 	s.mu.Unlock()
@@ -77,13 +77,13 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 		leaderErr <- err
 	}()
 
-	// Once the leader is parked inside SearchWithContext its flight is open,
+	// Once the leader is parked inside Search its flight is open,
 	// so any caller using the same cache key must join it instead of starting
 	// its own.
 	select {
 	case <-idx.entered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("leader never reached SearchWithContext")
+		t.Fatal("leader never reached Search")
 	}
 
 	type searchResult struct {
@@ -119,7 +119,7 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 		t.Fatalf("follower returned err=%v (docs=%d) on the leader's cancellation; a caller whose own context is alive must still get results", got.err, len(got.docs))
 	case <-idx.entered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("follower never reached SearchWithContext under a live context")
+		t.Fatal("follower never reached Search under a live context")
 	}
 	close(idx.release)
 
@@ -136,7 +136,7 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 	}
 
 	if got := idx.callCount(); got != 2 {
-		t.Errorf("SearchWithContext calls = %d, want 2 (the doomed leader flight plus one re-lead)", got)
+		t.Errorf("Search calls = %d, want 2 (the doomed leader flight plus one re-lead)", got)
 	}
 }
 
@@ -154,7 +154,7 @@ func TestMeilisearchDriver_SearchByUserID_RealFailureIsNotRetried(t *testing.T) 
 		t.Fatalf("got %v, want the underlying engine error", err)
 	}
 	if got := idx.callCount(); got != 1 {
-		t.Errorf("SearchWithContext calls = %d, want 1 (engine failures must not be retried)", got)
+		t.Errorf("Search calls = %d, want 1 (engine failures must not be retried)", got)
 	}
 }
 
@@ -168,7 +168,7 @@ type failingSearchIndex struct {
 	calls int
 }
 
-func (s *failingSearchIndex) SearchWithContext(_ context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (s *failingSearchIndex) Search(_ context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
 	s.mu.Lock()
 	s.calls++
 	s.mu.Unlock()

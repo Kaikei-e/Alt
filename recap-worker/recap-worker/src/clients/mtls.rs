@@ -317,8 +317,12 @@ mod tests {
         // Push the mtime a few seconds into the future so it strictly
         // advances regardless of filesystem mtime granularity.
         let target = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
-        let ft = filetime::FileTime::from_system_time(target);
-        filetime::set_file_mtime(path, ft).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(target)
+            .unwrap();
     }
 
     fn replace_identity(dir: &TempDir, cert_path: &Path, key_path: &Path, cn: &str) {

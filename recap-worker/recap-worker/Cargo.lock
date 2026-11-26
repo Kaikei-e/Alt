@@ -4888,7 +4888,6 @@ dependencies = [
  "chrono",
  "console 0.16.4",
  "criterion",
- "filetime",
  "fst",
  "futures",
  "html2text",

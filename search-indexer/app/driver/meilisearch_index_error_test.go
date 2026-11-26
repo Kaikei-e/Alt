@@ -12,7 +12,7 @@ func TestIsIndexNotFoundErr(t *testing.T) {
 	t.Parallel()
 
 	indexNotFound := &meilisearch.Error{StatusCode: 400}
-	indexNotFound.MeilisearchApiError.Code = "index_not_found"
+	indexNotFound.APIError.Code = "index_not_found"
 
 	tests := []struct {
 		name string
@@ -23,7 +23,7 @@ func TestIsIndexNotFoundErr(t *testing.T) {
 		{name: "plain error", err: errors.New("connection refused"), want: false},
 		{name: "communication error", err: &meilisearch.Error{
 			StatusCode:  0,
-			ErrCode:     meilisearch.MeilisearchCommunicationError,
+			ErrCode:     meilisearch.CommunicationError,
 			OriginError: &net.OpError{Op: "dial", Err: errors.New("connection refused")},
 		}, want: false},
 		{name: "404 status", err: &meilisearch.Error{StatusCode: 404}, want: true},

@@ -38,6 +38,13 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
+    ignore:
+      # pgx v5.12.0 added Tx() to pgx.BatchResults. pgxmock v5.2.0, the newest
+      # release, is built against pgx v5.11.0 and does not implement it, so
+      # every module that uses pgxmock stops compiling. Drop this once a
+      # pgxmock release implements BatchResults.Tx.
+      - dependency-name: "github.com/jackc/pgx/v5"
+        versions: [">= 5.12.0"]
     groups:
       gomod:
         applies-to: version-updates
@@ -98,11 +105,24 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
+    ignore:
+      # @playwright/test is pinned in three places that must move together:
+      # alt-frontend-sv/package.json, e2e/playwright/package.json and
+      # PLAYWRIGHT_IMAGE in .github/workflows/alt-frontend-sv.yml. Dependabot
+      # can bump only one of them per PR, and the browsers baked into the
+      # image then no longer match, so every such PR fails. Bump all three by
+      # hand in one commit.
+      - dependency-name: "@playwright/test"
     groups:
       bun:
         applies-to: version-updates
         patterns:
           - "*"
+        # Biome minor releases promote and retune lint rules, so each one
+        # needs `biome migrate` plus a pass over the new findings. Keep it in
+        # its own PR so it cannot fail the rest of the group.
+        exclude-patterns:
+          - "@biomejs/biome"
         update-types:
           - "minor"
           - "patch"
@@ -113,6 +133,14 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
+    ignore:
+      # @playwright/test is pinned in three places that must move together:
+      # alt-frontend-sv/package.json, e2e/playwright/package.json and
+      # PLAYWRIGHT_IMAGE in .github/workflows/alt-frontend-sv.yml. Dependabot
+      # can bump only one of them per PR, and the browsers baked into the
+      # image then no longer match, so every such PR fails. Bump all three by
+      # hand in one commit.
+      - dependency-name: "@playwright/test"
     groups:
       npm:
         applies-to: version-updates

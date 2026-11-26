@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,6 +76,7 @@ func (r *nullEmbeddingRow) FieldDescriptions() []pgconn.FieldDescription { retur
 func (r *nullEmbeddingRow) Values() ([]any, error)                       { return nil, nil }
 func (r *nullEmbeddingRow) RawValues() [][]byte                          { return nil }
 func (r *nullEmbeddingRow) Conn() *pgx.Conn                              { return nil }
+func (r *nullEmbeddingRow) TypeMap() *pgtype.Map                         { return nil }
 
 // fakeTxQueryOnly is a minimal pgx.Tx double, following the same pattern as
 // fakeTx in postgres_tx_test.go: embed pgx.Tx so every unused method panics

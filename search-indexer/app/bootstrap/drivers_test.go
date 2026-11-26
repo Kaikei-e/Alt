@@ -89,10 +89,10 @@ func TestMeilisearchHTTPClient_HasResponseTimeoutAndKeepsTransportDefaults(t *te
 	}
 }
 
-// TestMeilisearchHTTPClient_BoundsNonContextSDKCalls covers the calls no
-// context can rescue: meilisearch-go's non-context methods bake
-// context.Background() in, so only an http.Client timeout can end them.
-func TestMeilisearchHTTPClient_BoundsNonContextSDKCalls(t *testing.T) {
+// TestMeilisearchHTTPClient_BoundsCallsWithoutDeadline covers the calls no
+// context can rescue: a caller that passes a context with no deadline leaves
+// only the http.Client timeout to end a request Meilisearch never answers.
+func TestMeilisearchHTTPClient_BoundsCallsWithoutDeadline(t *testing.T) {
 	setMeiliTimeout(t, 200*time.Millisecond)
 	srv := newStallingMeilisearchServer(t)
 
@@ -100,7 +100,7 @@ func TestMeilisearchHTTPClient_BoundsNonContextSDKCalls(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.Health()
+		_, err := m.Health(context.Background())
 		done <- err
 	}()
 

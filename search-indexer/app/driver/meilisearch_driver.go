@@ -18,9 +18,9 @@ import (
 )
 
 // meilisearchTaskPollInterval and meilisearchTaskWaitTimeout bound every
-// WaitForTaskWithContext call made through the waitForTask helper below.
+// WaitForTask call made through the waitForTask helper below.
 //
-// meilisearch-go's WaitForTask(WithContext)'s second argument is a POLLING
+// meilisearch-go's WaitForTask's second argument is a POLLING
 // INTERVAL, not a timeout -- confirmed by reading the vendored v0.36.2
 // source (meilisearch.go's waitForTask loops on a ticker set to that
 // interval and only returns early via ctx.Done(); it never times out on
@@ -92,7 +92,7 @@ func (d *MeilisearchDriver) Ping(ctx context.Context) error {
 	if d.client == nil {
 		return errors.New("unavailable")
 	}
-	_, err := d.client.HealthWithContext(ctx)
+	_, err := d.client.Health(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -106,7 +106,7 @@ func (d *MeilisearchDriver) Ping(ctx context.Context) error {
 // elapses. See the package-level comment on meilisearchTaskWaitTimeout for
 // why this can't just call WaitForTask(taskUID, timeout) directly.
 //
-// meilisearch-go's WaitForTaskWithContext returns a nil error once the task
+// meilisearch-go's WaitForTask returns a nil error once the task
 // reaches ANY terminal status, including TaskStatusFailed -- a schema
 // violation, missing primary key, etc. on the Meilisearch side is reported
 // only via the returned task's Status field, not via err. Callers that only
@@ -117,7 +117,7 @@ func (d *MeilisearchDriver) Ping(ctx context.Context) error {
 func (d *MeilisearchDriver) waitForTask(ctx context.Context, taskUID int64) (*meilisearch.Task, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, d.taskWaitTimeout)
 	defer cancel()
-	task, err := d.index.WaitForTaskWithContext(waitCtx, taskUID, d.taskPollInterval)
+	task, err := d.index.WaitForTask(waitCtx, taskUID, d.taskPollInterval)
 	if err != nil {
 		return task, err
 	}
@@ -209,7 +209,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 		return nil
 	}
 
-	task, err := d.index.AddDocumentsWithContext(ctx, docs, nil)
+	task, err := d.index.AddDocuments(ctx, docs, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
@@ -233,7 +233,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 		return nil
 	}
 
-	task, err := d.index.DeleteDocumentsWithContext(ctx, ids, nil)
+	task, err := d.index.DeleteDocuments(ctx, ids, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
@@ -310,7 +310,7 @@ func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentD
 }
 
 func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
-	_, err := d.index.FetchInfoWithContext(ctx)
+	_, err := d.index.FetchInfo(ctx)
 	if err != nil {
 		if !isIndexNotFoundErr(err) {
 			return &DriverError{
@@ -318,7 +318,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 				Err: fmt.Errorf("fetch index info: %w", err),
 			}
 		}
-		task, createErr := d.client.CreateIndexWithContext(ctx, &meilisearch.IndexConfig{
+		task, createErr := d.client.CreateIndex(ctx, &meilisearch.IndexConfig{
 			Uid:        d.indexName,
 			PrimaryKey: "id",
 		})
@@ -340,7 +340,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// for each async task so subsequent indexing sees the applied settings.
 
 	searchableAttrs := []string{"title", "content", "tags"}
-	searchableTask, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs)
+	searchableTask, err := d.index.UpdateSearchableAttributes(ctx, &searchableAttrs)
 	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -360,7 +360,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// ``language`` pairs with the acolyte language_quota rebalancing so
 	// cross-lingual recall can be scoped when the caller opts in.
 	filterableAttrs := []interface{}{"tags", "user_id", "published_at", "language"}
-	filterableTask, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs)
+	filterableTask, err := d.index.UpdateFilterableAttributes(ctx, &filterableAttrs)
 	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -382,7 +382,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		"sort",
 		"exactness",
 	}
-	rankingTask, err := d.index.UpdateRankingRulesWithContext(ctx, &rankingRules)
+	rankingTask, err := d.index.UpdateRankingRules(ctx, &rankingRules)
 	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -405,7 +405,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 			AttributePatterns: []string{"title", "content", "tags"},
 		},
 	}
-	task, localErr := d.index.UpdateLocalizedAttributesWithContext(ctx, localizedAttrs)
+	task, localErr := d.index.UpdateLocalizedAttributes(ctx, localizedAttrs)
 	if localErr != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -424,7 +424,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// full Connect-RPC section timeout. Setting 0 means "no cap" — skip the
 	// update in that case to leave the engine default in place.
 	if config.MeiliSearchCutoffMs > 0 {
-		cutoffTask, cutoffErr := d.index.UpdateSearchCutoffMsWithContext(ctx, int64(config.MeiliSearchCutoffMs))
+		cutoffTask, cutoffErr := d.index.UpdateSearchCutoffMs(ctx, int64(config.MeiliSearchCutoffMs))
 		if cutoffErr != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
@@ -452,7 +452,7 @@ func isIndexNotFoundErr(err error) bool {
 	if merr.StatusCode == 404 {
 		return true
 	}
-	return merr.MeilisearchApiError.Code == "index_not_found"
+	return merr.APIError.Code == "index_not_found"
 }
 
 func (d *MeilisearchDriver) getString(m meilisearch.Hit, key string) string {
@@ -547,7 +547,7 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
 		req := d.newBaseSearchRequest(query, limit)
 		req.Filter = filter
-		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
+		result, err := d.searchIndex.Search(ctx, query, req)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -595,7 +595,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 		paginReq := d.newBaseSearchRequest(query, int(limit))
 		paginReq.Offset = offset
 		paginReq.Filter = filter
-		result, err := d.searchIndex.SearchWithContext(ctx, query, paginReq)
+		result, err := d.searchIndex.Search(ctx, query, paginReq)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -642,7 +642,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, qu
 	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
 		req := d.newBaseSearchRequest(query, limit)
 		req.Filter = filter
-		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
+		result, err := d.searchIndex.Search(ctx, query, req)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -659,7 +659,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, qu
 }
 
 func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
-	task, err := d.index.UpdateSynonymsWithContext(ctx, &synonyms)
+	task, err := d.index.UpdateSynonyms(ctx, &synonyms)
 	if err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
@@ -695,7 +695,7 @@ const pruneTaskWaitTimeout = 5 * time.Minute
 // writes with no_space_left_on_device, silently halting indexing while the
 // service stays healthy.
 func (d *MeilisearchDriver) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
-	task, err := d.client.DeleteTasksWithContext(ctx, &meilisearch.DeleteTasksQuery{
+	task, err := d.client.DeleteTasks(ctx, &meilisearch.DeleteTasksQuery{
 		Statuses: []meilisearch.TaskStatus{
 			meilisearch.TaskStatusSucceeded,
 			meilisearch.TaskStatusFailed,
@@ -712,11 +712,11 @@ func (d *MeilisearchDriver) PruneTaskHistory(ctx context.Context, olderThan time
 
 	waitCtx, cancel := context.WithTimeout(ctx, pruneTaskWaitTimeout)
 	defer cancel()
-	// WaitForTaskWithContext reports a nil error for every terminal status,
+	// WaitForTask reports a nil error for every terminal status,
 	// TaskStatusFailed included, so a taskDeletion Meilisearch rejected reads
 	// as a completed prune unless the status is inspected here -- and a prune
 	// that silently never happens is exactly how the task database refills.
-	pruned, err := d.client.WaitForTaskWithContext(waitCtx, task.TaskUID, d.taskPollInterval)
+	pruned, err := d.client.WaitForTask(waitCtx, task.TaskUID, d.taskPollInterval)
 	if err != nil {
 		return &DriverError{
 			Op:  "PruneTaskHistory",

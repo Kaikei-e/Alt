@@ -11,9 +11,9 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 )
 
-// fakeRecapIndexManager mirrors fakeIndexManager but implements the
-// non-context SDK methods MeilisearchRecapDriver calls, so the recap driver's
-// wait behaviour can be observed without touching Meilisearch.
+// fakeRecapIndexManager mirrors fakeIndexManager for the SDK methods
+// MeilisearchRecapDriver calls, so the recap driver's wait behaviour can be
+// observed without touching Meilisearch.
 type fakeRecapIndexManager struct {
 	meilisearch.IndexManager
 
@@ -33,13 +33,13 @@ type fakeRecapIndexManager struct {
 	waitBlock bool
 	release   chan struct{}
 
-	// waitResp overrides the task WaitForTaskWithContext reports back, so a
+	// waitResp overrides the task WaitForTask reports back, so a
 	// terminal-but-failed task can be simulated.
 	waitResp *meilisearch.Task
 
 	// stall simulates the observed saturation behaviour: Meilisearch accepts
-	// the connection but never answers. Context-aware calls abort on
-	// ctx.Done(); the non-context ones have nothing to abort on and block.
+	// the connection but never answers, so a call returns only when its
+	// context is done.
 	stall bool
 }
 
@@ -85,25 +85,7 @@ func (f *fakeRecapIndexManager) stallCtx(ctx context.Context) error {
 	}
 }
 
-// stallNoCtx models the same request issued through a non-context SDK method:
-// meilisearch-go bakes context.Background() in and its default http.Client
-// sets no response timeout, so nothing can unblock it.
-func (f *fakeRecapIndexManager) stallNoCtx() {
-	if f.stall {
-		<-f.release
-	}
-}
-
-func (f *fakeRecapIndexManager) FetchInfo() (*meilisearch.IndexResult, error) {
-	f.record("FetchInfoNoContext", context.Background())
-	f.stallNoCtx()
-	if f.fetchInfoErr != nil {
-		return nil, f.fetchInfoErr
-	}
-	return &meilisearch.IndexResult{}, nil
-}
-
-func (f *fakeRecapIndexManager) FetchInfoWithContext(ctx context.Context) (*meilisearch.IndexResult, error) {
+func (f *fakeRecapIndexManager) FetchInfo(ctx context.Context) (*meilisearch.IndexResult, error) {
 	f.record("FetchInfo", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -114,13 +96,7 @@ func (f *fakeRecapIndexManager) FetchInfoWithContext(ctx context.Context) (*meil
 	return &meilisearch.IndexResult{}, nil
 }
 
-func (f *fakeRecapIndexManager) AddDocuments(_ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-	f.record("AddDocumentsNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.TaskInfo{TaskUID: 1}, nil
-}
-
-func (f *fakeRecapIndexManager) AddDocumentsWithContext(ctx context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) AddDocuments(ctx context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 	f.record("AddDocuments", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -128,13 +104,7 @@ func (f *fakeRecapIndexManager) AddDocumentsWithContext(ctx context.Context, _ i
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeRecapIndexManager) DeleteDocument(_ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-	f.record("DeleteDocumentNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.TaskInfo{TaskUID: 2}, nil
-}
-
-func (f *fakeRecapIndexManager) DeleteDocumentWithContext(ctx context.Context, _ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) DeleteDocument(ctx context.Context, _ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 	f.record("DeleteDocument", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -142,13 +112,7 @@ func (f *fakeRecapIndexManager) DeleteDocumentWithContext(ctx context.Context, _
 	return &meilisearch.TaskInfo{TaskUID: 2}, nil
 }
 
-func (f *fakeRecapIndexManager) UpdateSearchableAttributes(_ *[]string) (*meilisearch.TaskInfo, error) {
-	f.record("UpdateSearchableAttributesNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.TaskInfo{TaskUID: 3}, nil
-}
-
-func (f *fakeRecapIndexManager) UpdateSearchableAttributesWithContext(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) UpdateSearchableAttributes(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateSearchableAttributes", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -156,13 +120,7 @@ func (f *fakeRecapIndexManager) UpdateSearchableAttributesWithContext(ctx contex
 	return &meilisearch.TaskInfo{TaskUID: 3}, nil
 }
 
-func (f *fakeRecapIndexManager) UpdateFilterableAttributes(_ *[]interface{}) (*meilisearch.TaskInfo, error) {
-	f.record("UpdateFilterableAttributesNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.TaskInfo{TaskUID: 4}, nil
-}
-
-func (f *fakeRecapIndexManager) UpdateFilterableAttributesWithContext(ctx context.Context, _ *[]interface{}) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) UpdateFilterableAttributes(ctx context.Context, _ *[]interface{}) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateFilterableAttributes", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -170,13 +128,7 @@ func (f *fakeRecapIndexManager) UpdateFilterableAttributesWithContext(ctx contex
 	return &meilisearch.TaskInfo{TaskUID: 4}, nil
 }
 
-func (f *fakeRecapIndexManager) UpdateSortableAttributes(_ *[]string) (*meilisearch.TaskInfo, error) {
-	f.record("UpdateSortableAttributesNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.TaskInfo{TaskUID: 5}, nil
-}
-
-func (f *fakeRecapIndexManager) UpdateSortableAttributesWithContext(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) UpdateSortableAttributes(ctx context.Context, _ *[]string) (*meilisearch.TaskInfo, error) {
 	f.record("UpdateSortableAttributes", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -184,7 +136,7 @@ func (f *fakeRecapIndexManager) UpdateSortableAttributesWithContext(ctx context.
 	return &meilisearch.TaskInfo{TaskUID: 5}, nil
 }
 
-func (f *fakeRecapIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
+func (f *fakeRecapIndexManager) UpdateLocalizedAttributes(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
 	f.mu.Lock()
 	f.localizedAttrs = attrs
 	f.mu.Unlock()
@@ -195,13 +147,7 @@ func (f *fakeRecapIndexManager) UpdateLocalizedAttributesWithContext(ctx context
 	return &meilisearch.TaskInfo{TaskUID: 6}, nil
 }
 
-func (f *fakeRecapIndexManager) Search(_ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
-	f.record("SearchNoContext", context.Background())
-	f.stallNoCtx()
-	return &meilisearch.SearchResponse{}, nil
-}
-
-func (f *fakeRecapIndexManager) SearchWithContext(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (f *fakeRecapIndexManager) Search(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
 	f.mu.Lock()
 	f.lastSearchReq = req
 	f.mu.Unlock()
@@ -212,18 +158,7 @@ func (f *fakeRecapIndexManager) SearchWithContext(ctx context.Context, _ string,
 	return &meilisearch.SearchResponse{}, nil
 }
 
-// WaitForTask is the misuse under test: its second argument is a poll
-// interval and the SDK bakes context.Background() in, so a stalled task queue
-// blocks the caller forever.
-func (f *fakeRecapIndexManager) WaitForTask(_ int64, _ time.Duration) (*meilisearch.Task, error) {
-	f.record("WaitForTaskNoContext", context.Background())
-	if f.waitBlock {
-		<-f.release
-	}
-	return &meilisearch.Task{Status: meilisearch.TaskStatusSucceeded}, nil
-}
-
-func (f *fakeRecapIndexManager) WaitForTaskWithContext(ctx context.Context, taskUID int64, _ time.Duration) (*meilisearch.Task, error) {
+func (f *fakeRecapIndexManager) WaitForTask(ctx context.Context, taskUID int64, _ time.Duration) (*meilisearch.Task, error) {
 	f.mu.Lock()
 	f.waitedTaskUIDs = append(f.waitedTaskUIDs, taskUID)
 	f.mu.Unlock()
@@ -267,10 +202,6 @@ func TestMeilisearchRecapDriver_IndexDocuments_WaitIsBounded(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("IndexDocuments never returned: the task wait is unbounded")
 	}
-
-	if fake.called("WaitForTaskNoContext") {
-		t.Fatal("the recap driver must not use the non-context WaitForTask; it hard-codes context.Background()")
-	}
 }
 
 // TestMeilisearchRecapDriver_IndexDocuments_WaitHasOwnDeadline covers the
@@ -289,18 +220,18 @@ func TestMeilisearchRecapDriver_IndexDocuments_WaitHasOwnDeadline(t *testing.T) 
 
 	waitCtx := fake.ctxFor("WaitForTask")
 	if waitCtx == nil {
-		t.Fatal("WaitForTaskWithContext was never called")
+		t.Fatal("WaitForTask was never called")
 	}
 	if _, ok := waitCtx.Deadline(); !ok {
-		t.Fatal("WaitForTaskWithContext must be called with a context carrying a deadline (bounded wait)")
+		t.Fatal("WaitForTask must be called with a context carrying a deadline (bounded wait)")
 	}
 	if got := markerOf(waitCtx); got != "caller-marker" {
-		t.Fatalf("WaitForTaskWithContext ctx marker = %q, want it derived from the caller's context", got)
+		t.Fatalf("WaitForTask ctx marker = %q, want it derived from the caller's context", got)
 	}
 }
 
 // TestMeilisearchRecapDriver_IndexDocuments_FailsOnTaskStatusFailed mirrors
-// the article driver: WaitForTaskWithContext returns a nil error for every
+// the article driver: WaitForTask returns a nil error for every
 // terminal status, failed included, so a recap write that Meilisearch
 // rejected must not be reported as a success.
 func TestMeilisearchRecapDriver_IndexDocuments_FailsOnTaskStatusFailed(t *testing.T) {
@@ -340,12 +271,6 @@ func TestMeilisearchRecapDriver_EnsureIndex_ReturnsWhenContextIsDone(t *testing.
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("EnsureIndex never returned: a stalled Meilisearch request is not cancellable")
-	}
-
-	for _, call := range []string{"FetchInfoNoContext", "AddDocumentsNoContext"} {
-		if fake.called(call) {
-			t.Fatalf("%s was used; the non-context SDK variants hard-code context.Background() and cannot be cancelled", call)
-		}
 	}
 }
 
@@ -400,7 +325,7 @@ func TestMeilisearchRecapDriver_IndexDocuments_PropagatesCallerContext(t *testin
 	}
 
 	if got := markerOf(fake.ctxFor("AddDocuments")); got != "caller-marker" {
-		t.Fatalf("AddDocumentsWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("AddDocuments ctx marker = %q, want the caller's context to propagate", got)
 	}
 }
 
@@ -417,10 +342,10 @@ func TestMeilisearchRecapDriver_Search_PropagatesCallerContext(t *testing.T) {
 	}
 
 	if got := markerOf(fake.ctxFor("Search")); got != "caller-marker" {
-		t.Fatalf("SearchWithContext ctx marker = %q, want the caller's context to propagate", got)
+		t.Fatalf("Search ctx marker = %q, want the caller's context to propagate", got)
 	}
 	if fake.lastSearchReq == nil {
-		t.Fatal("expected SearchWithContext to receive a SearchRequest")
+		t.Fatal("expected Search to receive a SearchRequest")
 	}
 	if fake.lastSearchReq.MatchingStrategy != meilisearch.Frequency {
 		t.Errorf("recap Search MatchingStrategy = %q, want %q", fake.lastSearchReq.MatchingStrategy, meilisearch.Frequency)
@@ -459,7 +384,7 @@ func TestMeilisearchRecapDriver_EnsureIndex_WaitIsBounded(t *testing.T) {
 		t.Fatalf("EnsureIndex error = %v, want error from the index creation wait", gotErr)
 	}
 	if !sm.createCalled {
-		t.Fatal("expected EnsureIndex to call CreateIndexWithContext when index is not found")
+		t.Fatal("expected EnsureIndex to call CreateIndex when index is not found")
 	}
 	if !reflect.DeepEqual(fake.waitedTaskUIDs, []int64{10}) {
 		t.Fatalf("waitedTaskUIDs = %v, want [10] (only the index creation task)", fake.waitedTaskUIDs)

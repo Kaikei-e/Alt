@@ -47,14 +47,14 @@ func NewMeilisearchRecapDriver(client meilisearch.ServiceManager) *MeilisearchRe
 // forever -- at startup that means EnsureIndex never returns and the HTTP
 // listeners never open. See the comment on meilisearchTaskWaitTimeout.
 //
-// The task itself carries the outcome: WaitForTaskWithContext returns a nil
+// The task itself carries the outcome: WaitForTask returns a nil
 // error once the task reaches ANY terminal status, TaskStatusFailed included,
 // so a write Meilisearch rejected reads as a successful one unless the status
 // is inspected here.
 func (d *MeilisearchRecapDriver) waitForTask(ctx context.Context, taskUID int64) (*meilisearch.Task, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, d.taskWaitTimeout)
 	defer cancel()
-	task, err := d.index.WaitForTaskWithContext(waitCtx, taskUID, d.taskPollInterval)
+	task, err := d.index.WaitForTask(waitCtx, taskUID, d.taskPollInterval)
 	if err != nil {
 		return task, err
 	}
@@ -71,12 +71,12 @@ func isIndexAlreadyExistsTask(task *meilisearch.Task) bool {
 // EnsureIndex creates and configures the "recaps" index.
 func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 	// Try to fetch index info; if it doesn't exist, create it
-	_, err := d.index.FetchInfoWithContext(ctx)
+	_, err := d.index.FetchInfo(ctx)
 	if err != nil {
 		if !isIndexNotFoundErr(err) {
 			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("fetch index info: %w", err)}
 		}
-		task, createErr := d.client.CreateIndexWithContext(ctx, &meilisearch.IndexConfig{
+		task, createErr := d.client.CreateIndex(ctx, &meilisearch.IndexConfig{
 			Uid:        "recaps",
 			PrimaryKey: "id",
 		})
@@ -93,7 +93,7 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 
 	// Searchable attributes: tags first (semantic), then top_terms (statistical), summary, genre
 	searchableAttrs := []string{"tags", "top_terms", "summary", "genre"}
-	searchableTask, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs)
+	searchableTask, err := d.index.UpdateSearchableAttributes(ctx, &searchableAttrs)
 	if err != nil {
 		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set searchable attributes: %w", err)}
 	}
@@ -103,7 +103,7 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 
 	// Filterable attributes for faceting
 	filterableAttrs := []interface{}{"genre", "window_days"}
-	filterableTask, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs)
+	filterableTask, err := d.index.UpdateFilterableAttributes(ctx, &filterableAttrs)
 	if err != nil {
 		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set filterable attributes: %w", err)}
 	}
@@ -113,7 +113,7 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 
 	// Sortable attributes
 	sortableAttrs := []string{"executed_at"}
-	sortableTask, err := d.index.UpdateSortableAttributesWithContext(ctx, &sortableAttrs)
+	sortableTask, err := d.index.UpdateSortableAttributes(ctx, &sortableAttrs)
 	if err != nil {
 		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set sortable attributes: %w", err)}
 	}
@@ -128,7 +128,7 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 			AttributePatterns: []string{"tags", "top_terms", "summary", "genre"},
 		},
 	}
-	localizedTask, err := d.index.UpdateLocalizedAttributesWithContext(ctx, localizedAttrs)
+	localizedTask, err := d.index.UpdateLocalizedAttributes(ctx, localizedAttrs)
 	if err != nil {
 		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set localized attributes: %w", err)}
 	}
@@ -146,7 +146,7 @@ func (d *MeilisearchRecapDriver) IndexDocuments(ctx context.Context, docs []Reca
 	}
 
 	pk := "id"
-	task, err := d.index.AddDocumentsWithContext(ctx, docs, &meilisearch.DocumentOptions{PrimaryKey: &pk})
+	task, err := d.index.AddDocuments(ctx, docs, &meilisearch.DocumentOptions{PrimaryKey: &pk})
 	if err != nil {
 		return &DriverError{Op: "IndexRecapDocuments", Err: err}
 	}
@@ -160,7 +160,7 @@ func (d *MeilisearchRecapDriver) IndexDocuments(ctx context.Context, docs []Reca
 
 // Search searches the recaps index.
 func (d *MeilisearchRecapDriver) Search(ctx context.Context, query string, limit int) ([]RecapDocumentDriver, int64, error) {
-	result, err := d.index.SearchWithContext(ctx, query, &meilisearch.SearchRequest{
+	result, err := d.index.Search(ctx, query, &meilisearch.SearchRequest{
 		Limit:            int64(limit),
 		Sort:             []string{"executed_at:desc"},
 		MatchingStrategy: meilisearch.Frequency,

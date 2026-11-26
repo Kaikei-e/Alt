@@ -1,4 +1,4 @@
-import type { IconProps } from "@lucide/svelte";
+import type { LucideIcon } from "@lucide/svelte";
 import {
 	Activity,
 	BarChart3,
@@ -27,20 +27,17 @@ import {
 	Sparkles,
 	Tag,
 } from "@lucide/svelte";
-import type { Component } from "svelte";
-
-type IconComponent = Component<IconProps>;
 
 export interface NavTab {
 	label: string;
 	href: string;
-	icon: IconComponent;
+	icon: LucideIcon;
 }
 
 export interface MobileMenuItem {
 	label: string;
 	href: string;
-	icon: IconComponent;
+	icon: LucideIcon;
 	badge?: string;
 	requiresAdmin?: boolean;
 }

@@ -23,14 +23,14 @@ type fakePruneServiceManager struct {
 
 func (f *fakePruneServiceManager) Index(_ string) meilisearch.IndexManager { return f.idx }
 
-func (f *fakePruneServiceManager) DeleteTasksWithContext(_ context.Context, _ *meilisearch.DeleteTasksQuery) (*meilisearch.TaskInfo, error) {
+func (f *fakePruneServiceManager) DeleteTasks(_ context.Context, _ *meilisearch.DeleteTasksQuery) (*meilisearch.TaskInfo, error) {
 	if f.deleteErr != nil {
 		return nil, f.deleteErr
 	}
 	return &meilisearch.TaskInfo{TaskUID: 7}, nil
 }
 
-func (f *fakePruneServiceManager) WaitForTaskWithContext(_ context.Context, _ int64, _ time.Duration) (*meilisearch.Task, error) {
+func (f *fakePruneServiceManager) WaitForTask(_ context.Context, _ int64, _ time.Duration) (*meilisearch.Task, error) {
 	if f.waitErr != nil {
 		return nil, f.waitErr
 	}
@@ -49,7 +49,7 @@ func newPruneDriver(fake *fakePruneServiceManager) *MeilisearchDriver {
 
 // TestMeilisearchDriver_PruneTaskHistory_FailsOnTaskStatusFailed mirrors the
 // check IndexDocuments and the recap driver already carry:
-// WaitForTaskWithContext returns a nil error for every terminal status,
+// WaitForTask returns a nil error for every terminal status,
 // TaskStatusFailed included. Discarding the task therefore reported a prune
 // Meilisearch rejected as a successful one, and the prune loop logged "task
 // history prune ok" while the task database kept growing -- the exact
