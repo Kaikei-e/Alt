@@ -39,7 +39,7 @@ const errorsStatus = $derived<"ok" | "warning" | "error" | "neutral">(
 			<span class="loading-text">Loading projector data</span>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+		<div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
 			<AdminMetricCard
 				label="Events Processed"
 				value={projector.eventsProcessed.toLocaleString()}
@@ -82,6 +82,7 @@ const errorsStatus = $derived<"ok" | "warning" | "error" | "neutral">(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -101,8 +102,9 @@ const errorsStatus = $derived<"ok" | "warning" | "error" | "neutral">(
 
 	.percentile-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.4rem 1rem;
 		padding: 0.6rem 0.75rem;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
@@ -118,8 +120,9 @@ const errorsStatus = $derived<"ok" | "warning" | "error" | "neutral">(
 
 	.percentile-values {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.4rem 1rem;
 	}
 
 	.percentile-item {

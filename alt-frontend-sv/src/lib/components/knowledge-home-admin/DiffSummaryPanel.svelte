@@ -79,6 +79,7 @@ const deltaColor = (from: number, to: number) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -107,6 +108,7 @@ const deltaColor = (from: number, to: number) => {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 1rem;
+		min-width: 0;
 		padding: 1rem;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
@@ -116,6 +118,7 @@ const deltaColor = (from: number, to: number) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
+		min-width: 0;
 	}
 
 	.diff-item.wide {
@@ -152,12 +155,14 @@ const deltaColor = (from: number, to: number) => {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.diff-dist-col {
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		min-width: 0;
 	}
 
 	.diff-dist-heading {
@@ -169,6 +174,7 @@ const deltaColor = (from: number, to: number) => {
 	}
 
 	.diff-pre {
+		max-width: 100%;
 		overflow-x: auto;
 		padding: 0.5rem;
 		border: 1px solid var(--surface-border);
@@ -178,10 +184,12 @@ const deltaColor = (from: number, to: number) => {
 		color: var(--alt-charcoal);
 		margin: 0;
 		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
-	@media (max-width: 640px) {
-		.diff-grid {
+	@media (max-width: 40rem) {
+		.diff-grid,
+		.diff-dist {
 			grid-template-columns: 1fr;
 		}
 	}

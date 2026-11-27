@@ -36,7 +36,7 @@ const barColor = $derived(
 			<span class="loading-text">Loading stream data</span>
 		</div>
 	{:else}
-		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+		<div class="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
 			<AdminMetricCard
 				label="Connections"
 				value={stream.connectionsTotal.toLocaleString()}
@@ -81,6 +81,7 @@ const barColor = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {

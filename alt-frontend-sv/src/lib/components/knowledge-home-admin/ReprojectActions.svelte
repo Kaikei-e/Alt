@@ -133,6 +133,7 @@ const handleSubmit = () => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 		padding: 1rem;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
@@ -169,6 +170,7 @@ const handleSubmit = () => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		min-width: 0;
 	}
 
 	.form-field-action {
@@ -185,6 +187,9 @@ const handleSubmit = () => {
 	}
 
 	.field-input {
+		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
 		border: 1px solid var(--surface-border);
 		background: transparent;
 		color: var(--alt-charcoal);
@@ -233,13 +238,28 @@ const handleSubmit = () => {
 		cursor: not-allowed;
 	}
 
-	@media (max-width: 768px) {
+	@media (max-width: 48rem) {
 		.form-grid {
 			grid-template-columns: 1fr 1fr;
 		}
 
 		.range-grid {
 			grid-template-columns: 1fr;
+		}
+
+		.field-mono {
+			font-size: 1rem;
+		}
+	}
+
+	@media (max-width: 40rem) {
+		.form-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.submit-btn {
+			width: 100%;
+			min-height: 2.75rem;
 		}
 	}
 </style>

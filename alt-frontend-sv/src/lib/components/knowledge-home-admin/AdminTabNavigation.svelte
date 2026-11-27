@@ -18,12 +18,17 @@ const tabs = [
 ];
 </script>
 
-<nav class="tab-bar" data-role="admin-tab-nav">
+<nav
+	class="tab-bar"
+	data-role="admin-tab-nav"
+	aria-label="Operations sections"
+>
 	{#each tabs as tab (tab.id)}
 		<button
 			type="button"
 			class="tab-item"
 			class:active={activeTab === tab.id}
+			aria-current={activeTab === tab.id ? "page" : undefined}
 			onclick={() => onTabChange(tab.id)}
 		>
 			{tab.label}
@@ -34,11 +39,26 @@ const tabs = [
 <style>
 	.tab-bar {
 		display: flex;
+		flex-wrap: nowrap;
 		gap: 0;
+		max-width: 100%;
+		min-width: 0;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none;
 		border-bottom: 1px solid var(--surface-border);
 	}
 
+	.tab-bar::-webkit-scrollbar {
+		display: none;
+	}
+
 	.tab-item {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		white-space: nowrap;
 		padding: 0.5rem 1rem;
 		font-family: var(--font-body);
 		font-size: 0.65rem;
@@ -60,5 +80,12 @@ const tabs = [
 	.tab-item.active {
 		color: var(--alt-charcoal);
 		border-bottom-color: var(--alt-charcoal);
+	}
+
+	@media (max-width: 48rem) {
+		.tab-item {
+			min-height: 2.75rem;
+			padding: 0.65rem 0.8rem;
+		}
 	}
 </style>

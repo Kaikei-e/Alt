@@ -155,6 +155,7 @@ function formatBytes(n: number): string {
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.1rem;
+		min-width: 0;
 		padding: 0.55rem 0 0.6rem;
 		border-bottom: 0.5px solid var(--obs-rule, var(--surface-border));
 	}
@@ -170,9 +171,11 @@ function formatBytes(n: number): string {
 
 	.row-head {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: baseline;
-		gap: 1rem;
+		gap: 0.25rem 0.75rem;
+		min-width: 0;
 	}
 
 	.label {
@@ -274,6 +277,28 @@ function formatBytes(n: number): string {
 		font-size: 0.72rem;
 		color: var(--obs-muted, var(--alt-ash));
 		font-style: italic;
+		overflow-wrap: anywhere;
+	}
+
+	@media (max-width: 48rem) {
+		.row-body {
+			grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+			gap: 0.4rem 0.75rem;
+		}
+
+		.spark {
+			justify-self: end;
+		}
+
+		.digest {
+			grid-column: 1 / -1;
+		}
+	}
+
+	@media (hover: none) {
+		.grafana {
+			opacity: 0.85;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {

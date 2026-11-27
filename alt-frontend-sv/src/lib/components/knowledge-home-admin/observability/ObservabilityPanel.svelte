@@ -113,6 +113,7 @@ const showBanner = $derived(
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 1rem 0;
+		min-width: 0;
 		color: var(--alt-charcoal);
 	}
 
@@ -143,7 +144,9 @@ const showBanner = $derived(
 
 	.foot {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
+		gap: 0.25rem 0.75rem;
 		padding-top: 0.65rem;
 		border-top: 1px solid var(--obs-rule-strong);
 		font-size: 0.72rem;

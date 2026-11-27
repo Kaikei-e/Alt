@@ -22,7 +22,7 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 	{#if stats.length === 0}
 		<p class="empty-text">No storage data available.</p>
 	{:else}
-		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+		<div class="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
 			{#each stats as stat (stat.table_name)}
 				<AdminMetricCard
 					label={stat.table_name}
@@ -74,6 +74,7 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -110,7 +111,11 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 	}
 
 	.table-container {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 		border: 1px solid var(--surface-border);
 	}
 
@@ -132,6 +137,7 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		white-space: nowrap;
 	}
 
 	.th-left { text-align: left; }
@@ -145,6 +151,7 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 	.data-table td {
 		padding: 0.5rem 0.75rem;
 		color: var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.td-mono {

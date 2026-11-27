@@ -51,7 +51,7 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 	<div class="heading-rule"></div>
 
 	{#if latestSnapshot}
-		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+		<div class="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
 			<AdminMetricCard
 				label="Latest Snapshot"
 				value={latestSnapshot.status}
@@ -135,12 +135,15 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.panel-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem;
 	}
 
 	.section-heading {
@@ -190,7 +193,11 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 	}
 
 	.table-container {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 		border: 1px solid var(--surface-border);
 	}
 
@@ -212,6 +219,7 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		white-space: nowrap;
 	}
 
 	.th-left { text-align: left; }
@@ -224,6 +232,7 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 	.data-table td {
 		padding: 0.5rem 0.75rem;
 		color: var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.td-mono {
@@ -249,5 +258,12 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 		font-weight: 600;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
+	}
+
+	@media (max-width: 48rem) {
+		.action-btn {
+			min-height: 2.5rem;
+			padding: 0.45rem 0.75rem;
+		}
 	}
 </style>
