@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/fsperm"
+	"github.com/stretchr/testify/require"
 )
 
 // repoBaseComposeFile resolves compose/base.yaml from this test file's own
@@ -972,13 +973,14 @@ func TestMetaFor_RedisStreamsCredentialsAreSplit(t *testing.T) {
 
 func TestEnsureEd25519KeyPair_FailedPublicWriteLeavesNeitherFile(t *testing.T) {
 	dir := t.TempDir()
-	priv := filepath.Join(dir, "signing.txt")
-	pub := filepath.Join(dir, "missing-subdir", "verify.txt")
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
 
-	if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+	if _, err := ensureEd25519KeyPair(root, "signing.txt", "missing-subdir/verify.txt"); err == nil {
 		t.Fatal("expected an error when the public key cannot be written")
 	}
-	if _, err := os.Lstat(priv); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(dir, "signing.txt")); !os.IsNotExist(err) {
 		t.Errorf("private key file was left behind (lstat err = %v)", err)
 	}
 }
@@ -986,22 +988,233 @@ func TestEnsureEd25519KeyPair_FailedPublicWriteLeavesNeitherFile(t *testing.T) {
 func TestEnsureEd25519KeyPair_NeverFollowsAPreexistingSymlink(t *testing.T) {
 	for _, linkIsPrivate := range []bool{true, false} {
 		dir := t.TempDir()
-		priv := filepath.Join(dir, "signing.txt")
-		pub := filepath.Join(dir, "verify.txt")
+		root, err := os.OpenRoot(dir)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, root.Close()) })
+
 		target := filepath.Join(dir, "elsewhere.txt")
-		link := pub
+		link := filepath.Join(dir, "verify.txt")
 		if linkIsPrivate {
-			link = priv
+			link = filepath.Join(dir, "signing.txt")
 		}
 		if err := os.Symlink(target, link); err != nil {
 			t.Fatal(err)
 		}
 
-		if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+		if _, err := ensureEd25519KeyPair(root, "signing.txt", "verify.txt"); err == nil {
 			t.Fatalf("linkIsPrivate=%v: expected an error", linkIsPrivate)
 		}
 		if _, err := os.Lstat(target); !os.IsNotExist(err) {
 			t.Errorf("linkIsPrivate=%v: the symlink target was created (lstat err = %v)", linkIsPrivate, err)
 		}
 	}
+}
+
+func TestGenerateSecrets_RejectsDanglingAndLiveSymlinksRandom(t *testing.T) {
+	t.Run("dangling symlink outside secrets dir force=false and force=true", func(t *testing.T) {
+		for _, force := range []bool{false, true} {
+			name := "force=false"
+			if force {
+				name = "force=true"
+			}
+			t.Run(name, func(t *testing.T) {
+				outsideDir := t.TempDir()
+				danglingTarget := filepath.Join(outsideDir, "dangling_victim")
+				secretsDir := t.TempDir()
+				require.NoError(t, os.Symlink(danglingTarget, filepath.Join(secretsDir, "postgres_password.txt")))
+
+				specs := []SecretSpec{{Filename: "postgres_password.txt", Class: SecretClassRandom, Length: 32}}
+				res, err := GenerateSecrets(secretsDir, specs, force)
+				require.Error(t, err)
+				require.Nil(t, res)
+
+				_, statErr := os.Stat(danglingTarget)
+				require.ErrorIs(t, statErr, os.ErrNotExist, "GenerateSecrets must not create file through dangling symlink")
+			})
+		}
+	})
+
+	t.Run("live symlink outside secrets dir preserves target content and 0600 mode", func(t *testing.T) {
+		for _, force := range []bool{false, true} {
+			name := "force=false"
+			if force {
+				name = "force=true"
+			}
+			t.Run(name, func(t *testing.T) {
+				outsideDir := t.TempDir()
+				liveTarget := filepath.Join(outsideDir, "live_victim")
+				require.NoError(t, os.WriteFile(liveTarget, []byte("KEEP"), fsperm.SecretFile))
+				require.NoError(t, os.Chmod(liveTarget, fsperm.SecretFile))
+
+				secretsDir := t.TempDir()
+				require.NoError(t, os.Symlink(liveTarget, filepath.Join(secretsDir, "postgres_password.txt")))
+
+				specs := []SecretSpec{{Filename: "postgres_password.txt", Class: SecretClassRandom, Length: 32}}
+				res, err := GenerateSecrets(secretsDir, specs, force)
+				require.Error(t, err)
+				require.Nil(t, res)
+
+				require.Equal(t, "KEEP", string(readFileIn(t, outsideDir, "live_victim")))
+				fi, err := os.Stat(liveTarget)
+				require.NoError(t, err)
+				require.Equal(t, fsperm.SecretFile, fi.Mode().Perm())
+			})
+		}
+	})
+}
+
+func TestGenerateSecrets_RejectsSymlinksForOperatorProvided(t *testing.T) {
+	for _, dangling := range []bool{true, false} {
+		for _, force := range []bool{false, true} {
+			label := "live"
+			if dangling {
+				label = "dangling"
+			}
+			if force {
+				label += "_force=true"
+			} else {
+				label += "_force=false"
+			}
+			t.Run(label, func(t *testing.T) {
+				outsideDir := t.TempDir()
+				target := filepath.Join(outsideDir, "operator_victim")
+				if !dangling {
+					require.NoError(t, os.WriteFile(target, []byte("OPERATOR_SECRET"), fsperm.SecretFile))
+					require.NoError(t, os.Chmod(target, fsperm.SecretFile))
+				}
+
+				secretsDir := t.TempDir()
+				require.NoError(t, os.Symlink(target, filepath.Join(secretsDir, "hugging_face_token.txt")))
+
+				specs := []SecretSpec{{Filename: "hugging_face_token.txt", Class: SecretClassOperatorProvided}}
+				res, err := GenerateSecrets(secretsDir, specs, force)
+				require.Error(t, err)
+				require.Nil(t, res)
+
+				if dangling {
+					_, statErr := os.Stat(target)
+					require.ErrorIs(t, statErr, os.ErrNotExist)
+				} else {
+					require.Equal(t, "OPERATOR_SECRET", string(readFileIn(t, outsideDir, "operator_victim")))
+					fi, err := os.Stat(target)
+					require.NoError(t, err)
+					require.Equal(t, fsperm.SecretFile, fi.Mode().Perm())
+				}
+			})
+		}
+	}
+}
+
+func TestGenerateSecrets_RejectsSymlinksForEd25519KeyPair(t *testing.T) {
+	type keyLinkCase struct {
+		name        string
+		privSymlink bool
+		pubSymlink  bool
+		dangling    bool
+	}
+	cases := []keyLinkCase{
+		{name: "dangling priv symlink", privSymlink: true, dangling: true},
+		{name: "dangling pub symlink", pubSymlink: true, dangling: true},
+		{name: "live priv symlink", privSymlink: true, dangling: false},
+		{name: "live pub symlink", pubSymlink: true, dangling: false},
+		{name: "both live symlinks", privSymlink: true, pubSymlink: true, dangling: false},
+	}
+
+	for _, tc := range cases {
+		for _, force := range []bool{false, true} {
+			name := tc.name + "_force=false"
+			if force {
+				name = tc.name + "_force=true"
+			}
+			t.Run(name, func(t *testing.T) {
+				outsideDir := t.TempDir()
+				privOutside := filepath.Join(outsideDir, "priv_victim")
+				pubOutside := filepath.Join(outsideDir, "pub_victim")
+				if !tc.dangling {
+					if tc.privSymlink {
+						require.NoError(t, os.WriteFile(privOutside, []byte("PRIV_KEEP"), fsperm.SecretFile))
+						require.NoError(t, os.Chmod(privOutside, fsperm.SecretFile))
+					}
+					if tc.pubSymlink {
+						require.NoError(t, os.WriteFile(pubOutside, []byte("PUB_KEEP"), fsperm.SecretFile))
+						require.NoError(t, os.Chmod(pubOutside, fsperm.SecretFile))
+					}
+				}
+
+				secretsDir := t.TempDir()
+				if tc.privSymlink {
+					require.NoError(t, os.Symlink(privOutside, filepath.Join(secretsDir, backendTokenSigningKeyFile)))
+				}
+				if tc.pubSymlink {
+					require.NoError(t, os.Symlink(pubOutside, filepath.Join(secretsDir, backendTokenVerifyKeyFile)))
+				}
+
+				res, err := GenerateSecrets(secretsDir, keyPairSpecs(), force)
+				require.Error(t, err)
+				require.Nil(t, res)
+
+				if tc.privSymlink {
+					if tc.dangling {
+						_, statErr := os.Stat(privOutside)
+						require.ErrorIs(t, statErr, os.ErrNotExist)
+					} else {
+						require.Equal(t, "PRIV_KEEP", string(readFileIn(t, outsideDir, "priv_victim")))
+					}
+				}
+				if tc.pubSymlink {
+					if tc.dangling {
+						_, statErr := os.Stat(pubOutside)
+						require.ErrorIs(t, statErr, os.ErrNotExist)
+					} else {
+						require.Equal(t, "PUB_KEEP", string(readFileIn(t, outsideDir, "pub_victim")))
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestGenerateSecrets_RejectsNonRegularTargetsAndEscapingFilenames(t *testing.T) {
+	t.Run("directory at secret target rejected for force=false and force=true", func(t *testing.T) {
+		for _, force := range []bool{false, true} {
+			secretsDir := t.TempDir()
+			require.NoError(t, os.Mkdir(filepath.Join(secretsDir, "postgres_password.txt"), fsperm.SecretDir))
+
+			specs := []SecretSpec{{Filename: "postgres_password.txt", Class: SecretClassRandom, Length: 32}}
+			res, err := GenerateSecrets(secretsDir, specs, force)
+			require.Error(t, err)
+			require.Nil(t, res)
+		}
+	})
+
+	t.Run("escaping or multi-segment filenames rejected", func(t *testing.T) {
+		badNames := []string{"../escape.txt", "sub/secret.txt", "/etc/passwd", ".", "..", "", "a\\b.txt"}
+		for _, bad := range badNames {
+			t.Run(bad, func(t *testing.T) {
+				parentDir := t.TempDir()
+				secretsDir := filepath.Join(parentDir, "secrets")
+				specs := []SecretSpec{{Filename: bad, Class: SecretClassRandom, Length: 32}}
+				res, err := GenerateSecrets(secretsDir, specs, false)
+				require.Error(t, err)
+				require.Nil(t, res)
+
+				_, statErr := os.Stat(filepath.Join(parentDir, "escape.txt"))
+				require.ErrorIs(t, statErr, os.ErrNotExist)
+			})
+		}
+	})
+
+	t.Run("escaping partner filename rejected for Ed25519 key pair", func(t *testing.T) {
+		parentDir := t.TempDir()
+		secretsDir := filepath.Join(parentDir, "secrets")
+		specs := []SecretSpec{
+			{Filename: backendTokenSigningKeyFile, Class: SecretClassEd25519SigningKey, Partner: "../escape_pub.txt"},
+		}
+		res, err := GenerateSecrets(secretsDir, specs, false)
+		require.Error(t, err)
+		require.Nil(t, res)
+
+		_, statErr := os.Stat(filepath.Join(parentDir, "escape_pub.txt"))
+		require.ErrorIs(t, statErr, os.ErrNotExist)
+	})
 }
