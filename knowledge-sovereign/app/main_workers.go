@@ -80,6 +80,7 @@ func startWorkers(ctx context.Context, wg *sync.WaitGroup, repo *sovereign_db.Re
 			BatchSize:         cfg.TrailProjectorBatchSize,
 			MaxBatchesPerTick: cfg.TrailProjectorMaxBatches,
 		})
+	slog.Info("trail.projector.wiring", "enabled", true, "repository_wired", repo != nil)
 	trailTick := time.NewTicker(cfg.ProjectorTickInterval)
 	wg.Add(1)
 	go func() {

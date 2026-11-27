@@ -93,7 +93,19 @@ func (r *fakeReadingRepo) hasEventInRange(firstSeq, lastSeq int64) bool {
 	return idx < len(r.events) && r.events[idx].EventSeq <= lastSeq
 }
 
+var fakeReadingCheckpointEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func (r *fakeReadingRepo) nextCheckpointTime() time.Time {
+	if r.checkpoint.UpdatedAt.IsZero() {
+		return fakeReadingCheckpointEpoch
+	}
+	return r.checkpoint.UpdatedAt.Add(time.Second)
+}
+
 func (r *fakeReadingRepo) ReadProjectionCheckpointForAdvance(_ context.Context, _ string) (sovereign_db.ProjectionCheckpoint, error) {
+	if !r.checkpoint.Exists {
+		return sovereign_db.ProjectionCheckpoint{}, nil
+	}
 	return r.checkpoint, nil
 }
 
@@ -101,11 +113,25 @@ func (r *fakeReadingRepo) AdvanceProjectionCheckpointIfUnchanged(_ context.Conte
 	if r.beforeAdvance != nil && !r.beforeAdvance(from, toSeq) {
 		return false, nil
 	}
-	if r.checkpoint.LastEventSeq != from.LastEventSeq {
+	if !from.Exists {
+		if r.checkpoint.Exists {
+			return false, nil
+		}
+		r.checkpoint = sovereign_db.ProjectionCheckpoint{
+			LastEventSeq: toSeq,
+			UpdatedAt:    r.nextCheckpointTime(),
+			Exists:       true,
+		}
+		return true, nil
+	}
+	if !r.checkpoint.Exists || r.checkpoint.LastEventSeq != from.LastEventSeq || !r.checkpoint.UpdatedAt.Equal(from.UpdatedAt) {
 		return false, nil
 	}
-	r.checkpoint.LastEventSeq = toSeq
-	r.checkpoint.Exists = true
+	r.checkpoint = sovereign_db.ProjectionCheckpoint{
+		LastEventSeq: toSeq,
+		UpdatedAt:    r.nextCheckpointTime(),
+		Exists:       true,
+	}
 	return true, nil
 }
 

@@ -60,3 +60,62 @@ func TestStartWorkers_WiresTrailPlannerWithWallClock(t *testing.T) {
 	assert.True(t, foundPlannerCall, "expected trail_planner.NewPlanner call in main_workers.go")
 	assert.True(t, hasClockField, "expected trail_planner.Config to wire Clock: time.Now")
 }
+
+// TestStartWorkers_LogsRule8WiringForAllThreeProjectors enforces Rule 8
+// symmetry across knowledge_trail_projector, knowledge_home_projector, and
+// reading_projector: every in-process projector must emit a loud startup wiring
+// log naming its *_enabled state and repository_wired flag.
+func TestStartWorkers_LogsRule8WiringForAllThreeProjectors(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "main_workers.go", nil, 0)
+	require.NoError(t, err)
+
+	required := map[string]bool{
+		`"trail.projector.wiring"`:   false,
+		`"home.projector.wiring"`:    false,
+		`"reading.projector.wiring"`: false,
+	}
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) < 5 {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Name != "slog" || sel.Sel.Name != "Info" {
+			return true
+		}
+		msg, ok := call.Args[0].(*ast.BasicLit)
+		if !ok {
+			return true
+		}
+		if _, tracked := required[msg.Value]; !tracked {
+			return true
+		}
+		var hasEnabled, hasRepoWired bool
+		for _, arg := range call.Args[1:] {
+			lit, ok := arg.(*ast.BasicLit)
+			if !ok {
+				continue
+			}
+			if lit.Value == `"enabled"` {
+				hasEnabled = true
+			}
+			if lit.Value == `"repository_wired"` {
+				hasRepoWired = true
+			}
+		}
+		if hasEnabled && hasRepoWired {
+			required[msg.Value] = true
+		}
+		return true
+	})
+
+	for msg, found := range required {
+		assert.True(t, found, "expected startWorkers to emit Rule 8 wiring log %s with enabled and repository_wired fields", msg)
+	}
+}

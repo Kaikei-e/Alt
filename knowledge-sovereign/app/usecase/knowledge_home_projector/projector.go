@@ -78,9 +78,12 @@ type Projector struct {
 	gaps   projection_gap.Tracker
 }
 
-// NewProjector builds a Projector. logger defaults to slog.Default() when
-// nil; BatchSize/MaxBatchesPerTick default when <= 0.
+// NewProjector builds a Projector. Panics when repo is nil (Rule 8). logger
+// defaults to slog.Default() when nil; BatchSize/MaxBatchesPerTick default when <= 0.
 func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
+	if repo == nil {
+		panic("knowledge_home_projector: repository is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -204,7 +207,7 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return foldErr
 		}
 		if hole.Open() {
-			return nil
+			continue
 		}
 		if len(events) < p.cfg.BatchSize {
 			return nil
@@ -217,11 +220,13 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 // treated as burned by rolled-back transactions rather than as ones writers
 // still in flight are about to commit.
 func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {
-	frontier, err := p.repo.ReadSequenceGapFrontier(ctx, hole.First, hole.Last)
+	abandon, frontier, err := p.gaps.ProbeAndEvaluate(hole, func(firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error) {
+		return p.repo.ReadSequenceGapFrontier(ctx, firstSeq, lastSeq)
+	})
 	if err != nil {
 		return false, fmt.Errorf("read sequence gap frontier: %w", err)
 	}
-	if !p.gaps.MayAbandon(hole, frontier) {
+	if !abandon {
 		p.logger.InfoContext(ctx, "knowledge_home_projector.sequence_gap_waiting",
 			slog.String("projector", projectorName),
 			slog.Int64("gap_seq", hole.First),

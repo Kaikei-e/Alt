@@ -1,0 +1,410 @@
+// Deterministic conformance vector emitter for knowledge-sovereign (ADR-001031).
+// Evaluates the proved pure functions from ../src/ and writes pipe-delimited
+// CAS|*, GAP|*, and PREFIX|* records to stdout.
+
+import std::builtin::os { stdout }
+import "../src/cas_checkpoint.taut" {
+  CasOutcome,
+  CheckpointRow,
+  DbState,
+  cas_advance,
+  cas_db,
+  double_rebuild_aba,
+  race_rebuild_then_advance,
+  race_wire_update_then_advance,
+  read_checkpoint,
+}
+import "../src/projection_gap.taut" {
+  AbandonOutcome,
+  Frontier,
+  Hole,
+  PrefixResult,
+  TrackerState,
+  TwoProbeOutcome,
+  contiguous_prefix,
+  may_abandon,
+  same_tick_probe,
+}
+
+fn fmt_bool(b: Bool): Text {
+  if b {
+    "true"
+  } else {
+    "false"
+  }
+}
+
+fn fmt_nat(n: Nat): Text {
+  debug(&n)
+}
+
+fn fmt_row(row: CheckpointRow): Text {
+  match row {
+    Absent => "absent"
+    Present(seq, ts) => concat(concat(concat("present:", fmt_nat(seq)), ":"), fmt_nat(ts))
+  }
+}
+
+fn fmt_hole(h: Hole): Text {
+  match h {
+    NoHole => "none"
+    OpenHole(first, last) => concat(concat(fmt_nat(first), ":"), fmt_nat(last))
+  }
+}
+
+fn fmt_tracker(t: TrackerState): Text {
+  match t {
+    EmptyTracker => "empty"
+    Watching(h, ceil) => concat(concat(concat("watch:", fmt_hole(h)), ":"), fmt_nat(ceil))
+  }
+}
+
+fn fmt_frontier(f: Frontier): Text {
+  match f {
+    MkFrontier(c, xmin, open) => concat(
+      concat(concat(concat(fmt_nat(c), ":"), fmt_nat(xmin)), ":"),
+      fmt_bool(open)
+    )
+  }
+}
+
+fn fmt_nat_list_items(xs: List(Nat)): Text {
+  match xs {
+    Nil => ""
+    Cons(x, rest) => match rest {
+      Nil => fmt_nat(x)
+      Cons(_, _) => concat(concat(fmt_nat(x), ","), fmt_nat_list_items(rest))
+    }
+  }
+}
+
+fn fmt_nat_list(xs: List(Nat)): Text {
+  match xs {
+    Nil => "-"
+    Cons(_, _) => fmt_nat_list_items(xs)
+  }
+}
+
+fn emit_line(line: Text): Unit ! {Show} {
+  perform stdout(concat(line, "\n"))
+}
+
+fn emit_cas(
+  name: Text,
+  init_row: CheckpointRow,
+  op: Text,
+  to_seq: Nat,
+  write_ts: Nat,
+  out: CasOutcome
+): Unit ! {Show} {
+  match out {
+    CasResult(applied, Db(final_row, emptied)) => emit_line(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(
+                      concat(
+                        concat(
+                          concat(concat(concat(concat("CAS|", name), "|"), fmt_row(init_row)), "|"),
+                          op
+                        ),
+                        "|"
+                      ),
+                      fmt_nat(to_seq)
+                    ),
+                    "|"
+                  ),
+                  fmt_nat(write_ts)
+                ),
+                "|"
+              ),
+              fmt_bool(applied)
+            ),
+            "|"
+          ),
+          fmt_row(final_row)
+        ),
+        concat("|", fmt_bool(emptied))
+      )
+    )
+  }
+}
+
+fn emit_gap_step(name: Text, init: TrackerState, hole: Hole, f: Frontier): Unit ! {Show} {
+  match may_abandon(init, hole, f) {
+    AbandonRes(ab, next) => emit_line(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(concat(concat(concat("GAP|step|", name), "|"), fmt_tracker(init)), "|"),
+                fmt_hole(hole)
+              ),
+              "|"
+            ),
+            fmt_frontier(f)
+          ),
+          "|"
+        ),
+        concat(concat(fmt_bool(ab), "|"), fmt_tracker(next))
+      )
+    )
+  }
+}
+
+fn emit_gap_tick(
+  name: Text,
+  init: TrackerState,
+  hole: Hole,
+  f1: Frontier,
+  f2: Frontier
+): Unit ! {Show} {
+  match same_tick_probe(init, hole, f1, f2) {
+    TwoProbeRes(ab, probes, next) => emit_line(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(
+                      concat(
+                        concat(concat(concat("GAP|tick|", name), "|"), fmt_tracker(init)),
+                        "|"
+                      ),
+                      fmt_hole(hole)
+                    ),
+                    "|"
+                  ),
+                  fmt_frontier(f1)
+                ),
+                "|"
+              ),
+              fmt_frontier(f2)
+            ),
+            "|"
+          ),
+          fmt_bool(ab)
+        ),
+        concat(concat("|", fmt_nat(probes)), concat("|", fmt_tracker(next)))
+      )
+    )
+  }
+}
+
+fn emit_prefix(name: Text, after_seq: Nat, events: List(Nat)): Unit ! {Show} {
+  match contiguous_prefix(events, after_seq) {
+    PrefixRes(p, h) => emit_line(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(concat(concat(concat("PREFIX|", name), "|"), fmt_nat(after_seq)), "|"),
+              fmt_nat_list(events)
+            ),
+            "|"
+          ),
+          fmt_nat_list(p)
+        ),
+        concat("|", fmt_hole(h))
+      )
+    )
+  }
+}
+
+perform main(() => {
+  // ── Part A: CAS checkpoint vectors (11 vectors) ──
+  emit_cas(
+    "first_boot_uncontested",
+    Absent,
+    "none",
+    900,
+    10,
+    cas_advance(Db(Absent, false), read_checkpoint(Db(Absent, false)), 900, 10)
+  )
+  emit_cas(
+    "first_boot_rebuild_race",
+    Absent,
+    "rebuild:20",
+    900,
+    30,
+    race_rebuild_then_advance(Db(Absent, false), 20, 900, 30)
+  )
+  emit_cas(
+    "first_boot_wire_upsert_race",
+    Absent,
+    "wire_update:500:20",
+    900,
+    30,
+    race_wire_update_then_advance(Db(Absent, false), 500, 20, 900, 30)
+  )
+  emit_cas(
+    "matching_advance",
+    Present(100, 10),
+    "none",
+    200,
+    20,
+    cas_advance(
+      Db(Present(100, 10), false),
+      read_checkpoint(Db(Present(100, 10), false)),
+      200,
+      20
+    )
+  )
+  emit_cas(
+    "rebuild_invalidates_nonzero_token",
+    Present(1379513, 10),
+    "rebuild:20",
+    1379600,
+    30,
+    race_rebuild_then_advance(Db(Present(1379513, 10), false), 20, 1379600, 30)
+  )
+  emit_cas(
+    "double_rebuild_zero_to_zero_aba",
+    Present(0, 10),
+    "rebuild:20",
+    900,
+    30,
+    double_rebuild_aba(10, 20, 900, 30)
+  )
+  emit_cas(
+    "wire_upsert_invalidates_present_token",
+    Present(1379513, 10),
+    "wire_update:500:20",
+    1379600,
+    30,
+    race_wire_update_then_advance(Db(Present(1379513, 10), false), 500, 20, 1379600, 30)
+  )
+  emit_cas(
+    "wire_upsert_same_seq_invalidates_token",
+    Present(100, 10),
+    "wire_update:100:20",
+    200,
+    30,
+    race_wire_update_then_advance(Db(Present(100, 10), false), 100, 20, 200, 30)
+  )
+  let tok_p := Present(100, 10)
+  let after_p := cas_db(cas_advance(Db(tok_p, false), tok_p, 150, 20))
+  emit_cas(
+    "consumed_present_token_not_reusable",
+    tok_p,
+    "reuse:150:20",
+    200,
+    30,
+    cas_advance(after_p, tok_p, 200, 30)
+  )
+  let after_a := cas_db(cas_advance(Db(Absent, false), Absent, 100, 20))
+  emit_cas(
+    "consumed_absent_token_not_reusable",
+    Absent,
+    "reuse:100:20",
+    200,
+    30,
+    cas_advance(after_a, Absent, 200, 30)
+  )
+  emit_cas(
+    "present_token_against_absent_db",
+    Absent,
+    "fabricate_present:0:10",
+    100,
+    20,
+    cas_advance(Db(Absent, false), Present(0, 10), 100, 20)
+  )
+
+  // ── Part B: projection_gap single-step & same-tick vectors (13 vectors) ──
+  emit_gap_step("first_sight_never_abandons", EmptyTracker, OpenHole(41, 41), MkFrontier(901, 900, true))
+  emit_gap_step(
+    "inflight_below_ceiling_waits",
+    Watching(OpenHole(41, 44), 950),
+    OpenHole(41, 44),
+    MkFrontier(980, 949, true)
+  )
+  emit_gap_step(
+    "xmin_reaches_ceiling_abandons",
+    Watching(OpenHole(41, 44), 950),
+    OpenHole(41, 44),
+    MkFrontier(980, 950, true)
+  )
+  emit_gap_step(
+    "uses_first_sighting_ceiling",
+    Watching(OpenHole(41, 44), 950),
+    OpenHole(41, 44),
+    MkFrontier(1200, 1100, true)
+  )
+  emit_gap_step(
+    "closed_hole_never_abandons_and_resets",
+    Watching(OpenHole(41, 44), 950),
+    OpenHole(41, 44),
+    MkFrontier(980, 950, false)
+  )
+  emit_gap_step(
+    "changed_hole_bounds_never_inherits",
+    Watching(OpenHole(41, 44), 950),
+    OpenHole(41, 42),
+    MkFrontier(980, 950, true)
+  )
+
+  emit_gap_tick(
+    "same_tick_burned_hole_advances",
+    EmptyTracker,
+    OpenHole(2, 2),
+    MkFrontier(101, 101, true),
+    MkFrontier(102, 102, true)
+  )
+  emit_gap_tick(
+    "same_tick_burned_range_advances",
+    EmptyTracker,
+    OpenHole(1, 3),
+    MkFrontier(101, 101, true),
+    MkFrontier(102, 102, true)
+  )
+  emit_gap_tick(
+    "same_tick_inflight_waits_single_probe",
+    EmptyTracker,
+    OpenHole(1, 1),
+    MkFrontier(101, 100, true),
+    MkFrontier(102, 102, true)
+  )
+  emit_gap_tick(
+    "same_tick_filled_before_second_probe",
+    EmptyTracker,
+    OpenHole(1, 1),
+    MkFrontier(101, 101, true),
+    MkFrontier(102, 102, false)
+  )
+  emit_gap_tick(
+    "same_tick_filled_on_first_probe",
+    Watching(OpenHole(1, 1), 100),
+    OpenHole(1, 1),
+    MkFrontier(101, 101, false),
+    MkFrontier(102, 102, true)
+  )
+  emit_gap_tick(
+    "same_tick_previously_watched_now_burned",
+    Watching(OpenHole(1, 1), 101),
+    OpenHole(1, 1),
+    MkFrontier(105, 101, true),
+    MkFrontier(106, 106, true)
+  )
+  emit_gap_tick(
+    "same_tick_inflight_on_second_probe_waits",
+    EmptyTracker,
+    OpenHole(1, 1),
+    MkFrontier(101, 101, true),
+    MkFrontier(102, 100, true)
+  )
+
+  // ── Part B: ContiguousPrefix vectors (6 vectors) ──
+  emit_prefix("unbroken_run", 0, Cons(1, Cons(2, Cons(3, Nil))))
+  emit_prefix("hole_at_head", 0, Cons(2, Cons(3, Nil)))
+  emit_prefix("hole_inside_batch", 10, Cons(11, Cons(12, Cons(15, Cons(16, Nil)))))
+  emit_prefix("empty_batch", 7, Nil)
+  emit_prefix("multi_seq_hole_at_head", 0, Cons(4, Cons(5, Nil)))
+  emit_prefix("single_contiguous_event", 5, Cons(6, Nil))
+})

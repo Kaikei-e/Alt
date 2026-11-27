@@ -1,0 +1,586 @@
+// Formal model and proofs for knowledge-sovereign's compare-and-set (CAS)
+// projection checkpoint protocol and concurrent RebuildProjection safety
+// (ADR-000967 / ADR-001031 Part A).
+//
+// Maps directly to driver/sovereign_db/read_infra_checkpoints.go and
+// driver/sovereign_db/rebuild_projection.go:
+//   - Absent                       <-> ProjectionCheckpoint{Exists: false}
+//   - Present(seq, updated_at)     <-> ProjectionCheckpoint{Exists: true, LastEventSeq: seq, UpdatedAt: updated_at}
+//   - Db(row, emptied)             <-> checkpoint row + whether rebuild truncated read models
+//   - cas_advance                  <-> AdvanceProjectionCheckpointIfUnchanged
+//   - rebuild_projection           <-> RebuildProjection
+//   - wire_update_checkpoint       <-> UpdateProjectionCheckpoint (wire RPC unconditional upsert)
+
+pub(open) inductive CheckpointRow: Type {
+  Absent: CheckpointRow
+  Present(seq: Nat, updated_at: Nat): CheckpointRow
+}
+
+pub(open) inductive DbState: Type {
+  Db(row: CheckpointRow, emptied: Bool): DbState
+}
+
+pub(open) inductive CasOutcome: Type {
+  CasResult(applied: Bool, db: DbState): CasOutcome
+}
+
+pub fn db_row(db: DbState): CheckpointRow {
+  match db {
+    Db(row, _) => row
+  }
+}
+
+pub fn db_emptied(db: DbState): Bool {
+  match db {
+    Db(_, emptied) => emptied
+  }
+}
+
+pub fn row_exists(row: CheckpointRow): Bool {
+  match row {
+    Absent => false
+    Present(_, _) => true
+  }
+}
+
+pub fn row_seq(row: CheckpointRow): Nat {
+  match row {
+    Absent => 0
+    Present(seq, _) => seq
+  }
+}
+
+pub fn row_ts(row: CheckpointRow): Nat {
+  match row {
+    Absent => 0
+    Present(_, ts) => ts
+  }
+}
+
+pub fn cas_applied(res: CasOutcome): Bool {
+  match res {
+    CasResult(applied, _) => applied
+  }
+}
+
+pub fn cas_db(res: CasOutcome): DbState {
+  match res {
+    CasResult(_, db) => db
+  }
+}
+
+pub fn read_checkpoint(db: DbState): CheckpointRow {
+  db_row(db)
+}
+
+pub fn cas_choose(cond: Bool, db: DbState, to_seq: Nat, write_ts: Nat): CasOutcome {
+  match cond {
+    true => CasResult(true, Db(Present(to_seq, write_ts), db_emptied(db)))
+    false => CasResult(false, db)
+  }
+}
+
+// AdvanceProjectionCheckpointIfUnchanged semantics:
+//   - Absent token: INSERT ... ON CONFLICT (projector_name) DO NOTHING
+//   - Present token: UPDATE ... WHERE last_event_seq = tok.seq AND updated_at = tok.ts
+pub fn cas_advance(db: DbState, tok: CheckpointRow, to_seq: Nat, write_ts: Nat): CasOutcome {
+  match tok {
+    Absent => match db_row(db) {
+      Absent => CasResult(true, Db(Present(to_seq, write_ts), db_emptied(db)))
+      Present(_, _) => CasResult(false, db)
+    }
+    Present(from_seq, from_ts) => match db_row(db) {
+      Absent => CasResult(false, db)
+      Present(cur_seq, cur_ts) => cas_choose(
+        Nat::eq(from_seq, cur_seq) && Nat::eq(from_ts, cur_ts),
+        db,
+        to_seq,
+        write_ts
+      )
+    }
+  }
+}
+
+// RebuildProjection semantics: TRUNCATE read models and upsert checkpoint to (0, rebuild_ts).
+pub fn rebuild_projection(_db: DbState, rebuild_ts: Nat): DbState {
+  Db(Present(0, rebuild_ts), true)
+}
+
+// UpdateProjectionCheckpoint (wire RPC) semantics: unconditional upsert preserving read models.
+pub fn wire_update_checkpoint(db: DbState, target_seq: Nat, write_ts: Nat): DbState {
+  Db(Present(target_seq, write_ts), db_emptied(db))
+}
+
+// Naive CAS comparing only LastEventSeq (collapsing Absent -> 0 and ignoring Exists/UpdatedAt),
+// modeling the defect in reading_projector's original fakeReadingRepo and sequence-only CAS.
+pub fn naive_cas_advance(db: DbState, tok: CheckpointRow, to_seq: Nat, write_ts: Nat): CasOutcome {
+  cas_choose(Nat::eq(row_seq(tok), row_seq(db_row(db))), db, to_seq, write_ts)
+}
+
+// 2-actor interleaving: projector reads token from db0, rebuild commits at rebuild_ts,
+// then projector attempts to commit its in-flight batch at to_seq.
+pub fn race_rebuild_then_advance(
+  db0: DbState,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): CasOutcome {
+  let tok := read_checkpoint(db0)
+  let db1 := rebuild_projection(db0, rebuild_ts)
+  cas_advance(db1, tok, to_seq, write_ts)
+}
+
+// 2-actor interleaving: projector reads token from db0, wire RPC unconditionally upserts,
+// then projector attempts to commit its in-flight batch at to_seq.
+pub fn race_wire_update_then_advance(
+  db0: DbState,
+  wire_seq: Nat,
+  wire_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): CasOutcome {
+  let tok := read_checkpoint(db0)
+  let db1 := wire_update_checkpoint(db0, wire_seq, wire_ts)
+  cas_advance(db1, tok, to_seq, write_ts)
+}
+
+// Double-rebuild 0 -> 0 ABA interleaving: after a first rebuild left Present(0, init_ts),
+// projector reads 0, a second rebuild writes Present(0, rebuild_ts), then projector commits.
+pub fn double_rebuild_aba(init_ts: Nat, rebuild_ts: Nat, to_seq: Nat, write_ts: Nat): CasOutcome {
+  race_rebuild_then_advance(Db(Present(0, init_ts), true), rebuild_ts, to_seq, write_ts)
+}
+
+// ── Arithmetic & boolean helper lemmas ──
+
+pub theorem bool_and_false_right(a: Bool): a && false = false {
+  match a { false => Refl, true => Refl }
+}
+
+pub theorem nat_lt_ne(a: Nat, b: Nat, h: Nat::lt(a, b) = true): Nat::eq(a, b) = false {
+  match a {
+    Zero => ⊢ Nat::eq(Zero, b) = false from match b {
+      Zero => False::elim(false_ne_true(h))
+      Succ(_) => Refl
+    }
+    Succ(a2) => ⊢ Nat::eq(Succ(a2), b) = false from match b {
+      Zero => False::elim(false_ne_true(h))
+      Succ(b2) => nat_lt_ne(a2, b2, h)
+    }
+  }
+}
+
+// ── Part A.1: First-boot Absent race safety ──
+
+pub theorem cas_first_boot_uncontested(
+  emptied: Bool,
+  to_seq: Nat,
+  write_ts: Nat
+): cas_advance(
+  Db(Absent, emptied),
+  Absent,
+  to_seq,
+  write_ts
+) = CasResult(true, Db(Present(to_seq, write_ts), emptied)) {
+  Refl
+}
+
+pub theorem cas_first_boot_rejected_after_rebuild(
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): cas_advance(
+  Db(Present(0, rebuild_ts), true),
+  Absent,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(0, rebuild_ts), true)) {
+  Refl
+}
+
+pub theorem cas_absent_rejected_whenever_present(
+  cur_seq: Nat,
+  cur_ts: Nat,
+  emptied: Bool,
+  to_seq: Nat,
+  write_ts: Nat
+): cas_advance(
+  Db(Present(cur_seq, cur_ts), emptied),
+  Absent,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(cur_seq, cur_ts), emptied)) {
+  Refl
+}
+
+pub theorem cas_present_rejected_when_db_absent(
+  from_seq: Nat,
+  from_ts: Nat,
+  emptied: Bool,
+  to_seq: Nat,
+  write_ts: Nat
+): cas_advance(
+  Db(Absent, emptied),
+  Present(from_seq, from_ts),
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Absent, emptied)) {
+  Refl
+}
+
+// ── Part A.2: 0 -> 0 ABA and stale-token-after-rebuild rejection ──
+
+pub theorem cas_present_rejected_on_ts_ne(
+  cur_seq: Nat,
+  cur_ts: Nat,
+  emptied: Bool,
+  from_seq: Nat,
+  from_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_ne: Nat::eq(from_ts, cur_ts) = false
+): cas_advance(
+  Db(Present(cur_seq, cur_ts), emptied),
+  Present(from_seq, from_ts),
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(cur_seq, cur_ts), emptied)) {
+  let h_cond := Eq::trans(
+    Eq::congr(⟦Nat::eq(from_seq, cur_seq) && □⟧, h_ne),
+    bool_and_false_right(Nat::eq(from_seq, cur_seq))
+  )
+  Eq::congr(⟦cas_choose(□, Db(Present(cur_seq, cur_ts), emptied), to_seq, write_ts)⟧, h_cond)
+}
+
+pub theorem cas_present_rejected_on_seq_ne(
+  cur_seq: Nat,
+  cur_ts: Nat,
+  emptied: Bool,
+  from_seq: Nat,
+  from_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_ne: Nat::eq(from_seq, cur_seq) = false
+): cas_advance(
+  Db(Present(cur_seq, cur_ts), emptied),
+  Present(from_seq, from_ts),
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(cur_seq, cur_ts), emptied)) {
+  let h_cond := Eq::congr(⟦□ && Nat::eq(from_ts, cur_ts)⟧, h_ne)
+  Eq::congr(⟦cas_choose(□, Db(Present(cur_seq, cur_ts), emptied), to_seq, write_ts)⟧, h_cond)
+}
+
+pub theorem cas_stale_token_rejected_after_rebuild(
+  from_seq: Nat,
+  tok_ts: Nat,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_lt: Nat::lt(tok_ts, rebuild_ts) = true
+): cas_advance(
+  Db(Present(0, rebuild_ts), true),
+  Present(from_seq, tok_ts),
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(0, rebuild_ts), true)) {
+  cas_present_rejected_on_ts_ne(
+    0,
+    rebuild_ts,
+    true,
+    from_seq,
+    tok_ts,
+    to_seq,
+    write_ts,
+    nat_lt_ne(tok_ts, rebuild_ts, h_lt)
+  )
+}
+
+pub theorem cas_zero_to_zero_aba_rejected(
+  tok_ts: Nat,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_lt: Nat::lt(tok_ts, rebuild_ts) = true
+): double_rebuild_aba(
+  tok_ts,
+  rebuild_ts,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(0, rebuild_ts), true)) {
+  cas_stale_token_rejected_after_rebuild(0, tok_ts, rebuild_ts, to_seq, write_ts, h_lt)
+}
+
+// ── Part A.3: Counterexample theorems proving UpdatedAt and Exists necessity ──
+
+pub theorem naive_cas_fails_zero_to_zero_aba(
+  tok_ts: Nat,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): naive_cas_advance(
+  Db(Present(0, rebuild_ts), true),
+  Present(0, tok_ts),
+  to_seq,
+  write_ts
+) = CasResult(true, Db(Present(to_seq, write_ts), true)) {
+  Refl
+}
+
+pub theorem naive_cas_fails_first_boot_race(
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): naive_cas_advance(
+  Db(Present(0, rebuild_ts), true),
+  Absent,
+  to_seq,
+  write_ts
+) = CasResult(true, Db(Present(to_seq, write_ts), true)) {
+  Refl
+}
+
+pub theorem naive_vs_full_cas_zero_to_zero_aba_witness(): cas_applied(
+  cas_advance(Db(Present(0, 20), true), Present(0, 10), 900, 30)
+) = false ∧ cas_applied(
+  naive_cas_advance(Db(Present(0, 20), true), Present(0, 10), 900, 30)
+) = true {
+  AndIntro(Refl, Refl)
+}
+
+pub theorem naive_vs_full_cas_first_boot_witness(): cas_applied(
+  cas_advance(Db(Present(0, 20), true), Absent, 900, 30)
+) = false ∧ cas_applied(naive_cas_advance(Db(Present(0, 20), true), Absent, 900, 30)) = true {
+  AndIntro(Refl, Refl)
+}
+
+// ── Part A.4: 2-actor protocol terminal state, wire RPC upsert, monotonic advance & non-reusability ──
+
+pub theorem protocol_rebuild_precedes_absent_batch(
+  emptied: Bool,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): race_rebuild_then_advance(
+  Db(Absent, emptied),
+  rebuild_ts,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(0, rebuild_ts), true)) {
+  Refl
+}
+
+pub theorem protocol_rebuild_precedes_present_batch(
+  cur_seq: Nat,
+  tok_ts: Nat,
+  emptied: Bool,
+  rebuild_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_lt: Nat::lt(tok_ts, rebuild_ts) = true
+): race_rebuild_then_advance(
+  Db(Present(cur_seq, tok_ts), emptied),
+  rebuild_ts,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(0, rebuild_ts), true)) {
+  cas_stale_token_rejected_after_rebuild(cur_seq, tok_ts, rebuild_ts, to_seq, write_ts, h_lt)
+}
+
+pub theorem protocol_wire_upsert_invalidates_absent_token(
+  emptied: Bool,
+  wire_seq: Nat,
+  wire_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat
+): race_wire_update_then_advance(
+  Db(Absent, emptied),
+  wire_seq,
+  wire_ts,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(wire_seq, wire_ts), emptied)) {
+  Refl
+}
+
+pub theorem protocol_wire_upsert_invalidates_present_token(
+  cur_seq: Nat,
+  tok_ts: Nat,
+  emptied: Bool,
+  wire_seq: Nat,
+  wire_ts: Nat,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_lt: Nat::lt(tok_ts, wire_ts) = true
+): race_wire_update_then_advance(
+  Db(Present(cur_seq, tok_ts), emptied),
+  wire_seq,
+  wire_ts,
+  to_seq,
+  write_ts
+) = CasResult(false, Db(Present(wire_seq, wire_ts), emptied)) {
+  cas_present_rejected_on_ts_ne(
+    wire_seq,
+    wire_ts,
+    emptied,
+    cur_seq,
+    tok_ts,
+    to_seq,
+    write_ts,
+    nat_lt_ne(tok_ts, wire_ts, h_lt)
+  )
+}
+
+pub theorem cas_matching_token_advances(
+  from_seq: Nat,
+  from_ts: Nat,
+  emptied: Bool,
+  to_seq: Nat,
+  write_ts: Nat
+): cas_advance(
+  Db(Present(from_seq, from_ts), emptied),
+  Present(from_seq, from_ts),
+  to_seq,
+  write_ts
+) = CasResult(true, Db(Present(to_seq, write_ts), emptied)) {
+  let h_cond := Eq::trans(
+    Eq::congr(⟦□ && Nat::eq(from_ts, from_ts)⟧, Nat::eq_refl(from_seq)),
+    Nat::eq_refl(from_ts)
+  )
+  Eq::congr(⟦cas_choose(□, Db(Present(from_seq, from_ts), emptied), to_seq, write_ts)⟧, h_cond)
+}
+
+pub theorem cas_matching_token_monotonic(
+  from_seq: Nat,
+  from_ts: Nat,
+  emptied: Bool,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_adv: Nat::lt(from_seq, to_seq) = true
+): Nat::lt(
+  from_seq,
+  row_seq(
+    db_row(
+      cas_db(
+        cas_advance(
+          Db(Present(from_seq, from_ts), emptied),
+          Present(from_seq, from_ts),
+          to_seq,
+          write_ts
+        )
+      )
+    )
+  )
+) = true {
+  Eq::trans(
+    Eq::congr(
+      ⟦Nat::lt(from_seq, row_seq(db_row(cas_db(□))))⟧,
+      cas_matching_token_advances(from_seq, from_ts, emptied, to_seq, write_ts)
+    ),
+    h_adv
+  )
+}
+
+pub theorem cas_consumed_present_token_not_reusable(
+  from_seq: Nat,
+  from_ts: Nat,
+  emptied: Bool,
+  to_seq1: Nat,
+  write_ts1: Nat,
+  to_seq2: Nat,
+  write_ts2: Nat,
+  h_lt: Nat::lt(from_ts, write_ts1) = true
+): cas_advance(
+  cas_db(
+    cas_advance(
+      Db(Present(from_seq, from_ts), emptied),
+      Present(from_seq, from_ts),
+      to_seq1,
+      write_ts1
+    )
+  ),
+  Present(from_seq, from_ts),
+  to_seq2,
+  write_ts2
+) = CasResult(false, Db(Present(to_seq1, write_ts1), emptied)) {
+  let h_first := Eq::congr(
+    ⟦cas_advance(cas_db(□), Present(from_seq, from_ts), to_seq2, write_ts2)⟧,
+    cas_matching_token_advances(from_seq, from_ts, emptied, to_seq1, write_ts1)
+  )
+  Eq::trans(
+    h_first,
+    cas_present_rejected_on_ts_ne(
+      to_seq1,
+      write_ts1,
+      emptied,
+      from_seq,
+      from_ts,
+      to_seq2,
+      write_ts2,
+      nat_lt_ne(from_ts, write_ts1, h_lt)
+    )
+  )
+}
+
+pub theorem cas_consumed_absent_token_not_reusable(
+  emptied: Bool,
+  to_seq1: Nat,
+  write_ts1: Nat,
+  to_seq2: Nat,
+  write_ts2: Nat
+): cas_advance(
+  cas_db(cas_advance(Db(Absent, emptied), Absent, to_seq1, write_ts1)),
+  Absent,
+  to_seq2,
+  write_ts2
+) = CasResult(false, Db(Present(to_seq1, write_ts1), emptied)) {
+  Refl
+}
+
+pub theorem cas_rejected_preserves_db(
+  db: DbState,
+  tok: CheckpointRow,
+  to_seq: Nat,
+  write_ts: Nat,
+  h_rej: cas_applied(cas_advance(db, tok, to_seq, write_ts)) = false
+): cas_db(cas_advance(db, tok, to_seq, write_ts)) = db {
+  match db {
+    Db(cur, emptied) => ⊢ cas_db(
+      cas_advance(Db(cur, emptied), tok, to_seq, write_ts)
+    ) = Db(cur, emptied) from match tok {
+      Absent => ⊢ cas_db(
+        cas_advance(Db(cur, emptied), Absent, to_seq, write_ts)
+      ) = Db(cur, emptied) from match cur {
+        Absent => False::elim(true_ne_false(h_rej))
+        Present(_, _) => Refl
+      }
+      Present(fs, ft) => ⊢ cas_db(
+        cas_advance(Db(cur, emptied), Present(fs, ft), to_seq, write_ts)
+      ) = Db(cur, emptied) from match cur {
+        Absent => Refl
+        Present(cs, ct) => ⊢ cas_db(
+          cas_choose(
+            Nat::eq(fs, cs) && Nat::eq(ft, ct),
+            Db(Present(cs, ct), emptied),
+            to_seq,
+            write_ts
+          )
+        ) = Db(Present(cs, ct), emptied) from match Nat::eq(fs, cs) && Nat::eq(ft, ct) eqn e {
+          true => False::elim(
+            true_ne_false(
+              Eq::trans(
+                Eq::sym(
+                  Eq::congr(
+                    ⟦cas_applied(cas_choose(□, Db(Present(cs, ct), emptied), to_seq, write_ts))⟧,
+                    e
+                  )
+                ),
+                h_rej
+              )
+            )
+          )
+          false => Refl
+        }
+      }
+    }
+  }
+}

@@ -196,9 +196,9 @@ func Load() (*Config, error) {
 		BranchPlannerTickInterval:    parseDurationEnv("KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL", 30*time.Second),
 		ProjectionHealthTickInterval: parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second),
 		TrailProjectorBatchSize:      parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE", 500),
-		TrailProjectorMaxBatches:     parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+		TrailProjectorMaxBatches:     parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 40),
 		HomeProjectorBatchSize:       parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE", 500),
-		HomeProjectorMaxBatches:      parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+		HomeProjectorMaxBatches:      parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 40),
 		ReadingProjectorBatchSize:    parseIntEnv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", 500),
 		ReadingProjectorMaxBatches:   parseIntEnv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", 40),
 	}, nil

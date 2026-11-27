@@ -38,6 +38,7 @@ type fakeRepo struct {
 	// advanceRejected simulates another writer (an operator's rebuild, the
 	// reproject swap RPC) having moved the row since the batch read it.
 	advanceRejected bool
+	beforeAdvance   func(from sovereign_db.ProjectionCheckpoint, toSeq int64) bool
 	listCalls       int
 
 	homeItems        map[string]capturedHomeItem
@@ -62,6 +63,11 @@ type fakeRepo struct {
 	// its id sits below the ceiling of the first sighting, so a hole in the
 	// sequence is never mistaken for a burned one unless a test says so.
 	frontiers []sovereign_db.SequenceGapFrontier
+	// autoBurnedFrontiers synthesizes monotonically increasing Xmin == Ceiling
+	// frontiers (no in-flight writer) when enabled.
+	autoBurnedFrontiers bool
+	nextXID             int64
+	frontierReads       []sovereign_db.SequenceGapFrontier
 	// beforeGapFrontier runs inside the gap frontier read, standing for a
 	// writer that commits after the batch was read and before the verdict.
 	beforeGapFrontier func()
@@ -130,10 +136,26 @@ func (f *fakeRepo) AdvanceProjectionCheckpointIfUnchanged(
 	_ context.Context, _ string, from sovereign_db.ProjectionCheckpoint, toSeq int64,
 ) (bool, error) {
 	f.advances = append(f.advances, fakeAdvance{From: from, ToSeq: toSeq})
+	if f.beforeAdvance != nil && !f.beforeAdvance(from, toSeq) {
+		return false, nil
+	}
 	if f.advanceRejected {
 		return false, nil
 	}
-	if from.Exists != f.checkpointExists || from.LastEventSeq != f.checkpoint || !from.UpdatedAt.Equal(f.checkpointAt) {
+	if !from.Exists {
+		if f.checkpointExists {
+			return false, nil
+		}
+		if f.checkpointAt.IsZero() {
+			f.checkpointAt = fakeCheckpointAt
+		} else {
+			f.checkpointAt = f.checkpointAt.Add(time.Second)
+		}
+		f.checkpoint = toSeq
+		f.checkpointExists = true
+		return true, nil
+	}
+	if !f.checkpointExists || from.LastEventSeq != f.checkpoint || !from.UpdatedAt.Equal(f.checkpointAt) {
 		return false, nil
 	}
 	f.checkpoint = toSeq
@@ -160,9 +182,18 @@ func (f *fakeRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq 
 	if f.beforeGapFrontier != nil {
 		f.beforeGapFrontier()
 	}
-	next := f.frontiers[0]
-	if len(f.frontiers) > 1 {
-		f.frontiers = f.frontiers[1:]
+	var next sovereign_db.SequenceGapFrontier
+	if f.autoBurnedFrontiers {
+		if f.nextXID == 0 {
+			f.nextXID = 100
+		}
+		f.nextXID++
+		next = sovereign_db.SequenceGapFrontier{Ceiling: f.nextXID, Xmin: f.nextXID}
+	} else {
+		next = f.frontiers[0]
+		if len(f.frontiers) > 1 {
+			f.frontiers = f.frontiers[1:]
+		}
 	}
 	// The real query answers both halves from one snapshot, so the fake reads
 	// the run out of the same events the batch read came from — a scripted
@@ -174,6 +205,7 @@ func (f *fakeRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq 
 			next.HoleOpen = false
 		}
 	}
+	f.frontierReads = append(f.frontierReads, next)
 	return next, nil
 }
 

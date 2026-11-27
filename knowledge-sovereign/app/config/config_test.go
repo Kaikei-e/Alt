@@ -419,13 +419,21 @@ func TestLoad_ReadingProjectorThroughputConfig(t *testing.T) {
 		t.Setenv("EVENT_AUTH", "disabled")
 	}
 
-	t.Run("defaults allow 20000 events per tick", func(t *testing.T) {
+	t.Run("defaults allow 20000 events per tick across all three projectors", func(t *testing.T) {
 		baseEnv(t)
+		t.Setenv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE", "")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", "")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE", "")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", "")
 		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", "")
 		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", "")
 
 		cfg, err := Load()
 		require.NoError(t, err)
+		assert.Equal(t, 500, cfg.TrailProjectorBatchSize)
+		assert.Equal(t, 40, cfg.TrailProjectorMaxBatches)
+		assert.Equal(t, 500, cfg.HomeProjectorBatchSize)
+		assert.Equal(t, 40, cfg.HomeProjectorMaxBatches)
 		assert.Equal(t, 500, cfg.ReadingProjectorBatchSize)
 		assert.Equal(t, 40, cfg.ReadingProjectorMaxBatches)
 	})
