@@ -5,9 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
+
+func budgetFromTurnLimit(turnLimit int64) int64 {
+	b := turnLimit / 5
+	if b < 1 {
+		return 1
+	}
+	if b > maxBudgetSeconds {
+		return maxBudgetSeconds
+	}
+	return b
+}
 
 func formatMeasuredYAML(indent string, measured map[string]any) []string {
 	child := indent + "  "
@@ -168,7 +181,7 @@ func stripMeasuredFromFrontmatter(fm []string) []string {
 	return out
 }
 
-func updateYAMLFrontmatterMeasured(fm []string, measured, policy map[string]any) ([]string, error) {
+func updateYAMLFrontmatterMeasured(fm []string, measured, policy map[string]any, budgetOverride *int64) ([]string, error) {
 	epIdx := -1
 	for i, line := range fm {
 		if strings.HasPrefix(strings.TrimLeft(line, " "), "execution_policy:") {
@@ -203,6 +216,7 @@ func updateYAMLFrontmatterMeasured(fm []string, measured, policy map[string]any)
 		blockEnd++
 	}
 	childIndent := strings.Repeat(" ", epIndent+2)
+	replacedBudget := false
 	var cleaned []string
 	idx := epIdx + 1
 	for idx < blockEnd {
@@ -224,8 +238,17 @@ func updateYAMLFrontmatterMeasured(fm []string, measured, policy map[string]any)
 		if strings.TrimSpace(raw) != "" && cur > epIndent && len(cleaned) == 0 {
 			childIndent = strings.Repeat(" ", cur)
 		}
+		if budgetOverride != nil && cur > epIndent && strings.HasPrefix(stripped, "max_command_budget_s:") {
+			cleaned = append(cleaned, fmt.Sprintf("%smax_command_budget_s: %d", strings.Repeat(" ", cur), *budgetOverride))
+			replacedBudget = true
+			idx++
+			continue
+		}
 		cleaned = append(cleaned, raw)
 		idx++
+	}
+	if budgetOverride != nil && !replacedBudget {
+		cleaned = append(cleaned, fmt.Sprintf("%smax_command_budget_s: %d", childIndent, *budgetOverride))
 	}
 	measuredLines := formatMeasuredYAML(childIndent, measured)
 	out := append([]string{}, fm[:epIdx+1]...)
@@ -237,10 +260,13 @@ func updateYAMLFrontmatterMeasured(fm []string, measured, policy map[string]any)
 
 var fencedJSONRe = regexp.MustCompile("(?s)```json\\s*\\n.*?\\n```")
 
-func writeMeasuredToPacket(path string, doc *Document, measured map[string]any) error {
+func writeMeasuredToPacket(path string, doc *Document, measured map[string]any, budgetOverride *int64) error {
 	policy, _ := asMap(doc.Data["execution_policy"])
 	if policy == nil {
 		return pErr("execution_policy block not found")
+	}
+	if budgetOverride != nil {
+		policy["max_command_budget_s"] = *budgetOverride
 	}
 	if !doc.IsMarkdown {
 		policy["measured"] = measured
@@ -267,7 +293,7 @@ func writeMeasuredToPacket(path string, doc *Document, measured map[string]any) 
 			return err
 		}
 		if intersectsStructured(parsed) {
-			updated, err := updateYAMLFrontmatterMeasured(fmLines, measured, policy)
+			updated, err := updateYAMLFrontmatterMeasured(fmLines, measured, policy, budgetOverride)
 			if err != nil {
 				return err
 			}
@@ -284,6 +310,56 @@ func writeMeasuredToPacket(path string, doc *Document, measured map[string]any) 
 		return err
 	}
 	replacement := "```json\n" + strings.TrimRight(string(encoded), "\n") + "\n```"
-	updated := fencedJSONRe.ReplaceAllString(raw, replacement)
+	updated := fencedJSONRe.ReplaceAllLiteralString(raw, replacement)
 	return os.WriteFile(path, []byte(updated), fsperm.File)
+}
+
+func appendMeasureDecision(repoRoot, runsDir, packetPath string, packetID any, duration float64, budget int64, turnLimit *int64, exitCode int) error {
+	branch := currentBranchSanitized(repoRoot)
+	branchDir := filepath.Join(runsDir, branch)
+	decisionsPath := filepath.Join(branchDir, "decisions.tsv")
+	if isSymlink(branchDir) || isSymlink(decisionsPath) || !withinDir(decisionsPath, runsDir) {
+		return pErr("decisions.tsv path escapes runs_dir or hits symlink: %s", decisionsPath)
+	}
+	if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+		return err
+	}
+	if _, err := os.Stat(decisionsPath); os.IsNotExist(err) {
+		if err := os.WriteFile(decisionsPath, []byte("ts\tphase\tdecision\twhy\tevidence\tresult\n"), fsperm.File); err != nil {
+			return err
+		}
+	}
+	evidence := filepath.ToSlash(packetPath)
+	if rel, err := filepath.Rel(resolveExisting(repoRoot), resolveExisting(packetPath)); err == nil && rel != "" && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		evidence = filepath.ToSlash(rel)
+	}
+	decision := fmt.Sprintf("measure %s: duration_s=%s budget_s=%d exit_code=%d", formatPacketID(packetID), strconvFormat(duration), budget, exitCode)
+	why := fmt.Sprintf("LOOP-02 command budget check (max_command_budget_s=%d)", budget)
+	if turnLimit != nil {
+		why = fmt.Sprintf("LOOP-02 command budget check (turn_limit_s=%d -> max_command_budget_s=%d)", *turnLimit, budget)
+	}
+	row := strings.Join([]string{
+		time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		"measure",
+		sanitizeSingleLineTSV(decision),
+		sanitizeSingleLineTSV(why),
+		sanitizeSingleLineTSV(evidence),
+		"info",
+	}, "\t") + "\n"
+	f, err := os.OpenFile(decisionsPath, os.O_APPEND|os.O_WRONLY, fsperm.File)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(row); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+func sanitizeSingleLineTSV(s string) string {
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
 }

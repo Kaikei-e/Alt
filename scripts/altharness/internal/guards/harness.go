@@ -34,6 +34,7 @@ const (
 	detachedSHALen         = 12
 	activePacketFilename   = "active-packet.json"
 	decisionsFilename      = "decisions.tsv"
+	parallelismFilename    = "parallelism.json"
 	subagentsFilename      = "subagents.jsonl"
 )
 
@@ -46,8 +47,12 @@ var (
 		"": {}, "tbd": {}, "n/a": {}, "na": {}, "-": {}, "--": {}, "—": {}, "todo": {}, "none": {},
 		"null": {}, "done": {}, "ok": {}, "なし": {}, "無し": {}, "未記入": {}, "未定": {}, "xxx": {}, "...": {},
 	}
-	pointerRE  = regexp.MustCompile(`(?i)^(?:#\d+|(?:ADR-\d{6}|PM-\d{4}-\d{3}|C-\d{2,})(?:\b|$)|commit:[0-9a-fA-F]{4,40}|cmd:\S.*|https?://\S+|file://\S+|[^\s]+/[^\s]+|[^\s]+\.(?:py|go|rs|ts|tsx|js|jsx|svelte|sh|md|json|jsonl|tsv|toml|yaml|yml|txt|log|sql|proto))$`)
-	packetIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
+	pointerRE          = regexp.MustCompile(`(?i)^(?:#\d+|(?:ADR-\d{6}|PM-\d{4}-\d{3}|C-\d{2,})(?:\b|$)|commit:[0-9a-fA-F]{4,40}|cmd:\S.*|https?://\S+|file://\S+|[^\s]+/[^\s]+|[^\s]+\.(?:py|go|rs|ts|tsx|js|jsx|svelte|sh|md|json|jsonl|tsv|toml|yaml|yml|txt|log|sql|proto))$`)
+	packetIDRE         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
+	initPolicyRE       = regexp.MustCompile(`(?:^|[\s;])policy=([^\s;]+)`)
+	initCompletionRE   = regexp.MustCompile(`(?:^|[\s;])completion=([^;]+)`)
+	parallelismArrowRE = regexp.MustCompile(`parallelism\s+\d+\s*->\s*(\d+)`)
+	parallelismEqRE    = regexp.MustCompile(`parallelism=(\d+)`)
 )
 
 // SanitizeBranchName collapses a git branch into one safe directory component.
@@ -338,6 +343,161 @@ func appendDecision(runDir, phase, decision, why, evidence, result string) (stri
 	return path, nil
 }
 
+func sanitizeTSVFormula(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '@':
+		return "'" + value
+	default:
+		return value
+	}
+}
+
+// DecisionFinding is one LOOP-03 integrity issue found in decisions.tsv.
+type DecisionFinding struct {
+	Line    int    `json:"line"`
+	Column  string `json:"column"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// ValidateDecisionsFile validates a decisions.tsv file against the LOOP-03
+// 6-column schema, Row 1 init invariant, RFC3339 timestamps, concrete evidence
+// pointers, and canonical result vocabulary.
+func ValidateDecisionsFile(path string) (int, []DecisionFinding, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return 0, nil, fmt.Errorf("not a regular file: %s", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, nil, err
+	}
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	if text == "" {
+		return 0, []DecisionFinding{{
+			Line: 1, Column: "header", Code: "INVALID_HEADER",
+			Message: "decisions.tsv is empty",
+		}}, nil
+	}
+	text = strings.TrimSuffix(text, "\n")
+	lines := strings.Split(text, "\n")
+	expectedHeader := strings.Join(tsvColumns, "\t")
+	var findings []DecisionFinding
+	if lines[0] != expectedHeader {
+		findings = append(findings, DecisionFinding{
+			Line: 1, Column: "header", Code: "INVALID_HEADER",
+			Message: fmt.Sprintf("expected exact 6-column header %q, got %q", expectedHeader, lines[0]),
+		})
+	}
+	if len(lines) < 2 {
+		findings = append(findings, DecisionFinding{
+			Line: 2, Column: "phase", Code: "MISSING_INIT_ROW",
+			Message: "decisions.tsv must contain Row 1 with phase='init' recording policy= and completion=",
+		})
+		return 0, findings, nil
+	}
+	rowCount := 0
+	for idx, line := range lines[1:] {
+		lineNo := idx + 2
+		rowIdx := idx + 1
+		rowCount++
+		if line == "" {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "row", Code: "EMPTY_ROW",
+				Message: "blank row is not allowed in decisions.tsv",
+			})
+			continue
+		}
+		if strings.ContainsRune(line, '\r') {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "row", Code: "MULTILINE_FIELD",
+				Message: "row must not contain carriage return characters",
+			})
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) != len(tsvColumns) {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "row", Code: "INVALID_COLUMN_COUNT",
+				Message: fmt.Sprintf("expected %d tab-separated columns, got %d", len(tsvColumns), len(parts)),
+			})
+			continue
+		}
+		ts, phase, decision, why, evidence, result := parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+		if ts == "" || strings.TrimSpace(ts) != ts {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "ts", Code: "INVALID_TIMESTAMP",
+				Message: fmt.Sprintf("invalid RFC3339/ISO8601 timestamp %q", ts),
+			})
+		} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "ts", Code: "INVALID_TIMESTAMP",
+				Message: fmt.Sprintf("invalid RFC3339/ISO8601 timestamp %q: %v", ts, err),
+			})
+		}
+		for _, field := range []struct {
+			name string
+			val  string
+		}{
+			{"phase", phase},
+			{"decision", decision},
+			{"why", why},
+		} {
+			if strings.TrimSpace(field.val) == "" {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: field.name, Code: "EMPTY_FIELD",
+					Message: fmt.Sprintf("field %q must not be empty", field.name),
+				})
+			}
+		}
+		if !IsValidEvidencePointer(evidence) {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "evidence", Code: "INVALID_EVIDENCE",
+				Message: fmt.Sprintf("evidence %q must be a concrete pointer", evidence),
+			})
+		}
+		if _, ok := validResults[result]; !ok {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "result", Code: "INVALID_RESULT",
+				Message: fmt.Sprintf("invalid result %q", result),
+			})
+		}
+		if rowIdx == 1 {
+			if phase != "init" {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: "phase", Code: "MISSING_INIT_PHASE",
+					Message: fmt.Sprintf("Row 1 phase must be 'init', got %q", phase),
+				})
+			}
+			polMatch := initPolicyRE.FindStringSubmatch(decision)
+			if len(polMatch) < 2 {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: "decision", Code: "INVALID_INIT_POLICY",
+					Message: "Row 1 decision must specify policy=fix-existing or policy=block-new",
+				})
+			} else if _, ok := validPolicies[polMatch[1]]; !ok {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: "decision", Code: "INVALID_INIT_POLICY",
+					Message: fmt.Sprintf("Row 1 decision has invalid policy=%q (expected fix-existing or block-new)", polMatch[1]),
+				})
+			}
+			compMatch := initCompletionRE.FindStringSubmatch(decision)
+			if len(compMatch) < 2 || strings.TrimSpace(compMatch[1]) == "" {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: "decision", Code: "MISSING_INIT_COMPLETION",
+					Message: "Row 1 decision must specify non-empty completion=<criteria>",
+				})
+			}
+		}
+	}
+	return rowCount, findings, nil
+}
+
 // AppendDecisionToFile validates fields against the canonical LOOP-03/LOOP-06
 // decisions.tsv schema and appends one row to decisionsPath (creating the
 // header if the file does not exist yet).
@@ -351,10 +511,12 @@ func AppendDecisionToFile(decisionsPath, phase, decision, why, evidence, result 
 	if err != nil {
 		return err
 	}
+	decision = sanitizeTSVFormula(decision)
 	why, err = validateTSVField("why", why)
 	if err != nil {
 		return err
 	}
+	why = sanitizeTSVFormula(why)
 	evidence, err = validateTSVField("evidence", evidence)
 	if err != nil {
 		return err
@@ -443,6 +605,10 @@ func RunHarness(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return cmdInit(repo, branch, rest, stdout, stderr)
 	case "log":
 		return cmdLog(repo, branch, rest, stdout, stderr)
+	case "validate":
+		return cmdValidate(repo, branch, rest, stdout, stderr)
+	case "parallelism":
+		return cmdParallelism(repo, branch, rest, stdout, stderr)
 	case "deactivate-packet":
 		return cmdDeactivate(repo, branch, rest, stdout, stderr)
 	case "status":
@@ -460,7 +626,7 @@ func RunHarness(ctx context.Context, args []string, stdin io.Reader, stdout, std
 }
 
 func harnessUsage() string {
-	return "usage: harness <init|log|activate-packet|deactivate-packet|record-handoff|subagent-stop|status> [flags]\n"
+	return "usage: harness <init|log|validate|parallelism|activate-packet|deactivate-packet|record-handoff|subagent-stop|status> [flags]\n"
 }
 
 func takeCommon(args []string) (repo, branch string, rest []string, err error) {
@@ -659,6 +825,245 @@ func cmdLog(repo, branch string, args []string, stdout, stderr io.Writer) int {
 		return harnessExitUsage
 	}
 	fmt.Fprintf(stdout, "logged decision to %s\n", path)
+	return harnessExitOK
+}
+
+func cmdValidate(repo, branch string, args []string, stdout, stderr io.Writer) int {
+	p, err := parseSubFlags(args,
+		map[string]bool{"--decisions-file": true, "--format": true},
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
+	format := "text"
+	if f, ok := p.values["--format"]; ok {
+		if f != "text" && f != "json" {
+			fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
+			return harnessExitUsage
+		}
+		format = f
+	}
+	decisionsPath := p.values["--decisions-file"]
+	if strings.TrimSpace(decisionsPath) == "" {
+		runDir, err := RunDirForBranch(repo, branch)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitUsage
+		}
+		decisionsPath = filepath.Join(runDir, decisionsFilename)
+	}
+	rowCount, findings, err := ValidateDecisionsFile(decisionsPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: unable to read decisions file %s: %v\n", decisionsPath, err)
+		return harnessExitUsage
+	}
+	valid := len(findings) == 0
+	if format == "json" {
+		outFindings := findings
+		if outFindings == nil {
+			outFindings = []DecisionFinding{}
+		}
+		payload := map[string]any{
+			"valid":    valid,
+			"path":     decisionsPath,
+			"rows":     rowCount,
+			"findings": outFindings,
+		}
+		enc, encErr := json.MarshalIndent(payload, "", "  ")
+		if encErr != nil {
+			fmt.Fprintf(stderr, "error: %v\n", encErr)
+			return harnessExitError
+		}
+		fmt.Fprintln(stdout, string(enc))
+		if valid {
+			return harnessExitOK
+		}
+		return harnessExitError
+	}
+	if valid {
+		fmt.Fprintf(stdout, "OK: decisions.tsv valid (%d row(s)) -> %s\n", rowCount, decisionsPath)
+		return harnessExitOK
+	}
+	for _, f := range findings {
+		fmt.Fprintf(stderr, "ERROR [%s] line %d (%s): %s\n", f.Code, f.Line, f.Column, f.Message)
+	}
+	fmt.Fprintf(stderr, "INVALID: %d finding(s) in %s\n", len(findings), decisionsPath)
+	return harnessExitError
+}
+
+func clampParallelism(n int) int {
+	if n < parallelismMin {
+		return parallelismMin
+	}
+	if n > parallelismMax {
+		return parallelismMax
+	}
+	return n
+}
+
+func lastRecordedParallelism(rows []map[string]string) (int, bool) {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i]["phase"] != "parallelism" {
+			continue
+		}
+		dec := rows[i]["decision"]
+		if m := parallelismArrowRE.FindStringSubmatch(dec); len(m) >= 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n >= parallelismMin {
+				return clampParallelism(n), true
+			}
+		}
+		if m := parallelismEqRE.FindStringSubmatch(dec); len(m) >= 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n >= parallelismMin {
+				return clampParallelism(n), true
+			}
+		}
+	}
+	return 0, false
+}
+
+func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer) int {
+	p, err := parseSubFlags(args,
+		map[string]bool{"--current": true, "--base-parallelism": true, "--format": true},
+		map[string]bool{"--apply": true, "--record-hold": true},
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if p.help {
+		fmt.Fprint(stdout, harnessUsage())
+		return harnessExitOK
+	}
+	if len(p.positionals) > 0 {
+		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		return harnessExitUsage
+	}
+	format := "text"
+	if f, ok := p.values["--format"]; ok {
+		if f != "text" && f != "json" {
+			fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
+			return harnessExitUsage
+		}
+		format = f
+	}
+	base := parallelismBaseDefault
+	if raw, ok := p.values["--base-parallelism"]; ok {
+		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
+		if convErr != nil || n < parallelismMin {
+			fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s\n", raw)
+			return harnessExitUsage
+		}
+		base = clampParallelism(n)
+	}
+	hasExplicitCurrent := false
+	explicitCurrent := 0
+	if raw, ok := p.values["--current"]; ok {
+		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
+		if convErr != nil || n < parallelismMin {
+			fmt.Fprintf(stderr, "error: invalid --current: %s\n", raw)
+			return harnessExitUsage
+		}
+		explicitCurrent = clampParallelism(n)
+		hasExplicitCurrent = true
+	}
+	runDir, err := RunDirForBranch(repo, branch)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitError
+	}
+	rows := readDecisions(runDir)
+	effectiveCurrent := clampParallelism(base)
+	if hasExplicitCurrent {
+		effectiveCurrent = explicitCurrent
+	} else if recorded, ok := lastRecordedParallelism(rows); ok {
+		effectiveCurrent = recorded
+	}
+	outcomes := make([]string, 0, len(rows))
+	for _, row := range rows {
+		outcomes = append(outcomes, row["result"])
+	}
+	par := ComputeRecommendedParallelism(outcomes, effectiveCurrent)
+	changed := par.Recommended != effectiveCurrent
+	actualDelta := par.Recommended - effectiveCurrent
+	updatedAt := utcNow()
+
+	shouldRecord := (p.bools["--apply"] && changed) || (p.bools["--record-hold"] && !changed)
+	statePath := filepath.Join(runDir, parallelismFilename)
+	decisionsPath := filepath.Join(runDir, decisionsFilename)
+	payload := map[string]any{
+		"current":     effectiveCurrent,
+		"recommended": par.Recommended,
+		"delta":       actualDelta,
+		"window_size": par.WindowSize,
+		"counts":      par.Counts,
+		"reason":      par.Reason,
+		"updated_at":  updatedAt,
+		"changed":     changed,
+	}
+	if shouldRecord {
+		if err := os.MkdirAll(runDir, fsperm.Dir); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+		rel, relErr := filepath.Rel(resolveExisting(repo), decisionsPath)
+		if relErr != nil || rel == "" || strings.HasPrefix(rel, "..") {
+			rel = decisionsPath
+		}
+		rel = filepath.ToSlash(rel)
+		decisionText := fmt.Sprintf("parallelism %d -> %d", effectiveCurrent, par.Recommended)
+		if _, err := appendDecision(runDir, "parallelism", decisionText, par.Reason, rel, "info"); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+		encState, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+		if err := os.WriteFile(statePath, append(encState, '\n'), fsperm.File); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+	}
+	if format == "json" {
+		enc, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return harnessExitError
+		}
+		fmt.Fprintln(stdout, string(enc))
+		return harnessExitOK
+	}
+	fmt.Fprintf(stdout,
+		"Parallelism (branch=%s): current=%d recommended=%d delta=%+d changed=%t recorded=%t\n"+
+			"  window_size : %d (adopted=%d, reverted=%d, mismatch=%d, cancelled=%d)\n"+
+			"  reason      : %s\n",
+		filepath.Base(runDir),
+		effectiveCurrent,
+		par.Recommended,
+		actualDelta,
+		changed,
+		shouldRecord,
+		par.WindowSize,
+		par.Counts["adopted"],
+		par.Counts["reverted"],
+		par.Counts["mismatch"],
+		par.Counts["cancelled"],
+		par.Reason,
+	)
+	if shouldRecord {
+		fmt.Fprintf(stdout, "  state       : %s\n", statePath)
+	}
 	return harnessExitOK
 }
 

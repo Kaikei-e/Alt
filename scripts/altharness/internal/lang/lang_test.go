@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -476,4 +478,188 @@ func findRepo(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+func initHostFinalFixtureRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "scripts", "lint"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsperm.WriteExecutable(filepath.Join(repo, "scripts", "lint", "run.sh"), []byte("#!/usr/bin/env bash\nexit 0\n")); err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{"gosvc1", "gosvc2", "pysvc"} {
+		if err := os.MkdirAll(filepath.Join(repo, sub), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, sub, "README.txt"), []byte("ok\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitExec := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, string(out))
+		}
+	}
+	gitExec("init", "-b", "main", "-q")
+	gitExec("config", "user.email", "t@example.com")
+	gitExec("config", "user.name", "t")
+	gitExec("add", ".")
+	gitExec("commit", "-q", "-m", "init")
+	return repo
+}
+
+func TestHostFinalRandomizedTestsAndValidation(t *testing.T) {
+	repo := initHostFinalFixtureRepo(t)
+	outside := t.TempDir()
+	escLink := filepath.Join(repo, "escape_link")
+	if err := os.Symlink(outside, escLink); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Invalid flags, bad seeds, and path escapes must fail closed with exit 2 before running hygiene.
+	invalidCases := []struct {
+		name string
+		args []string
+	}{
+		{"go-test-dir parent escape", []string{"--repo-root", repo, "--target", "scripts", "--go-test-dir", "../outside"}},
+		{"go-test-dir abs outside", []string{"--repo-root", repo, "--target", "scripts", "--go-test-dir", outside}},
+		{"go-test-dir symlink escape", []string{"--repo-root", repo, "--target", "scripts", "--go-test-dir", "escape_link"}},
+		{"go-test-dir missing dir", []string{"--repo-root", repo, "--target", "scripts", "--go-test-dir", "does-not-exist"}},
+		{"go-test-dir missing value", []string{"--repo-root", repo, "--target", "scripts", "--go-test-dir"}},
+		{"py-test-dir parent escape", []string{"--repo-root", repo, "--target", "scripts", "--py-test-dir", "../outside"}},
+		{"py-test-dir abs outside", []string{"--repo-root", repo, "--target", "scripts", "--py-test-dir", outside}},
+		{"py-test-dir symlink escape", []string{"--repo-root", repo, "--target", "scripts", "--py-test-dir", "escape_link"}},
+		{"py-test-dir missing value", []string{"--repo-root", repo, "--target", "scripts", "--py-test-dir"}},
+		{"random-seed non-int", []string{"--repo-root", repo, "--target", "scripts", "--random-seed", "abc"}},
+		{"random-seed zero", []string{"--repo-root", repo, "--target", "scripts", "--random-seed", "0"}},
+		{"random-seed negative", []string{"--repo-root", repo, "--target", "scripts", "--random-seed", "-42"}},
+		{"random-seed missing value", []string{"--repo-root", repo, "--target", "scripts", "--random-seed"}},
+	}
+	for _, tc := range invalidCases {
+		t.Run("invalid/"+tc.name, func(t *testing.T) {
+			var out, errBuf bytes.Buffer
+			code := RunHostFinal(context.Background(), tc.args, &out, &errBuf)
+			if code != 2 {
+				t.Fatalf("code=%d want 2\nstdout:\n%s\nstderr:\n%s", code, out.String(), errBuf.String())
+			}
+			if strings.Contains(out.String(), "worktree hygiene") {
+				t.Fatalf("invalid flag reached hygiene step:\n%s", out.String())
+			}
+		})
+	}
+
+	// Remove symlink so fixture repo worktree stays clean for git status --porcelain check.
+	if err := os.Remove(escLink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stub `go` and `uv` in PATH to capture exact randomized invocations without external deps.
+	stubBin := t.TempDir()
+	goLog := filepath.Join(t.TempDir(), "go.log")
+	uvLog := filepath.Join(t.TempDir(), "uv.log")
+	goScript := "#!/usr/bin/env bash\nprintf 'cwd=%s args=%s\\n' \"$PWD\" \"$*\" >> \"" + goLog + "\"\nexit 0\n"
+	uvScript := "#!/usr/bin/env bash\nprintf 'cwd=%s seed=%s args=%s\\n' \"$PWD\" \"${ALT_PYTEST_RANDOM_SEED:-}\" \"$*\" >> \"" + uvLog + "\"\nexit 0\n"
+	if err := fsperm.WriteExecutable(filepath.Join(stubBin, "go"), []byte(goScript)); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsperm.WriteExecutable(filepath.Join(stubBin, "uv"), []byte(uvScript)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// 2. Explicit --random-seed runs both repeatable --go-test-dir and --py-test-dir plus --test-cmd.
+	t.Run("explicit seed with go and py dirs and test-cmd", func(t *testing.T) {
+		_ = os.Remove(goLog)
+		_ = os.Remove(uvLog)
+		var out, errBuf bytes.Buffer
+		code := RunHostFinal(context.Background(), []string{
+			"--repo-root", repo,
+			"--target", "scripts",
+			"--skip-repo-lint",
+			"--test-cmd", "echo legacy-test-cmd-ok",
+			"--go-test-dir", "gosvc1",
+			"--go-test-dir", filepath.Join(repo, "gosvc2"),
+			"--py-test-dir", "pysvc",
+			"--random-seed", "424242",
+		}, &out, &errBuf)
+		if code != 0 {
+			t.Fatalf("code=%d\nstdout:\n%s\nstderr:\n%s", code, out.String(), errBuf.String())
+		}
+		if !strings.Contains(out.String(), "legacy-test-cmd-ok") {
+			t.Fatalf("missing --test-cmd output:\n%s", out.String())
+		}
+		if !strings.Contains(out.String(), "random_seed=424242") {
+			t.Fatalf("missing random_seed=424242 in stdout:\n%s", out.String())
+		}
+		if !strings.Contains(out.String(), "PYTEST_RANDOM_SEED=424242") {
+			t.Fatalf("missing PYTEST_RANDOM_SEED=424242 in stdout:\n%s", out.String())
+		}
+		goData, err := os.ReadFile(goLog)
+		if err != nil {
+			t.Fatalf("read go log: %v", err)
+		}
+		goLines := strings.Split(strings.TrimSpace(string(goData)), "\n")
+		if len(goLines) != 2 {
+			t.Fatalf("expected 2 go test invocations, got %d:\n%s", len(goLines), string(goData))
+		}
+		for _, wantDir := range []string{"gosvc1", "gosvc2"} {
+			if !strings.Contains(string(goData), wantDir) {
+				t.Fatalf("go log missing %s:\n%s", wantDir, string(goData))
+			}
+		}
+		if !strings.Contains(string(goData), "args=test -shuffle=424242 -race -count=1 ./...") {
+			t.Fatalf("go log missing shuffle/race/count args:\n%s", string(goData))
+		}
+		uvData, err := os.ReadFile(uvLog)
+		if err != nil {
+			t.Fatalf("read uv log: %v", err)
+		}
+		if !strings.Contains(string(uvData), "seed=424242") || !strings.Contains(string(uvData), "_alt_pytest_random_order_plugin") {
+			t.Fatalf("uv log missing seed/plugin:\n%s", string(uvData))
+		}
+	})
+
+	// 3. Auto-generated positive seed when --random-seed is omitted is logged and shared across dirs.
+	t.Run("auto-generated positive seed logged and shared", func(t *testing.T) {
+		_ = os.Remove(goLog)
+		_ = os.Remove(uvLog)
+		var out, errBuf bytes.Buffer
+		code := RunHostFinal(context.Background(), []string{
+			"--repo-root", repo,
+			"--target", "scripts",
+			"--skip-repo-lint",
+			"--go-test-dir", "gosvc1",
+			"--py-test-dir", "pysvc",
+		}, &out, &errBuf)
+		if code != 0 {
+			t.Fatalf("code=%d\nstdout:\n%s\nstderr:\n%s", code, out.String(), errBuf.String())
+		}
+		re := regexp.MustCompile(`random_seed=([0-9]+)`)
+		m := re.FindStringSubmatch(out.String())
+		if len(m) < 2 {
+			t.Fatalf("missing auto-generated random_seed=<n> in stdout:\n%s", out.String())
+		}
+		seed, err := strconv.ParseInt(m[1], 10, 64)
+		if err != nil || seed <= 0 {
+			t.Fatalf("invalid auto-generated seed %q: %v", m[1], err)
+		}
+		goData, err := os.ReadFile(goLog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(goData), "-shuffle="+m[1]) {
+			t.Fatalf("go test did not use logged seed %s:\n%s", m[1], string(goData))
+		}
+		uvData, err := os.ReadFile(uvLog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(uvData), "seed="+m[1]) {
+			t.Fatalf("pytest-rand did not use logged seed %s:\n%s", m[1], string(uvData))
+		}
+	})
 }
