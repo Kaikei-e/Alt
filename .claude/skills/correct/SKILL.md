@@ -189,4 +189,4 @@ fail-closed 検証と記録を実行する:
 
 ## Prior-Art Attribution
 
-本スキルと LOOP-07 是正エンジンは、Alt 自身の lint 展開失敗記録（`docs/review/lint-rollout-harness-learnings-2026-11-21.md`）・失敗コーパス（`CORPUS-01`）・規則台帳ラチェット（`CHECK-07`）・純 Go 標準ライブラリ単一バイナリ方針（ADR-001028 / ADR-001038）を第一の根拠として設計しつつ、2 回再発でのクラス化・上位段優先の強制ラダー（architecture → static check → verification → prose）・実失敗での検知実証・不要な文章ルール削除の運用様式について、`cursor/plugins` の `pstack`（`/correct`, MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。
+本スキルと LOOP-07 是正エンジンは、Alt 自身の lint 展開失敗記録（`docs/review/lint-rollout-harness-learnings-2026-11-21.md`）・失敗コーパス（`CORPUS-01`）・規則台帳ラチェット（`CHECK-07`）・純 Go 標準ライブラリ単一バイナリ方針（ADR-001028 / ADR-001039）を第一の根拠として設計しつつ、2 回再発でのクラス化・上位段優先の強制ラダー（architecture → static check → verification → prose）・実失敗での検知実証・不要な文章ルール削除の運用様式について、`cursor/plugins` の `pstack`（`/correct`, MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。

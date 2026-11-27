@@ -66,6 +66,7 @@ const severityColor = (severity: string) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -127,12 +128,15 @@ const severityColor = (severity: string) => {
 		gap: 0.25rem;
 		padding: 0.6rem 0.75rem;
 		flex: 1;
+		min-width: 0;
 	}
 
 	.alert-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.25rem 0.5rem;
 	}
 
 	.alert-name {
@@ -140,6 +144,8 @@ const severityColor = (severity: string) => {
 		font-size: 0.8rem;
 		font-weight: 600;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.alert-severity {
@@ -149,6 +155,7 @@ const severityColor = (severity: string) => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		flex-shrink: 0;
 	}
 
 	.alert-desc {
@@ -156,6 +163,7 @@ const severityColor = (severity: string) => {
 		font-size: 0.75rem;
 		color: var(--alt-slate);
 		margin: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.alert-meta {
@@ -163,5 +171,6 @@ const severityColor = (severity: string) => {
 		font-size: 0.6rem;
 		color: var(--alt-ash);
 		margin: 0;
+		overflow-wrap: anywhere;
 	}
 </style>

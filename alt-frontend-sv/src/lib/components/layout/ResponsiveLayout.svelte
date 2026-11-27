@@ -63,7 +63,7 @@ afterNavigate(({ shallow }) => {
 		tabindex="-1"
 		bind:this={mainEl}
 		class={cn(
-			"outline-none md:flex-1",
+			"min-w-0 outline-none md:flex-1",
 			// Desktop padding, previously `className || (isFullBleed ? "p-0" : "p-6")`:
 			// an explicit `class` prop replaced the default padding outright.
 			!className && (isFullBleed ? "md:p-0" : "md:p-6"),

@@ -14,7 +14,7 @@ const lastUpdatedFormatted = $derived(
 <div class="panel" data-role="projection-status">
 	<h3 class="section-heading">Projection Status</h3>
 	<div class="heading-rule"></div>
-	<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+	<div class="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
 		<AdminMetricCard
 			label="Active Version"
 			value={health?.activeVersion ?? "--"}
@@ -43,6 +43,7 @@ const lastUpdatedFormatted = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {

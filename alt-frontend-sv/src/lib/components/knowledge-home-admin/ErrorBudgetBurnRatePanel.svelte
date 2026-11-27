@@ -59,6 +59,7 @@ const barColor = (pct: number) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -105,6 +106,7 @@ const barColor = (pct: number) => {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem;
 	}
 
 	.burn-name {
@@ -112,12 +114,15 @@ const barColor = (pct: number) => {
 		font-size: 0.75rem;
 		font-weight: 500;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.burn-value {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
 		font-weight: 700;
+		flex-shrink: 0;
 	}
 
 	.burn-track {

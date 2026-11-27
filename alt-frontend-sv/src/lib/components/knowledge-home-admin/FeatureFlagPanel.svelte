@@ -47,6 +47,7 @@ const flagItems = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -74,6 +75,7 @@ const flagItems = $derived(
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem;
 		padding: 0.5rem 0;
 		border-bottom: 1px solid var(--surface-border);
 	}
@@ -86,11 +88,14 @@ const flagItems = $derived(
 		font-family: var(--font-body);
 		font-size: 0.8rem;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.flag-dot {
 		width: 8px;
 		height: 8px;
+		flex-shrink: 0;
 		border-radius: 50%;
 		background: var(--surface-border);
 	}

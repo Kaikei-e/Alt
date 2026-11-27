@@ -144,4 +144,4 @@ allowed-tools:
 
 ## Prior-Art Attribution
 
-本スキルと `alt-harness loop-review` の検証契約は、Alt 自身の lint ロールアウト障害記録（`docs/review/lint-rollout-harness-learnings-2026-11-21.md`）、失敗コーパス（`CORPUS-01`）、および [[001038]] の純 Go 標準ライブラリ単一バイナリ不変条件を第一の根拠として設計しつつ、異系統モデルによる敵対的レビュー・4 分類トリアージ・非自動適用・再現証明要求のワークフロー設計について `cursor/plugins` の `pstack`（`/interrogate`、MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。
+本スキルと `alt-harness loop-review` の検証契約は、Alt 自身の lint ロールアウト障害記録（`docs/review/lint-rollout-harness-learnings-2026-11-21.md`）、失敗コーパス（`CORPUS-01`）、および [[001039]] の純 Go 標準ライブラリ単一バイナリ不変条件を第一の根拠として設計しつつ、異系統モデルによる敵対的レビュー・4 分類トリアージ・非自動適用・再現証明要求のワークフロー設計について `cursor/plugins` の `pstack`（`/interrogate`、MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。

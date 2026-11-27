@@ -1134,16 +1134,16 @@ func TestHarnessRunValidateDecisionsTSV(t *testing.T) {
 		}{
 			{"wrong header", "ts\tphase\tdecision\n" + validInit, "INVALID_HEADER"},
 			{"header only no init row", validHeader, "MISSING_INIT_ROW"},
-			{"row 1 wrong phase", validHeader + "2026-11-28T00:00:00Z\treview\tpolicy=block-new; completion=ok\treason\tADR-001038\tinfo\n", "MISSING_INIT_PHASE"},
-			{"row 1 missing policy", validHeader + "2026-11-28T00:00:00Z\tinit\tgoal=Test; completion=ok\treason\tADR-001038\tinfo\n", "INVALID_INIT_POLICY"},
-			{"row 1 invalid policy", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=allow-all; completion=ok\treason\tADR-001038\tinfo\n", "INVALID_INIT_POLICY"},
-			{"row 1 missing completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=Test\treason\tADR-001038\tinfo\n", "MISSING_INIT_COMPLETION"},
-			{"row 1 empty completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; completion=   \treason\tADR-001038\tinfo\n", "MISSING_INIT_COMPLETION"},
-			{"wrong column count", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001038\n", "INVALID_COLUMN_COUNT"},
-			{"invalid timestamp", validHeader + validInit + "not-a-timestamp\tverify\tok\treason\tADR-001038\tinfo\n", "INVALID_TIMESTAMP"},
-			{"empty why", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\t   \tADR-001038\tinfo\n", "EMPTY_FIELD"},
+			{"row 1 wrong phase", validHeader + "2026-11-28T00:00:00Z\treview\tpolicy=block-new; completion=ok\treason\tADR-001039\tinfo\n", "MISSING_INIT_PHASE"},
+			{"row 1 missing policy", validHeader + "2026-11-28T00:00:00Z\tinit\tgoal=Test; completion=ok\treason\tADR-001039\tinfo\n", "INVALID_INIT_POLICY"},
+			{"row 1 invalid policy", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=allow-all; completion=ok\treason\tADR-001039\tinfo\n", "INVALID_INIT_POLICY"},
+			{"row 1 missing completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=Test\treason\tADR-001039\tinfo\n", "MISSING_INIT_COMPLETION"},
+			{"row 1 empty completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; completion=   \treason\tADR-001039\tinfo\n", "MISSING_INIT_COMPLETION"},
+			{"wrong column count", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001039\n", "INVALID_COLUMN_COUNT"},
+			{"invalid timestamp", validHeader + validInit + "not-a-timestamp\tverify\tok\treason\tADR-001039\tinfo\n", "INVALID_TIMESTAMP"},
+			{"empty why", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\t   \tADR-001039\tinfo\n", "EMPTY_FIELD"},
 			{"non-pointer evidence", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tlooks good\tinfo\n", "INVALID_EVIDENCE"},
-			{"invalid result", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001038\tshipped\n", "INVALID_RESULT"},
+			{"invalid result", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001039\tshipped\n", "INVALID_RESULT"},
 		}
 		for _, tc := range cases {
 			tc := tc
@@ -1171,7 +1171,7 @@ func TestAppendDecisionFormulaInjectionHygiene(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "decisions.tsv")
 
-	if err := AppendDecisionToFile(path, "init", "policy=fix-existing; completion=done", "init row", "ADR-001038", "info"); err != nil {
+	if err := AppendDecisionToFile(path, "init", "policy=fix-existing; completion=done", "init row", "ADR-001039", "info"); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -1369,7 +1369,7 @@ func TestParallelismNoInfiniteReRatchetAndStatusSync(t *testing.T) {
 		t.Fatalf("init rc=%d err=%s", rc, errB)
 	}
 	for i := 0; i < 10; i++ {
-		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "pkt ok", "--why", "green", "--evidence", "ADR-001038", "--result", "adopted"); rc != 0 {
+		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "pkt ok", "--why", "green", "--evidence", "ADR-001039", "--result", "adopted"); rc != 0 {
 			t.Fatalf("log %d rc=%d err=%s", i, rc, errB)
 		}
 	}
@@ -1437,7 +1437,7 @@ func TestDecisionsRoundTripAutoInitAndInitSemicolon(t *testing.T) {
 		t.Parallel()
 		repo := initTestGitRepo(t)
 		var out, errB bytes.Buffer
-		if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "verify", "--decision", "green", "--why", "tests pass", "--evidence", "ADR-001038", "--result", "adopted"}, nil, &out, &errB); rc != 0 {
+		if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "verify", "--decision", "green", "--why", "tests pass", "--evidence", "ADR-001039", "--result", "adopted"}, nil, &out, &errB); rc != 0 {
 			t.Fatalf("log rc=%d err=%s", rc, errB.String())
 		}
 		out.Reset()
@@ -1558,7 +1558,7 @@ func TestSymlinkEscapeRejectedInHarnessRunAndAppendDecision(t *testing.T) {
 		if err := os.Symlink(victimTSV, decPath); err != nil {
 			t.Fatal(err)
 		}
-		if err := AppendDecisionToFile(decPath, "review", "d", "w", "ADR-001038", "info"); err == nil {
+		if err := AppendDecisionToFile(decPath, "review", "d", "w", "ADR-001039", "info"); err == nil {
 			t.Fatal("AppendDecisionToFile followed dangling symlink")
 		}
 		var out, errB bytes.Buffer
@@ -1620,7 +1620,7 @@ func TestFormulaInjectionAndTabCRInPhaseAndEvidence(t *testing.T) {
 	}
 
 	// Formula-triggering phase and numeric/formula minus cells must be neutralized and pass validate.
-	if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "=SUM(1,2)", "--decision", "-2 scale down", "--why", "-=1+1", "--evidence", "ADR-001038", "--result", "info"}, nil, &out, &errB); rc != 0 {
+	if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "=SUM(1,2)", "--decision", "-2 scale down", "--why", "-=1+1", "--evidence", "ADR-001039", "--result", "info"}, nil, &out, &errB); rc != 0 {
 		t.Fatalf("log with formula phase rc=%d err=%s", rc, errB.String())
 	}
 	decPath := filepath.Join(repo, ".harness", "runs", "feat-test-branch", "decisions.tsv")
@@ -1637,8 +1637,8 @@ func TestFormulaInjectionAndTabCRInPhaseAndEvidence(t *testing.T) {
 	// Raw unescaped formula trigger in phase column fails ValidateDecisionsFile.
 	badTSV := filepath.Join(t.TempDir(), "decisions.tsv")
 	content := "ts\tphase\tdecision\twhy\tevidence\tresult\n" +
-		"2026-11-28T00:00:00Z\tinit\tpolicy=block-new; completion=ok\tinit\tADR-001038\tinfo\n" +
-		"2026-11-28T00:01:00Z\t=SUM(1,2)\tok\tok\tADR-001038\tinfo\n"
+		"2026-11-28T00:00:00Z\tinit\tpolicy=block-new; completion=ok\tinit\tADR-001039\tinfo\n" +
+		"2026-11-28T00:01:00Z\t=SUM(1,2)\tok\tok\tADR-001039\tinfo\n"
 	if err := os.WriteFile(badTSV, []byte(content), fsperm.File); err != nil {
 		t.Fatal(err)
 	}

@@ -111,4 +111,4 @@ cd news-creator/app && uv run pytest tests/gateway/ tests/handler/ -q
 
 ## Prior-Art Attribution
 
-本スキルと `blast_radius_proof` 検証契約は、Alt 自身の失敗コーパス（`CORPUS-01`）・層 3 動的検証（[[001037]]）・LOOP-04 敵対的レビュー基盤（[[001038]]）の不変条件を起点に設計しつつ、差分外の耐荷重前提を文章ではなく実コード実行で実証するアプローチについて `cursor/plugins` の `pstack`（`/blast-radius`、MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。
+本スキルと `blast_radius_proof` 検証契約は、Alt 自身の失敗コーパス（`CORPUS-01`）・層 3 動的検証（[[001037]]）・LOOP-04 敵対的レビュー基盤（[[001039]]）の不変条件を起点に設計しつつ、差分外の耐荷重前提を文章ではなく実コード実行で実証するアプローチについて `cursor/plugins` の `pstack`（`/blast-radius`、MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。

@@ -106,7 +106,7 @@ var archAllowedFileExts = map[string]struct{}{
 }
 
 // validAltHarnessSubcommands mirrors the canonical alt-harness command set
-// (including LOOP-04..07 commands introduced by ADR-001038) so enforcement_ref
+// (including LOOP-04..07 commands introduced by ADR-001039) so enforcement_ref
 // validation catches phantom subcommands without importing package main.
 var validAltHarnessSubcommands = map[string]struct{}{
 	"lint":              {},

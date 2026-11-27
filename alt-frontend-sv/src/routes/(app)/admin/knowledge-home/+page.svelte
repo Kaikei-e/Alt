@@ -155,7 +155,7 @@ onDestroy(() => {
 	<!-- Page Header -->
 	<header class="ops-header">
 		<div class="ops-header-top">
-			<div>
+			<div class="ops-heading">
 				<h1 class="ops-title">Knowledge Home Operations</h1>
 				<p class="ops-subtitle">Projection health, backfill status, and rollout configuration</p>
 			</div>
@@ -221,10 +221,10 @@ onDestroy(() => {
 					activeAlertCount={admin.sloStatus?.activeAlerts?.length ?? 0}
 				/>
 			</div>
-			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 2">
+			<div class="grid min-w-0 gap-6 lg:grid-cols-2 ops-section" style="--stagger: 2">
 				<ProjectionStatusPanel health={admin.health} />
 				<FeatureFlagPanel flags={admin.flags} />
-				<div class="lg:col-span-2">
+				<div class="min-w-0 lg:col-span-2">
 					<BackfillJobsTable
 						jobs={admin.health?.backfillJobs ?? []}
 						disableActions={admin.acting}
@@ -244,7 +244,7 @@ onDestroy(() => {
 			<div class="ops-section" style="--stagger: 3">
 				<AlertStatusPanel alerts={admin.sloStatus?.activeAlerts ?? []} />
 			</div>
-			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
+			<div class="grid min-w-0 gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
 				<InteractionFunnelPanel funnel={admin.systemMetrics?.tracking
 						? [
 						{ label: "Exposed", value: admin.systemMetrics.tracking.itemsExposed },
@@ -278,7 +278,7 @@ onDestroy(() => {
 			<div class="ops-section" style="--stagger: 3">
 				<StreamHealthPanel stream={admin.systemMetrics?.stream ?? null} />
 			</div>
-			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
+			<div class="grid min-w-0 gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
 				<RecallPipelinePanel recall={admin.systemMetrics?.recall ?? null} />
 				<SovereignMutationPanel sovereign={admin.systemMetrics?.sovereign ?? null} />
 			</div>
@@ -345,7 +345,10 @@ onDestroy(() => {
 
 <style>
 	.ops-page {
+		width: 100%;
 		max-width: 1400px;
+		box-sizing: border-box;
+		min-width: 0;
 		margin: 0 auto;
 		padding: 1.5rem 2rem;
 		opacity: 0;
@@ -360,14 +363,21 @@ onDestroy(() => {
 
 	.ops-header {
 		margin-bottom: 1.5rem;
+		min-width: 0;
 	}
 
 	.ops-header-top {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: 0.75rem 1rem;
 		margin-bottom: 0.75rem;
+		min-width: 0;
+	}
+
+	.ops-heading {
+		min-width: 0;
 	}
 
 	.ops-title {
@@ -388,9 +398,11 @@ onDestroy(() => {
 
 	.ops-actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
-		flex-shrink: 0;
+		gap: 0.5rem 0.75rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.ops-action-btn {
@@ -421,6 +433,7 @@ onDestroy(() => {
 		font-family: var(--font-mono);
 		font-size: 0.65rem;
 		color: var(--alt-ash);
+		overflow-wrap: anywhere;
 	}
 
 	.header-rule {
@@ -436,19 +449,23 @@ onDestroy(() => {
 		font-family: var(--font-body);
 		font-size: 0.8rem;
 		color: var(--alt-terracotta);
+		overflow-wrap: anywhere;
 	}
 
 	.ops-tab-section {
 		margin-bottom: 1.5rem;
+		min-width: 0;
 	}
 
 	.ops-content {
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+		min-width: 0;
 	}
 
 	.ops-section {
+		min-width: 0;
 		opacity: 0;
 		animation: section-in 0.3s ease forwards;
 		animation-delay: calc(var(--stagger, 0) * 60ms);
@@ -457,6 +474,47 @@ onDestroy(() => {
 	@keyframes section-in {
 		to {
 			opacity: 1;
+		}
+	}
+
+	@media (max-width: 48rem) {
+		.ops-page {
+			padding: calc(1rem + env(safe-area-inset-top, 0px))
+				max(1rem, env(safe-area-inset-right, 0px))
+				1.5rem
+				max(1rem, env(safe-area-inset-left, 0px));
+		}
+
+		.ops-header {
+			margin-bottom: 1rem;
+		}
+
+		.ops-header-top {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.75rem;
+		}
+
+		.ops-title {
+			font-size: 1.3rem;
+		}
+
+		.ops-actions {
+			width: 100%;
+			justify-content: flex-start;
+		}
+
+		.ops-action-btn {
+			min-height: 2.5rem;
+			padding: 0.5rem 0.75rem;
+		}
+
+		.ops-tab-section {
+			margin-bottom: 1rem;
+		}
+
+		.ops-content {
+			gap: 1.25rem;
 		}
 	}
 

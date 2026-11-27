@@ -70,7 +70,7 @@ ts	phase	decision	why	evidence	result
    - 既存行の編集・削除・上書きは禁止。方針変更ややり直しも必ず新しい行として追記する。
    - スプレッドシート等で開いた際の式インジェクションを防ぐため、`AppendDecisionToFile` は `decision`・`why` 先頭の `=`, `+`, `@` に `'` を付与して無害化する。
 3. **具体的ポインタ証拠（Concrete Pointer Only）**:
-   - 受理される形式: リポジトリ相対パス（`docs/ADR/001038.md`, `.harness/runs/.../decisions.tsv`）、`commit:<sha>`、`cmd:<command>`、`#<seq>`、`ADR-NNNNNN`、`PM-YYYY-NNN`、`C-NN`、`https://...`、`file://...`。
+   - 受理される形式: リポジトリ相対パス（`docs/ADR/001039.md`, `.harness/runs/.../decisions.tsv`）、`commit:<sha>`、`cmd:<command>`、`#<seq>`、`ADR-NNNNNN`、`PM-YYYY-NNN`、`C-NN`、`https://...`、`file://...`。
    - 拒否される例: `TBD`, `N/A`, `ok`, `done`, `looks good`, `なし`, `-`, 空文字。
 4. **機械検証の通過**:
    - 区切りごとに `harness-run validate` を実行し、終了コード `0` を確認する（不整合は終了コード `1`、ファイル欠損や引数誤りは `2`）。
@@ -135,4 +135,4 @@ ts	phase	decision	why	evidence	result
 
 ## Prior-Art Attribution
 
-本スキルと `decisions.tsv` の検証・並列数追跡機構は、Alt 自身の運用記録（`docs/ADR/001028.md` 純 Go 標準ライブラリ単一バイナリ方針、`docs/ADR/001038.md` LOOP-01〜07 統合、`docs/review/lint-rollout-harness-learnings-2026-11-21.md` のセッション越境・黙殺失敗対策）を第一の根拠として設計しつつ、6 列判断ログ・追記専用規律・式インジェクション衛生の運用様式について `cursor/plugins` の `pstack`（`show-me-your-work`, MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。
+本スキルと `decisions.tsv` の検証・並列数追跡機構は、Alt 自身の運用記録（`docs/ADR/001028.md` 純 Go 標準ライブラリ単一バイナリ方針、`docs/ADR/001039.md` LOOP-01〜07 統合、`docs/review/lint-rollout-harness-learnings-2026-11-21.md` のセッション越境・黙殺失敗対策）を第一の根拠として設計しつつ、6 列判断ログ・追記専用規律・式インジェクション衛生の運用様式について `cursor/plugins` の `pstack`（`show-me-your-work`, MIT License、一次資料: <https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md>）を参照したクリーンルーム実装である。

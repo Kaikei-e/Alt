@@ -36,6 +36,7 @@ const maxCount = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -70,6 +71,7 @@ const maxCount = $derived(
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		min-width: 0;
 	}
 
 	.dist-code {
@@ -86,6 +88,7 @@ const maxCount = $derived(
 
 	.dist-bar-container {
 		flex: 1;
+		min-width: 0;
 		height: 12px;
 	}
 
@@ -102,5 +105,12 @@ const maxCount = $derived(
 		color: var(--alt-charcoal);
 		flex-shrink: 0;
 		min-width: 2.5rem;
+		text-align: right;
+	}
+
+	@media (max-width: 48rem) {
+		.dist-code {
+			width: 6.5rem;
+		}
 	}
 </style>

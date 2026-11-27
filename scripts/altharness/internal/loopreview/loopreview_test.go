@@ -771,7 +771,7 @@ func TestCheckCoveragePartialAndMissing(t *testing.T) {
 	// Partial coverage (only F-01 and F-02; F-03 only in interrogate phase must NOT count as loop-04 verdict!)
 	tsv := strings.Join([]string{
 		"ts\tphase\tdecision\twhy\tevidence\tresult",
-		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=loop04 test; completion=go test ./...\tinit run\tdocs/ADR/001038.md\tinfo",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=loop04 test; completion=go test ./...\tinit run\tdocs/ADR/001039.md\tinfo",
 		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): errorlint が書き換えた条件式\tverified\tfoo_test.go\tinfo",
 		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (fixed): protogetter の nil ガード\tfixed\tbar_test.go\tinfo",
 		"2026-11-28T00:00:03Z\tinterrogate\t[F-03/note] REV-1: note only\tjust a note\tbaz.go\tinfo",
@@ -990,7 +990,7 @@ func TestValidateAuditProbesSpec05Sec05Sec02(t *testing.T) {
 	t.Run("SPEC-05 combined probe rejects all three violations", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		raw := `{"review_id":"R1","author_model":"gemini-4-neon-xhigh","reviewers":["Gemini 4.0 Neon (XHigh)"],"auto_applied":false,"focus_verdicts":[{"focus_id":"F-01","title":"t","status":"safe","summary":"s","evidence":"ADR-001038","blast_radius_proof":{"assumption":"ok predicate","command":"true","exit_code":0,"evidence":"ADR-001038"}}],"findings":[{"id":"F1","focus_id":"F-01","reviewer_model":"---","bucket":"fix","summary":"bug","rationale":"why","evidence":"ADR-001038","repro":{"command":"false","exit_code":1,"proof_evidence":"ADR-001038"}}]}`
+		raw := `{"review_id":"R1","author_model":"gemini-4-neon-xhigh","reviewers":["Gemini 4.0 Neon (XHigh)"],"auto_applied":false,"focus_verdicts":[{"focus_id":"F-01","title":"t","status":"safe","summary":"s","evidence":"ADR-001039","blast_radius_proof":{"assumption":"ok predicate","command":"true","exit_code":0,"evidence":"ADR-001039"}}],"findings":[{"id":"F1","focus_id":"F-01","reviewer_model":"---","bucket":"fix","summary":"bug","rationale":"why","evidence":"ADR-001039","repro":{"command":"false","exit_code":1,"proof_evidence":"ADR-001039"}}]}`
 		reportPath := filepath.Join(dir, "spec05.json")
 		if err := os.WriteFile(reportPath, []byte(raw), fsperm.File); err != nil {
 			t.Fatalf("write spec05: %v", err)
@@ -1074,7 +1074,7 @@ func TestValidateAuditProbesSpec05Sec05Sec02(t *testing.T) {
 					"assumption": "safe despite open fix",
 					"command":    "true",
 					"exit_code":  0,
-					"evidence":   "ADR-001038",
+					"evidence":   "ADR-001039",
 				}
 			},
 			wantCode: "CONTRADICTORY_SAFE_VERDICT",
@@ -1185,11 +1185,11 @@ func TestRecordNormalizesIDLineEvidenceAndRoundTripsValidate(t *testing.T) {
 
 	report := makeValidFullReport()
 	verdicts := report["focus_verdicts"].([]map[string]any)
-	verdicts[0]["evidence"] = "ADR-001038:42"
+	verdicts[0]["evidence"] = "ADR-001039:42"
 	verdicts[1]["evidence"] = "PM-2026-045:12-20"
 	verdicts[2]["evidence"] = "C-01:5"
 	findings := report["findings"].([]map[string]any)
-	findings[1]["evidence"] = "ADR-001038#L99"
+	findings[1]["evidence"] = "ADR-001039#L99"
 	findings[2]["evidence"] = "PM-2026-045:7"
 	findings[3]["evidence"] = "C-11:3"
 
@@ -1203,12 +1203,12 @@ func TestRecordNormalizesIDLineEvidenceAndRoundTripsValidate(t *testing.T) {
 
 	decisionsPath := filepath.Join(runsDir, "feat-idline", "decisions.tsv")
 	raw := string(readTestFile(t, decisionsPath))
-	for _, forbidden := range []string{"./ADR-001038", "./PM-2026-045", "./C-01", "./C-11"} {
+	for _, forbidden := range []string{"./ADR-001039", "./PM-2026-045", "./C-01", "./C-11"} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("decisions.tsv must NEVER prefix ID ref with ./, found %q in:\n%s", forbidden, raw)
 		}
 	}
-	for _, expected := range []string{"\tADR-001038\t", "\tPM-2026-045\t", "\tC-01\t", "\tC-11\t", "\t./ollama_gateway.py:118\t"} {
+	for _, expected := range []string{"\tADR-001039\t", "\tPM-2026-045\t", "\tC-01\t", "\tC-11\t", "\t./ollama_gateway.py:118\t"} {
 		if !strings.Contains(raw, expected) {
 			t.Errorf("decisions.tsv missing normalized evidence %q in:\n%s", expected, raw)
 		}
@@ -1254,13 +1254,13 @@ func TestCheckCoverageHardened(t *testing.T) {
 	uninit := filepath.Join(dir, "uninit.tsv")
 	uninitContent := strings.Join([]string{
 		"ts\tphase\tdecision\twhy\tevidence\tresult",
-		"2026-11-28T00:00:00Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:01Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:02Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:03Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:04Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:05Z\tloop-04\tfocus F-06 (safe): f\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:06Z\tloop-04\tfocus F-07 (safe): g\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:00Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-06 (safe): f\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-07 (safe): g\tok\tADR-001039\tinfo",
 	}, "\n") + "\n"
 	if err := os.WriteFile(uninit, []byte(uninitContent), fsperm.File); err != nil {
 		t.Fatalf("write uninit: %v", err)
@@ -1274,14 +1274,14 @@ func TestCheckCoverageHardened(t *testing.T) {
 	reverted := filepath.Join(dir, "reverted.tsv")
 	revertedContent := strings.Join([]string{
 		"ts\tphase\tdecision\twhy\tevidence\tresult",
-		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001038\tinfo",
-		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\treverted fix\tADR-001038\treverted",
-		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (safe): g\tmismatch claim\tADR-001038\tmismatch",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001039\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\treverted fix\tADR-001039\treverted",
+		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (safe): g\tmismatch claim\tADR-001039\tmismatch",
 	}, "\n") + "\n"
 	if err := os.WriteFile(reverted, []byte(revertedContent), fsperm.File); err != nil {
 		t.Fatalf("write reverted: %v", err)
@@ -1302,14 +1302,14 @@ func TestCheckCoverageHardened(t *testing.T) {
 	deferredFile := filepath.Join(dir, "deferred.tsv")
 	deferredContent := strings.Join([]string{
 		"ts\tphase\tdecision\twhy\tevidence\tresult",
-		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001038\tinfo",
-		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\tok\tADR-001038\tinfo",
-		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (deferred): g\tdeferred for follow-up\tADR-001038\tinfo",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001039\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\tok\tADR-001039\tinfo",
+		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (deferred): g\tdeferred for follow-up\tADR-001039\tinfo",
 	}, "\n") + "\n"
 	if err := os.WriteFile(deferredFile, []byte(deferredContent), fsperm.File); err != nil {
 		t.Fatalf("write deferred: %v", err)
@@ -1330,7 +1330,7 @@ func TestCheckCoverageHardened(t *testing.T) {
 		t.Fatalf("expected only F-07 missing under --strict-resolved, got %+v", cov)
 	}
 	// Appending F-07 (fixed) satisfies --strict-resolved.
-	resolvedContent := deferredContent + "2026-11-28T00:00:08Z\tloop-04\tfocus F-07 (fixed): g\tresolved\tADR-001038\tinfo\n"
+	resolvedContent := deferredContent + "2026-11-28T00:00:08Z\tloop-04\tfocus F-07 (fixed): g\tresolved\tADR-001039\tinfo\n"
 	if err := os.WriteFile(deferredFile, []byte(resolvedContent), fsperm.File); err != nil {
 		t.Fatalf("write resolved deferred file: %v", err)
 	}

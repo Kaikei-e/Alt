@@ -62,12 +62,12 @@ func setupFakeRepo(t *testing.T) string {
 			"| ID | 規則 | 強制手段 | 由来 |",
 			"|---|---|---|---|",
 			"| R-27 | Rebuild compiled services with --build | 判断 | AGENTS.md |",
-			"| R-44 | LOOP-07 /correct cadence | `scripts/altharness/alt-harness loop-correct` | ADR-001038 |",
+			"| R-44 | LOOP-07 /correct cadence | `scripts/altharness/alt-harness loop-correct` | ADR-001039 |",
 		}, "\n") + "\n",
 		"README.md":          "# Alt\n",
 		"AGENTS.md":          "# AGENTS\n",
 		"CLAUDE.md":          "# CLAUDE\n",
-		"docs/ADR/001038.md": "# ADR-001038\n",
+		"docs/ADR/001039.md": "# ADR-001039\n",
 		"docs/sample.yaml":   "key: value\n",
 		"alt-backend/app/internal/httpserver/server.go":      "package httpserver\n",
 		"alt-backend/app/internal/httpserver/server_test.go": "package httpserver\n",
@@ -441,7 +441,7 @@ func TestValidateValidRungLadderAndEnforcementForms(t *testing.T) {
 				"class_id":    "ledger-only-case",
 				"title":       "Build flag rebuild discipline",
 				"occurrences": 2,
-				"evidence":    []string{"ADR-001038"},
+				"evidence":    []string{"ADR-001039"},
 				"corpus_id":   "C-22",
 				"chosen_rung": "LEDGER",
 				"higher_rungs_rejected": map[string]string{
@@ -1161,7 +1161,7 @@ func TestValidateRungEnforcementCoherence(t *testing.T) {
 		{"VERIFY with ast-grep rule", "VERIFY", "ast-grep:go-no-raw-http-server"},
 		{"VERIFY with CHECK subcommand screener", "VERIFY", "alt-harness screener"},
 		{"LEDGER with README.md", "LEDGER", "README.md"},
-		{"LEDGER with ADR markdown", "LEDGER", "docs/ADR/001038.md"},
+		{"LEDGER with ADR markdown", "LEDGER", "docs/ADR/001039.md"},
 	}
 
 	for _, tc := range mismatchCases {

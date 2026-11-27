@@ -74,6 +74,7 @@ const rows = $derived(() =>
 	.table {
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 		font-family: var(--font-body);
 	}
 
@@ -105,12 +106,15 @@ const rows = $derived(() =>
 
 	.job {
 		font-variant-numeric: tabular-nums;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.status {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		white-space: nowrap;
 	}
 
 	.dot {
@@ -143,5 +147,24 @@ const rows = $derived(() =>
 	.note {
 		font-size: 0.78rem;
 		color: var(--obs-muted, var(--alt-ash));
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	@media (max-width: 48rem) {
+		.head,
+		.row {
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 0.2rem 0.75rem;
+		}
+
+		.head > :nth-child(3) {
+			display: none;
+		}
+
+		.row .note {
+			grid-column: 1 / -1;
+			font-size: 0.72rem;
+		}
 	}
 </style>

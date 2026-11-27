@@ -780,7 +780,7 @@ func AppendDecisionToFile(decisionsPath, phase, decision, why, evidence, result 
 				"init",
 				"policy=fix-existing; goal=auto-initialized harness run; completion=./scripts/lint/run.sh <target> exit 0",
 				"auto-initialized LOOP-03 decision log (override via harness-run init --force)",
-				"docs/ADR/001038.md",
+				"docs/ADR/001039.md",
 				"info",
 			}, "\t") + "\n")
 		}
