@@ -64,6 +64,15 @@ func makeSyntheticRepo(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(featuresDir, "sample.md"), []byte(featureDoc), fsperm.File); err != nil {
 		t.Fatalf("write sample.md: %v", err)
 	}
+	// Doctor requires an interpreter that can import the SSE handler; the
+	// synthetic repo has no news-creator, so a stub stands in for its .venv.
+	venvBin := filepath.Join(root, "news-creator", "app", ".venv", "bin")
+	if err := os.MkdirAll(venvBin, fsperm.Dir); err != nil {
+		t.Fatalf("mkdir %s: %v", venvBin, err)
+	}
+	if err := fsperm.WriteExecutable(filepath.Join(venvBin, "python"), []byte("#!/bin/sh\nexit 0\n")); err != nil {
+		t.Fatalf("write stub python: %v", err)
+	}
 	return root
 }
 

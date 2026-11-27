@@ -24,7 +24,7 @@ func writeFakePython(t *testing.T, path, script string) {
 	if err := os.MkdirAll(filepath.Dir(path), fsperm.Dir); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil { //nolint:gosec // test fixture must be executable
+	if err := fsperm.WriteExecutable(path, []byte(script)); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }

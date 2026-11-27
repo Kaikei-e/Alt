@@ -70,6 +70,27 @@ jobs:
             exit 1
           fi
 
+      - name: Provision the news-creator runtime for the live SSE probe
+        # The verify-live SSE probe boots the real news-creator handler, whose
+        # package init imports most of the service's runtime dependencies.
+        # Versions come from news-creator's uv.lock; torch and
+        # sentence-transformers are pruned because the handler import never
+        # reaches them. uv is installed off PATH on purpose: other harness
+        # paths change behaviour when a `uv` binary is visible.
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/uv-tool
+          REQUIREMENTS: ${{ runner.temp }}/verify-live-requirements.txt
+        run: |
+          python -m venv "$UV_TOOL_DIR"
+          "$UV_TOOL_DIR/bin/python" -m pip install --quiet 'uv==0.13.5'
+          uv="$UV_TOOL_DIR/bin/uv"
+          "$uv" export --quiet --frozen --no-dev --no-emit-project \
+            --prune torch --prune sentence-transformers \
+            --project news-creator/app --output-file "$REQUIREMENTS"
+          "$uv" venv --quiet --python "$(command -v python)" news-creator/app/.venv
+          "$uv" pip install --quiet --python news-creator/app/.venv/bin/python \
+            --require-hashes --requirement "$REQUIREMENTS"
+
       - name: Run Go altharness race tests
         run: go -C scripts/altharness test -race -count=1 ./...
 
