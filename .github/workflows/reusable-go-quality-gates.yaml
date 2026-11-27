@@ -47,7 +47,7 @@ jobs:
 
       - name: Set up Go
         id: setup-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
@@ -69,14 +69,14 @@ jobs:
 
       - name: Upload SARIF (gosec)
         if: ${{ always() && inputs.upload-sarif && hashFiles(format('{0}/_reports/gosec.sarif', inputs.working-directory)) != '' }}
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea  # v4.39.4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/gosec.sarif
           category: gosec
 
       - name: Upload SARIF (govulncheck)
         if: ${{ always() && inputs.upload-sarif && hashFiles(format('{0}/_reports/govulncheck.sarif', inputs.working-directory)) != '' }}
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea  # v4.39.4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/govulncheck.sarif
           category: govulncheck
