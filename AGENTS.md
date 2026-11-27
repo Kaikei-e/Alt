@@ -17,9 +17,9 @@
 ## Baseline Workflow for Agents
 1. **Confirm context** – Read this playbook plus relevant service `CLAUDE.md` files before touching code.
 2. **Explore lightly** – Skim directories with `rg --files` and targeted `sed -n` reads. Avoid dumping large files.
-3. **Plan** – Announce a concise multi-step plan via `update_plan` and keep it current.
+3. **Plan & draft ADR** – Announce a concise multi-step plan via `update_plan`, check binding ADRs (`docdag context`), and draft `docs/ADR/NNNNNN.md` (`status: proposed`) before editing production code (tests and `docs/` are exempt).
 4. **Implement surgically** – Edit only what the task requires; use tight diff scopes with `apply_patch`.
-5. **Verify** – Run the smallest meaningful test or build command for the affected area.
+5. **Verify & finalize ADR** – Run the smallest meaningful test or build command for the affected area, promote the drafted ADR (`proposed` → `accepted`), and run `docdag validate`.
 6. **Communicate** – Summarize changes, list tests, surface risks, and suggest next actions.
 
 ## Repository Map
@@ -109,6 +109,7 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `./s
 8. **No silent fallback for unwired dependencies** — Optional dependencies (DI options, feature flags, future hooks) must surface their wiring state with a loud `*_enabled` / `*_disabled` startup log AND `panic` when the unwired branch is taken inside business code. Defensive `if x == nil { return nil }` in producer / projector / resolver paths is forbidden — it makes "DI forgot to wire" indistinguishable from "intentionally disabled" (PM-2026-045 / ADR-000928 root cause). Details: `.claude/rules/di-wiring.md`.
 9. **Fail-fast startup config** — Missing required config (secrets, upstream URLs, auth tokens) = exit non-zero at startup. Never warn-and-limp. "Disabled" must be an explicit config value with a startup log, never inferred from an unset variable.
 10. **Stream consumers: ACK after durable write + reclaim loop** — XACK only after the side effect is durable (not on buffer-in). Every XREADGROUP consumer MUST run an XAUTOCLAIM reclaim loop, or crashed-consumer messages are lost forever and DLQ conditions never fire. Details: `.claude/rules/event-stream-consumer.md`.
+11. **IMPORTANT: ADR First** — Before editing production code, check binding ADRs and draft `docs/ADR/NNNNNN.md` (`status: proposed`) via `docdag new "<title>" --dry-run --format json` + `docs/ADR/template.md`, then promote to `accepted` after tests pass (tests and `docs/` are exempt; enforced by `alt-harness preflight`, [[001032]]).
 <!-- shared:critical-rules:end -->
 
 ## Immutable Data Model Invariants
@@ -121,8 +122,8 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `./s
 <!-- shared:immutable-invariants:end -->
 
 ## ADR Preflight Guardrail
-- Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (the same files as `.claude/skills/adr-preflight/`). Before changing code without edit hooks, run `./scripts/altharness/alt-harness preflight <paths you will change>`.
-- Exit `1` means the ADR graph is unsound (`docdag validate` failed or `docdag` is missing from `PATH`) and must be fixed first. Read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`) before editing; a change that contradicts one stops and goes through a superseding ADR (`alt-adr-writer`).
+- Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (same files as `.claude/skills/adr-preflight/`). Production edits are blocked by `alt-harness preflight` across Claude Code, `agy-cli`, and Codex until `docdag validate` passes and a valid new/updated `docs/ADR/NNNNNN.md` exists (`docs/**`, `docdag.yaml`, and test files are exempt; no blind retry or `--skip`). Without edit hooks, run `./scripts/altharness/alt-harness preflight <paths>` before editing.
+- Read listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`) first; stop and get user approval before superseding one. Draft `status: proposed` before production edits (`alt-adr-writer --draft`) and promote to `accepted` after tests pass (`alt-adr-writer --finalize`).
 
 ## Clean Architecture Guardrail
 - Import rules, the placement flow, and per-service exceptions live in `.agents/skills/clean-architecture/SKILL.md` (the same files as `.claude/skills/clean-architecture/`). Read it before adding an endpoint, usecase, port, gateway, or driver.

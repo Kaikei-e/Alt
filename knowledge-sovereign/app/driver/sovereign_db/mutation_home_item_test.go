@@ -3,7 +3,9 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +68,98 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 			"merge-safe rule requires canonical expression %q — actual SQL omits it", required)
 	}
 }
+
+func normalizeSQL(sql string) string {
+	return strings.Join(strings.Fields(sql), " ")
+}
+
+func deref(v any) any {
+	return reflect.Indirect(reflect.ValueOf(v)).Interface()
+}
+
+func TestUpsertKnowledgeHomeItem_SupersedeColumnsMergeSQLShape(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+	require.NoError(t, repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, ptrString(""))))
+	require.Len(t, mock.execCalls, 1)
+	sql := normalizeSQL(mock.execCalls[0].SQL)
+
+	for _, required := range []string{
+		`supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state)`,
+		`superseded_at = COALESCE(EXCLUDED.superseded_at, knowledge_home_items.superseded_at)`,
+		// absent previous_ref_json keeps the stored value
+		`previous_ref_json = CASE WHEN EXCLUDED.previous_ref_json IS NOT NULL THEN`,
+		// present previous_ref_json is layered over the stored one, new keys winning
+		`COALESCE(knowledge_home_items.previous_ref_json, '{}'::jsonb) || EXCLUDED.previous_ref_json ELSE knowledge_home_items.previous_ref_json END`,
+	} {
+		assert.Contains(t, sql, required, "supersede merge lost the expression %q", required)
+	}
+
+	for _, banned := range []string{
+		`supersede_state = EXCLUDED.supersede_state`,
+		`superseded_at = EXCLUDED.superseded_at`,
+		`previous_ref_json = EXCLUDED.previous_ref_json`,
+	} {
+		assert.NotContains(t, sql, banned, "bare overwrite %q drops existing supersede data on every non-supersede upsert", banned)
+	}
+}
+
+func TestUpsertKnowledgeHomeItem_SupersedeAndJSONArgs(t *testing.T) {
+	const (
+		tagsIdx        = 7
+		whyIdx         = 8
+		supersedeIdx   = 18
+		supersededAt   = 19
+		previousRefIdx = 20
+	)
+
+	t.Run("present", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		payload := []byte(`{
+			"user_id": "11111111-1111-4111-8111-111111111111",
+			"tenant_id": "22222222-2222-4222-8222-222222222222",
+			"item_key": "article:33333333-3333-4333-8333-333333333333",
+			"item_type": "article",
+			"tags": ["go"],
+			"why_reasons": [{"code": "new_unread", "reason": "."}],
+			"score_op": "",
+			"generated_at": "` + fixedTestTimeRFC3339 + `",
+			"updated_at": "` + fixedTestTimeRFC3339 + `",
+			"projection_version": 1,
+			"supersede_state": "summary_updated",
+			"superseded_at": "` + fixedTestTimeRFC3339 + `",
+			"previous_ref_json": "{\"previous_summary_excerpt\":\"old\"}"
+		}`)
+		require.NoError(t, repo.UpsertKnowledgeHomeItem(context.Background(), payload))
+		require.Len(t, mock.execCalls, 1)
+		args := mock.execCalls[0].Args
+
+		assert.JSONEq(t, `["go"]`, deref(args[tagsIdx]).(string))
+		assert.JSONEq(t, `[{"code":"new_unread","reason":"."}]`, deref(args[whyIdx]).(string))
+		assert.Equal(t, "summary_updated", deref(args[supersedeIdx]))
+		want, err := time.Parse(time.RFC3339Nano, fixedTestTimeRFC3339)
+		require.NoError(t, err)
+		assert.True(t, want.Equal(deref(args[supersededAt]).(time.Time)))
+		assert.JSONEq(t, `{"previous_summary_excerpt":"old"}`, deref(args[previousRefIdx]).(string))
+	})
+
+	t.Run("absent binds NULL, not an empty string", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		require.NoError(t, repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, ptrString(""))))
+		require.Len(t, mock.execCalls, 1)
+		args := mock.execCalls[0].Args
+
+		assert.Nil(t, args[supersedeIdx], "absent supersede_state must bind NULL so COALESCE keeps the stored value")
+		assert.Nil(t, args[supersededAt])
+		assert.Nil(t, args[previousRefIdx], "an empty string here would fail the jsonb cast and defeat the IS NOT NULL merge guard")
+		assert.JSONEq(t, `[]`, deref(args[tagsIdx]).(string))
+		assert.JSONEq(t, `[]`, deref(args[whyIdx]).(string))
+	})
+}
+
+func ptrString(s string) *string { return &s }
 
 func scoreOpUpsertPayload(t *testing.T, scoreOp *string) []byte {
 	t.Helper()

@@ -15,6 +15,11 @@
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook pre-shell",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook pre-adr-read",
+            "timeout": 15
           }
         ]
       },

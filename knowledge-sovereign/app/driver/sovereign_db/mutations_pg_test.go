@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -242,6 +243,334 @@ func TestUpsertKnowledgeHomeItem_OnConflictMergeSemanticsAgainstPostgres(t *test
 	).Scan(&storedDismissedAt))
 	require.NotNil(t, storedDismissedAt, "dismissed_at must be preserved on conflict")
 	assert.True(t, dismissedAt.Equal(storedDismissedAt.UTC()))
+}
+
+type supersedeColumns struct {
+	State      *string
+	At         *time.Time
+	PreviousJS *string
+	Tags       string
+	Summary    *string
+	Why        string
+	Score      float64
+}
+
+func readSupersedeColumns(t *testing.T, db *pgxpool.Pool, userID uuid.UUID, itemKey string) supersedeColumns {
+	t.Helper()
+	var c supersedeColumns
+	require.NoError(t, db.QueryRow(context.Background(),
+		`SELECT supersede_state, superseded_at, previous_ref_json::text, tags_json::text, summary_excerpt, why_json::text, score::float8
+		   FROM knowledge_home_items WHERE user_id = $1 AND item_key = $2 AND projection_version = 1`,
+		userID, itemKey,
+	).Scan(&c.State, &c.At, &c.PreviousJS, &c.Tags, &c.Summary, &c.Why, &c.Score))
+	return c
+}
+
+func requireState(t *testing.T, got supersedeColumns, want string) {
+	t.Helper()
+	require.NotNil(t, got.State, "supersede_state is NULL")
+	assert.Equal(t, want, *got.State)
+}
+
+func requireSupersededAt(t *testing.T, got supersedeColumns, want time.Time) {
+	t.Helper()
+	require.NotNil(t, got.At, "superseded_at is NULL")
+	assert.True(t, want.Equal(*got.At), "superseded_at = %s, want %s", got.At, want)
+}
+
+func requirePreviousRef(t *testing.T, got supersedeColumns, want string) {
+	t.Helper()
+	require.NotNil(t, got.PreviousJS, "previous_ref_json is NULL")
+	assert.JSONEq(t, want, *got.PreviousJS)
+}
+
+type supersedeFixture struct {
+	repo     *Repository
+	db       *pgxpool.Pool
+	userID   uuid.UUID
+	tenantID uuid.UUID
+	itemKey  string
+}
+
+func (f supersedeFixture) upsert(t *testing.T, at time.Time, fields map[string]any) {
+	t.Helper()
+	payload := map[string]any{
+		"user_id":            f.userID,
+		"tenant_id":          f.tenantID,
+		"item_key":           f.itemKey,
+		"item_type":          "article",
+		"score_op":           "",
+		"generated_at":       at,
+		"updated_at":         at,
+		"projection_version": 1,
+	}
+	for k, v := range fields {
+		payload[k] = v
+	}
+	require.NoError(t, f.repo.UpsertKnowledgeHomeItem(context.Background(), mustMarshalJSON(t, payload)))
+}
+
+func (f supersedeFixture) seed(t *testing.T, at time.Time) {
+	t.Helper()
+	f.upsert(t, at, map[string]any{
+		"title":           "Seeded",
+		"summary_excerpt": "first summary",
+		"tags":            []string{"go"},
+		"why_reasons":     []map[string]string{{"code": "new_unread", "reason": "New"}},
+		"score":           0.5,
+		"score_op":        "max",
+		"summary_state":   "pending",
+	})
+}
+
+func (f supersedeFixture) supersede(t *testing.T, at time.Time, state, prevRef string) {
+	t.Helper()
+	f.upsert(t, at, map[string]any{
+		"supersede_state":   state,
+		"superseded_at":     at,
+		"previous_ref_json": prevRef,
+	})
+}
+
+func newSupersedeFixture(t *testing.T, db *pgxpool.Pool) supersedeFixture {
+	t.Helper()
+	return supersedeFixture{
+		repo:     NewRepository(db),
+		db:       db,
+		userID:   uuid.New(),
+		tenantID: uuid.New(),
+		itemKey:  "article:" + uuid.NewString(),
+	}
+}
+
+var (
+	supersedeBaseAt = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
+	supersedeT1     = supersedeBaseAt.Add(1 * time.Minute)
+	supersedeT2     = supersedeBaseAt.Add(2 * time.Minute)
+	supersedeT3     = supersedeBaseAt.Add(3 * time.Minute)
+	supersedeT4     = supersedeBaseAt.Add(4 * time.Minute)
+)
+
+func TestUpsertKnowledgeHomeItem_SupersedeColumnsPersistAsPayloadAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	db := pgtest.NewDB(t)
+
+	t.Run("update of an existing row", func(t *testing.T) {
+		f := newSupersedeFixture(t, db)
+		f.seed(t, supersedeBaseAt)
+		before := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		assert.Nil(t, before.State)
+		assert.Nil(t, before.At)
+		assert.Nil(t, before.PreviousJS, "an item that was never superseded stores NULL, not '{}' or ''")
+
+		f.supersede(t, supersedeT1, "summary_updated", `{"previous_summary_excerpt":"first summary"}`)
+
+		got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		requireState(t, got, "summary_updated")
+		requireSupersededAt(t, got, supersedeT1)
+		requirePreviousRef(t, got, `{"previous_summary_excerpt":"first summary"}`)
+	})
+
+	t.Run("insert of a new row", func(t *testing.T) {
+		f := newSupersedeFixture(t, db)
+		f.supersede(t, supersedeT1, "tags_updated", `{"previous_tags":["old"]}`)
+
+		got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		requireState(t, got, "tags_updated")
+		requireSupersededAt(t, got, supersedeT1)
+		requirePreviousRef(t, got, `{"previous_tags":["old"]}`)
+	})
+}
+
+func TestUpsertKnowledgeHomeItem_SupersedeColumnsSurviveEachNonSupersedeUpdateAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	db := pgtest.NewDB(t)
+
+	cases := []struct {
+		name   string
+		fields map[string]any
+		check  func(t *testing.T, got supersedeColumns)
+	}{
+		{
+			name: "summary update",
+			fields: map[string]any{
+				"summary_excerpt": "second summary",
+				"score":           0.8,
+				"score_op":        "max",
+				"summary_state":   "ready",
+			},
+			check: func(t *testing.T, got supersedeColumns) {
+				require.NotNil(t, got.Summary)
+				assert.Equal(t, "second summary", *got.Summary)
+			},
+		},
+		{
+			name:   "tag update",
+			fields: map[string]any{"tags": []string{"go", "rust"}, "score": 0.7, "score_op": "max"},
+			check: func(t *testing.T, got supersedeColumns) {
+				assert.JSONEq(t, `["go","rust"]`, got.Tags)
+			},
+		},
+		{
+			name:   "reason update",
+			fields: map[string]any{"why_reasons": []map[string]string{{"code": "in_weekly_recap", "reason": "Recap"}}},
+			check: func(t *testing.T, got supersedeColumns) {
+				assert.JSONEq(t, `[{"code":"in_weekly_recap","reason":"Recap"},{"code":"new_unread","reason":"New"}]`, got.Why)
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSupersedeFixture(t, db)
+			f.seed(t, supersedeBaseAt)
+			f.supersede(t, supersedeT1, "tags_updated", `{"previous_tags":["old"]}`)
+
+			f.upsert(t, supersedeT2, tc.fields)
+
+			got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+			requireState(t, got, "tags_updated")
+			requireSupersededAt(t, got, supersedeT1)
+			requirePreviousRef(t, got, `{"previous_tags":["old"]}`)
+			tc.check(t, got)
+		})
+	}
+}
+
+func TestUpsertKnowledgeHomeItem_SupersedeFoldsMergeAcrossKindsAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	f := newSupersedeFixture(t, pgtest.NewDB(t))
+
+	f.seed(t, supersedeBaseAt)
+	f.upsert(t, supersedeT1, map[string]any{"summary_excerpt": "second summary", "summary_state": "ready", "score": 0.8, "score_op": "max"})
+
+	// Supersede folds send no summary and no tags, so none of them may disturb
+	// the content columns while they merge their own.
+	f.supersede(t, supersedeT2, "summary_updated", `{"previous_summary_excerpt":"first summary"}`)
+	f.supersede(t, supersedeT3, "tags_updated", `{"previous_tags":["go"]}`)
+	f.supersede(t, supersedeT4, "reason_updated", `{"previous_why_codes":["new_unread"]}`)
+
+	got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	requireState(t, got, "reason_updated")
+	requireSupersededAt(t, got, supersedeT4)
+	requirePreviousRef(t, got,
+		`{"previous_summary_excerpt":"first summary","previous_tags":["go"],"previous_why_codes":["new_unread"]}`)
+	require.NotNil(t, got.Summary)
+	assert.Equal(t, "second summary", *got.Summary)
+	assert.JSONEq(t, `["go"]`, got.Tags)
+	assert.InDelta(t, 0.8, got.Score, 1e-6)
+
+	f.supersede(t, supersedeT4.Add(time.Minute), "summary_updated", `{"previous_summary_excerpt":"second summary"}`)
+	got = readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	requirePreviousRef(t, got,
+		`{"previous_summary_excerpt":"second summary","previous_tags":["go"],"previous_why_codes":["new_unread"]}`)
+}
+
+func TestUpsertKnowledgeHomeItem_SupersedeReplayAndOrderAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	db := pgtest.NewDB(t)
+
+	summaryEvt := func(t *testing.T, f supersedeFixture) {
+		f.supersede(t, supersedeT1, "summary_updated", `{"previous_summary_excerpt":"a"}`)
+	}
+	tagsEvt := func(t *testing.T, f supersedeFixture) {
+		f.supersede(t, supersedeT2, "tags_updated", `{"previous_tags":["b"]}`)
+	}
+
+	t.Run("duplicate delivery is idempotent", func(t *testing.T) {
+		f := newSupersedeFixture(t, db)
+		f.seed(t, supersedeBaseAt)
+		summaryEvt(t, f)
+		once := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		summaryEvt(t, f)
+		twice := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		requireState(t, twice, *once.State)
+		requireSupersededAt(t, twice, *once.At)
+		requirePreviousRef(t, twice, *once.PreviousJS)
+	})
+
+	t.Run("distinct-key previous_ref_json does not depend on order", func(t *testing.T) {
+		inOrder := newSupersedeFixture(t, db)
+		inOrder.seed(t, supersedeBaseAt)
+		summaryEvt(t, inOrder)
+		tagsEvt(t, inOrder)
+
+		swapped := newSupersedeFixture(t, db)
+		swapped.seed(t, supersedeBaseAt)
+		tagsEvt(t, swapped)
+		summaryEvt(t, swapped)
+
+		a := readSupersedeColumns(t, inOrder.db, inOrder.userID, inOrder.itemKey)
+		b := readSupersedeColumns(t, swapped.db, swapped.userID, swapped.itemKey)
+		require.NotNil(t, a.PreviousJS)
+		requirePreviousRef(t, b, *a.PreviousJS)
+	})
+
+	t.Run("the later-applied supersede wins even when its occurred_at is older", func(t *testing.T) {
+		// The driver never looks at event_seq or occurred_at. This is correct
+		// only while the single in-process projector folds events in
+		// event_seq order; the checkpoint CAS guards the checkpoint value, not
+		// the order concurrent writers' upserts land in.
+		f := newSupersedeFixture(t, db)
+		f.seed(t, supersedeBaseAt)
+		tagsEvt(t, f)
+		summaryEvt(t, f)
+
+		got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+		requireState(t, got, "summary_updated")
+		requireSupersededAt(t, got, supersedeT1)
+	})
+}
+
+func TestClearSupersedeState_ThenUpsertAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	f := newSupersedeFixture(t, pgtest.NewDB(t))
+
+	f.seed(t, supersedeBaseAt)
+	f.supersede(t, supersedeT1, "summary_updated", `{"previous_summary_excerpt":"first summary"}`)
+
+	require.NoError(t, f.repo.ClearSupersedeState(context.Background(), mustMarshalJSON(t, map[string]any{
+		"user_id":            f.userID.String(),
+		"tenant_id":          f.tenantID.String(),
+		"item_key":           f.itemKey,
+		"projection_version": 1,
+	})))
+
+	cleared := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	assert.Nil(t, cleared.State)
+	assert.Nil(t, cleared.At)
+	assert.Nil(t, cleared.PreviousJS)
+
+	f.upsert(t, supersedeT2, map[string]any{"tags": []string{"go", "rust"}})
+	stillCleared := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	assert.Nil(t, stillCleared.State, "a later non-supersede upsert must not resurrect cleared supersede data")
+	assert.Nil(t, stillCleared.At)
+	assert.Nil(t, stillCleared.PreviousJS)
+
+	f.supersede(t, supersedeT3, "tags_updated", `{"previous_tags":["go"]}`)
+	again := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	requireState(t, again, "tags_updated")
+	requireSupersededAt(t, again, supersedeT3)
+	requirePreviousRef(t, again, `{"previous_tags":["go"]}`)
+}
+
+// previous_ref_json travels as a text argument; the production pool (default
+// cache-statement mode) must round-trip quotes, backslashes and non-ASCII.
+func TestUpsertKnowledgeHomeItem_PreviousRefJSONSpecialCharactersRoundTripAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	f := newSupersedeFixture(t, pgtest.NewDB(t))
+
+	const text = `it's "quoted" \ 日本語`
+	prev, err := json.Marshal(map[string]string{"previous_summary_excerpt": text})
+	require.NoError(t, err)
+
+	f.seed(t, supersedeBaseAt)
+	f.supersede(t, supersedeT1, "summary_updated", string(prev))
+
+	got := readSupersedeColumns(t, f.db, f.userID, f.itemKey)
+	require.NotNil(t, got.PreviousJS)
+	var stored map[string]string
+	require.NoError(t, json.Unmarshal([]byte(*got.PreviousJS), &stored))
+	assert.Equal(t, text, stored["previous_summary_excerpt"])
 }
 
 func TestUpsertTodayDigest_MonotonicEventSeqAndFloorAgainstPostgres(t *testing.T) {

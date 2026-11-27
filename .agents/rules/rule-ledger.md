@@ -18,7 +18,7 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-03 | 破壊的 Docker 操作や本番 Compose（`-p alt`）の再作成・停止は明示的承認なしに実行しない | `scripts/altharness/alt-harness guard-ops` | .agents/rules/deployment.md |
 | R-04 | `CLAUDE.md` と `AGENTS.md` の共有ブロックを一致させ、文書サイズ上限・スキル解決・失敗の型台帳を維持する | `scripts/altharness/alt-harness selfcheck` | AGENTS.md / CLAUDE.md |
 | R-05 | エージェント作業は `allowed_paths`・ファイル/関数上限・許可ルールで境界化し、3 項目ハンドオフを必須とする | `scripts/altharness/alt-harness packet` | .agents/rules/task-packet.md |
-| R-06 | コード変更前に ADR preflight を実行し、確定済み ADR は追記専用（置換は新 ADR）とする | `scripts/altharness/alt-harness preflight`, `scripts/altharness/alt-harness adr-gate`, `scripts/lint/adr.sh` | CLAUDE.md / AGENTS.md |
+| R-06 | 本番コード編集前に binding ADR を確認し検証済み `docs/ADR/NNNNNN.md`（`proposed` → テスト通過後 `accepted`）を起票する（テストと `docs/` のみ免除）。ADR 参照時は `docdag` を使い、確定済み ADR は追記専用（置換は新 ADR） | `scripts/altharness/alt-harness preflight`, `scripts/altharness/alt-harness guard-adr-read`, `scripts/altharness/alt-harness adr-gate`, `scripts/lint/adr.sh` | CLAUDE.md / AGENTS.md / ADR-001032 / ADR-001035 |
 | R-07 | Clean Architecture の内向き依存境界（`Handler → Usecase → Port → Gateway → Driver`）を遵守する | `.agents/skills/clean-architecture/scripts/check_layers.sh` | AGENTS.md / CLAUDE.md |
 | R-08 | 破壊的 DB マイグレーションを無承認で導入しない | `scripts/altharness/alt-harness migration-gate` | scripts/lint/harness.sh |
 | R-09 | ポストモーテムのアクションアイテムを未完了のまま持ち越さない | `scripts/altharness/alt-harness postmortem` | scripts/lint/harness.sh |

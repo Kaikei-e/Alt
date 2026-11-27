@@ -161,6 +161,7 @@ metrics/scripts/reports/
 .claude/*
 !.claude/skills/
 !.claude/hooks/
+!.claude/settings.json
 .agent/
 .harness/
 .serena/

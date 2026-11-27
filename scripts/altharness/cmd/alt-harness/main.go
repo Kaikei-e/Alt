@@ -111,6 +111,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return guards.RunProtected(ctx, args[1:], stdin, stdout, stderr)
 	case "guard-event-time":
 		return guards.RunEventTime(ctx, args[1:], stdin, stdout, stderr)
+	case "guard-adr-read":
+		return guards.RunAdrRead(ctx, args[1:], stdin, stdout, stderr)
 	case "harness-run":
 		return guards.RunHarness(ctx, args[1:], stdin, stdout, stderr)
 	case "agy-hook":
@@ -145,7 +147,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return code
 	case "help", "-h", "--help":
-		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time harness-run agy-hook preflight pytest-rand gate")
+		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand gate")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])

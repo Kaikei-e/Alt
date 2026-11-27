@@ -70,17 +70,11 @@ precision is what the session is for, and it evaporates if you defer it. Writing
 `docs/plan/` contract is a separate, user-approved edit: ask first. An unrequested glossary file becomes
 a second source of truth nobody maintains.
 
-## Offer an ADR sparingly
+## ADR-first handoff before implementation
 
-Only offer one when all three hold:
+Alt enforces an **ADR-first policy** ([[001032]]): any production code change requires drafting a `status: proposed` ADR via the **alt-adr-writer** skill before code edits (`alt-harness preflight` blocks production edits until a valid `docs/ADR/NNNNNN.md` exists), then promoting it to `status: accepted` once tests pass. Only test-only or docs-only work skips ADR drafting.
 
-1. **Hard to reverse** — changing your mind later has a real cost
-2. **Surprising without context** — a future reader will ask "why did they do it this way?"
-3. **The result of a real trade-off** — there were genuine alternatives and one was picked for reasons
-
-If any is missing, skip the ADR. When one is warranted, hand off to the **alt-adr-writer** skill instead
-of inventing a format here — Alt has one ADR convention (6-digit numbering, `docs/ADR/template.md`
-sections, `[[000NNN]]` wikilinks, a fixed tag list), and a competing format produces records that
-Obsidian's graph and `docdag` cannot read.
+- When the grilled design moves into implementation, hand off to **alt-adr-writer** (`--draft`) instead of inventing a format here — Alt has one ADR convention (6-digit numbering, `docs/ADR/template.md` sections, `[[000NNN]]` wikilinks, a fixed tag list), and a competing format produces records that Obsidian's graph and `docdag` cannot read.
+- If the design supersedes an existing binding ADR, confirm explicit user approval before drafting: cite `[[000NNN]]` in the `proposed` body (omitting `supersedes:` frontmatter until Phase 2 promotion, per `docdag.yaml`'s `status_drift` rule) and update the old ADR to `status: superseded` in the same commit when promoting to `accepted`.
 
 </supporting-info>

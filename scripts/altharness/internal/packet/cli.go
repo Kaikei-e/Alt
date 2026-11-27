@@ -65,7 +65,7 @@ subcommands:
   check-templates [--repo-root DIR]
   measure <packet> [--repo-root DIR] [--format text|json]
   verify-handoff <handoff> --packet PATH [--base-commit REV] [--repo-root DIR] [--runs-dir DIR] [--no-rerun] [--format text|json]
-  verify-sequence --base-commit REV --test-command CMD [--packet PATH] [--behavior-preserving | --bugfix] [--repo-root DIR] [--format text|json]
+  verify-sequence [--base-commit REV] --test-command CMD [--packet PATH] [--behavior-preserving | --bugfix] [--repo-root DIR] [--format text|json]
 `)
 }
 
@@ -594,33 +594,6 @@ func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writ
 	return emitResult(stdout, stderr, "verify-handoff", handoffPath, handoffDoc.Data["packet_id"], issues, format)
 }
 
-func resolveSequenceMode(bugfix, preserving bool, packetPath string) (bool, any, error) {
-	if bugfix {
-		return false, nil, nil
-	}
-	if preserving {
-		return true, nil, nil
-	}
-	if packetPath == "" {
-		return true, nil, nil
-	}
-	doc, err := loadDocument(packetPath)
-	if err != nil {
-		return false, nil, err
-	}
-	var id any
-	if v, ok := doc.Data["packet_id"]; ok {
-		id = v
-	}
-	if bp, ok := doc.Data["behavior_preserving"].(bool); ok {
-		return bp, id, nil
-	}
-	if doc.Data["task_kind"] == "bugfix" {
-		return false, id, nil
-	}
-	return true, id, nil
-}
-
 func cmdVerifySequence(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	p, perr := parseCLI(args, map[string]bool{"behavior-preserving": true, "bugfix": true})
 	if perr == "help" {
@@ -659,9 +632,9 @@ func cmdVerifySequence(ctx context.Context, args []string, stdout, stderr io.Wri
 		fmt.Fprintf(stderr, "error: repo root directory not found: %s\n", root)
 		return exitUsage
 	}
-	base, ok := p.values["base-commit"]
-	if !ok || strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
-		fmt.Fprintf(stderr, "error: invalid --base-commit revision: %q\n", base)
+	flagBase, hasFlagBase := p.values["base-commit"]
+	if hasFlagBase && (strings.TrimSpace(flagBase) == "" || strings.HasPrefix(strings.TrimSpace(flagBase), "-")) {
+		fmt.Fprintf(stderr, "error: invalid --base-commit revision: %q\n", flagBase)
 		return exitUsage
 	}
 	testCmd, ok := p.values["test-command"]
@@ -674,22 +647,41 @@ func cmdVerifySequence(ctx context.Context, args []string, stdout, stderr io.Wri
 		fmt.Fprintf(stderr, "error: packet file not found: %s\n", packetPath)
 		return exitUsage
 	}
-	preserving, packetID, err := resolveSequenceMode(p.bools["bugfix"], p.bools["behavior-preserving"], packetPath)
+	cfg, err := resolveSequenceConfig(flagBase, hasFlagBase, p.bools["bugfix"], p.bools["behavior-preserving"], packetPath)
 	if err != nil {
-		return reportErr(stderr, err)
+		return loadFail(stdout, stderr, "verify-sequence", packetPath, format, err)
 	}
-	baseSHA, err := resolveGitCommit(ctx, root, strings.TrimSpace(base))
+	preserving := cfg.preserving
+	packetID := cfg.packetID
+	base := strings.TrimSpace(cfg.baseCommit)
+	if base == "" {
+		if packetPath != "" {
+			return emitResult(stdout, stderr, "verify-sequence", root, packetID, []Issue{{
+				Code: "MISSING_BASE_COMMIT", Path: "$.base_commit",
+				Message: "verify-sequence requires --base-commit or packet.base_commit",
+			}}, format)
+		}
+		fmt.Fprintf(stderr, "error: invalid --base-commit revision: %q\n", flagBase)
+		return exitUsage
+	}
+	var cmdIssues []Issue
+	checkVerificationCommand(testCmd, "$.test_command", nil, false, &cmdIssues)
+	if len(cmdIssues) > 0 {
+		return emitResult(stdout, stderr, "verify-sequence", root, packetID, cmdIssues, format)
+	}
+	if strings.HasPrefix(base, "-") {
+		return emitResult(stdout, stderr, "verify-sequence", root, packetID, []Issue{{
+			Code: "INVALID_BASE_COMMIT", Path: "$.base_commit",
+			Message: fmt.Sprintf("unable to resolve base_commit %q in %s", base, root),
+		}}, format)
+	}
+	baseSHA, err := resolveGitCommit(ctx, root, base)
 	if err != nil {
 		return reportErr(stderr, err)
 	}
 	headSHA, err := resolveGitCommit(ctx, root, "HEAD")
 	if err != nil {
 		return reportErr(stderr, err)
-	}
-	var cmdIssues []Issue
-	checkVerificationCommand(testCmd, "$.test_command", nil, false, &cmdIssues)
-	if len(cmdIssues) > 0 {
-		return emitResult(stdout, stderr, "verify-sequence", root, packetID, cmdIssues, format)
 	}
 	if baseSHA == "" || headSHA == "" {
 		return emitResult(stdout, stderr, "verify-sequence", root, packetID, []Issue{{

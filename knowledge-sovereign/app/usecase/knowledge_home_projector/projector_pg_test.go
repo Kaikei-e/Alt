@@ -231,3 +231,84 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	seq, _ = pgCheckpointSeq(ctx, t, db)
 	assert.Equal(t, tip, seq, "and then the checkpoint catches up to the tip again")
 }
+
+func pgSeedEvent(ctx context.Context, t *testing.T, db *pgxpool.Pool, tenantID, userID uuid.UUID,
+	eventType string, articleID uuid.UUID, occurredAt time.Time, payload map[string]any) int64 {
+	t.Helper()
+
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var seq int64
+	require.NoError(t, db.QueryRow(ctx, `INSERT INTO knowledge_events
+		(occurred_at, tenant_id, user_id, actor_type, actor_id, event_type, aggregate_type, aggregate_id, dedupe_key, payload)
+		VALUES ($1, $2, $3, 'user', '', $4, 'article', $5, $6, $7)
+		RETURNING event_seq`,
+		occurredAt, tenantID, userID, eventType, articleID.String(), uuid.NewString(), raw,
+	).Scan(&seq))
+	return seq
+}
+
+type pgSupersedeRow struct {
+	State      *string
+	At         *time.Time
+	PreviousJS *string
+}
+
+func pgReadSupersede(ctx context.Context, t *testing.T, db *pgxpool.Pool, articleID uuid.UUID) pgSupersedeRow {
+	t.Helper()
+	var r pgSupersedeRow
+	require.NoError(t, db.QueryRow(ctx,
+		`SELECT supersede_state, superseded_at, previous_ref_json::text FROM knowledge_home_items WHERE item_key = $1`,
+		"article:"+articleID.String(),
+	).Scan(&r.State, &r.At, &r.PreviousJS))
+	return r
+}
+
+// Supersede columns follow event_seq, the order the projector folds in, and not
+// occurred_at: the driver's merge keeps whichever supersede was applied last.
+// A rebuild replays the log in the same order and must land on the same row.
+func TestProjector_SupersedeFoldsFollowEventSeqAndSurviveRebuild(t *testing.T) {
+	ctx := context.Background()
+	db := pgtest.NewDB(t)
+
+	repo := sovereign_db.NewRepository(db)
+	tenantID, userID, articleID := uuid.New(), uuid.New(), uuid.New()
+
+	summaryAt := pgEventAt.Add(10 * time.Minute)
+	tagsAt := pgEventAt.Add(2 * time.Minute)
+
+	pgSeedEvent(ctx, t, db, tenantID, userID, "ArticleCreated", articleID, pgEventAt, map[string]any{
+		"article_id": articleID.String(), "title": "supersede ordering", "url": "https://example.test/supersede",
+	})
+	summarySeq := pgSeedEvent(ctx, t, db, tenantID, userID, "SummarySuperseded", articleID, summaryAt, map[string]any{
+		"article_id": articleID.String(), "previous_summary_excerpt": "old summary",
+	})
+	tagsSeq := pgSeedEvent(ctx, t, db, tenantID, userID, "TagSetSuperseded", articleID, tagsAt, map[string]any{
+		"article_id": articleID.String(), "previous_tags": []string{"old"},
+	})
+	require.Less(t, summarySeq, tagsSeq, "precondition: the summary supersede has the lower event_seq but the later occurred_at")
+
+	assertFollowsEventSeq := func(t *testing.T) {
+		t.Helper()
+		got := pgReadSupersede(ctx, t, db, articleID)
+		require.NotNil(t, got.State)
+		assert.Equal(t, "tags_updated", *got.State, "the event_seq-last supersede is the stored one")
+		require.NotNil(t, got.At)
+		assert.True(t, tagsAt.Equal(*got.At), "superseded_at = %s, want the tag event's occurred_at %s", got.At, tagsAt)
+		require.NotNil(t, got.PreviousJS)
+		assert.JSONEq(t, `{"previous_summary_excerpt":"old summary","previous_tags":["old"]}`, *got.PreviousJS)
+	}
+
+	pgDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(new(pgRecordingHandler)), Config{}))
+	assertFollowsEventSeq(t)
+
+	target, err := sovereign_db.LookupRebuildTarget("knowledge-home")
+	require.NoError(t, err)
+	_, err = repo.RebuildProjection(ctx, target)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, pgCountHomeItems(ctx, t, db), "precondition: the rebuild emptied the read model")
+
+	pgDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(new(pgRecordingHandler)), Config{}))
+	assertFollowsEventSeq(t)
+}

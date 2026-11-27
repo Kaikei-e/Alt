@@ -1,28 +1,38 @@
 ---
 name: alt-adr-writer
-description: Alt の Architecture Decision Record を日本語で `docs/ADR/NNNNNN.md` に書き起こす。6 桁の番号採番、frontmatter（title/date/status/tags/affected_services/aliases/supersedes/depends-on）、Context・Decision・Consequences の書き分け、`[[000NNN]]` wikilink、OSS 公開向けの情報衛生を扱う。ユーザが「ADR書いて」「ADRにまとめて」「ADRに記録して」「実装が終わったのでドキュメントに」と言ったとき、または設計判断を伴う変更が一段落したときに使う。障害の事後分析には postmortem-writer を使う（ADR = 決定の記録、postmortem = 障害の記録）。
+description: Alt の Architecture Decision Record を日本語で `docs/ADR/NNNNNN.md` に起票・確定する（2 段階ライフサイクル: 実装前ドラフト `status: proposed` → 実装・テスト green 後の確定昇格 `status: accepted`）。6 桁の番号採番、frontmatter（title/date/status/tags/affected_services/aliases/supersedes/depends-on）、Context・Decision・Consequences の書き分け、`[[000NNN]]` wikilink、OSS 公開向けの情報衛生を扱う。本番コード編集の着手前（ADR 先行起票・`adr-preflight` ゲート通過時）、または実装・テスト green 後に `proposed` を `accepted` へ昇格させるとき、あるいはユーザが「ADR書いて」「ADRにまとめて」「ADRを起票して」「ADRを確定して」「実装が終わったのでドキュメントに」と言ったときに使う。障害の事後分析には postmortem-writer を使う（ADR = 決定の記録、postmortem = 障害の記録）。
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
-argument-hint: "[決定の対象] [--only-docs]"
+argument-hint: "[決定の対象] [--draft | --finalize <NNNNNN> | --only-docs]"
 ---
 
 # Alt ADR Writer
 
-**§1 実装確認 → §2 ADR 執筆** の順に実行する。このスキルはデプロイをしない（§4）。
+Alt の ADR は **2 段階ライフサイクル（Phase 1 実装前ドラフト `proposed` → Phase 2 テスト green 後の確定昇格 `accepted`）** で運用する（[[001032]]）。本番コード編集前の既定モードは **Phase 1（`--draft`）** である。このスキルはデプロイをしない（§5）。
 
 ### ワークフロー
 
-- [ ] 1. 実装確認: 対象サービスのテスト実行（green を確認、または `--only-docs` でスキップ）
+#### Phase 1: `--draft`（実装前起票 — 本番コード編集前の既定）
+
+- [ ] 1. 現行契約確認: 変更スコープの binding ADR を `docdag context <id> --depth 2 --budget 1500` で確認する。既存 binding ADR と矛盾・置換する場合は **ここで作業を止め、ユーザ承認を得る**
 - [ ] 2. 採番: `docdag new "<ADR タイトル>" --dry-run --format json` で空き番号とパスを取得
-- [ ] 3. 執筆: `docs/ADR/template.md` の見出し順に従い `docs/ADR/NNNNNN.md` を作成
-- [ ] 4. 検証: `docdag validate --touching docs/ADR/NNNNNN.md`（エラーが出たら修正して再検証）
-- [ ] 5. 旧 ADR 更新: `supersedes` 対象があれば、その旧 ADR の `status` を `superseded` に更新
-- [ ] 6. コミット: コードと ADR を同一コミットに記録（英語 1 行メッセージ、push はしない）
-- [ ] 7. 完了報告: パス、タイトル、テスト結果、validate 結果を報告
+- [ ] 3. ドラフト執筆: `docs/ADR/template.md` の見出し順に従い、`status: proposed` / `## Status\n\nProposed` で `docs/ADR/NNNNNN.md` を作成。**`depends-on` または `supersedes` に記載する各 ID は、題名や他者（人間・エージェント）の要約だけで選ばず、辺を追加する前に必ず 1 本ずつ `docdag context <id>`（必要に応じて `--section Consequences` 等）で `Decision` を読むこと**。読んだ結果、依存先の決定と新 ADR の間に緊張関係があれば `## Context` または `## Decision` に明記する（既存 ADR 置換予定時は本文に `[[000NNN]]` を明記し、frontmatter の `supersedes:` はまだ省略する — §2.2 参照）
+- [ ] 4. 検証: `docdag validate --touching docs/ADR/NNNNNN.md`（findings が 0 になるまで修正して再検証）
+- [ ] 5. 実装へ進む: 検証済みの `docs/ADR/NNNNNN.md` が作業ツリーに存在すれば `alt-harness preflight` ゲートは自動通過する
 
-## §1. 実装確認
+#### Phase 2: `--finalize`（実装・テスト green 後の確定昇格）
 
-ADR は「動いた状態」を固定する記録なので、先に最低限のテストを green にする。
-コンテナの再ビルド・再起動はしない。
+- [ ] 1. 実装確認（Prove It Works）: 対象サービスのテスト・リントをすべて green にする（§1。落ちていたら昇格しない）
+- [ ] 2. 本文・結果の更新: 実装で確定した事実、計測値、Consequences（Pros / Cons）をドラフトに反映
+- [ ] 3. 確定昇格: frontmatter を `status: proposed` → `status: accepted`、本文 `## Status` を `Proposed` → `Accepted` へ更新。承認済みの置換対象があれば、**このタイミングで** frontmatter に `supersedes: ["000NNN"]` を追加し、旧 ADR `docs/ADR/000NNN.md` の frontmatter `status` を `superseded` に同時更新する
+- [ ] 4. 検証: `docdag validate --touching docs/ADR/NNNNNN.md` および `docdag validate --immutable-since origin/main` を実行（findings 0 を確認）
+- [ ] 5. コミット: コードと確定済み ADR（および旧 ADR の `status: superseded` 更新）を同一コミットに記録（英語 1 行メッセージ、push はしない）
+- [ ] 6. 完了報告: パス、タイトル、テスト結果、validate 結果を報告（§4）
+
+> `--only-docs`、または「ADR だけ書いて」「docs だけ」と言われた場合は実装確認をスキップして Phase 1 の手順で作成し、既定で確定済み決定なら `status: accepted`（提案段階なら `status: proposed`）で保存・検証する。
+
+## §1. 実装確認（Phase 2 `--finalize` 必須 / `--draft`・`--only-docs` はスキップ）
+
+`status: accepted` の ADR は「動いた状態」を固定する現行契約（binding ADR）なので、確定昇格前に必ずテストを green にする（**Prove It Works**）。コンテナの再ビルド・再起動はしない。
 
 | 変更の種類 | 回すコマンド |
 |---|---|
@@ -31,14 +41,11 @@ ADR は「動いた状態」を固定する記録なので、先に最低限の�
 | TypeScript / Svelte (alt-frontend-sv) | `cd alt-frontend-sv && bun run check && bun run test` |
 | Python (news-creator) | `cd news-creator/app && uv run pytest` |
 | Python (tag-generator) | `cd tag-generator/app && uv run pytest` |
-| ドキュメント・scripts のみ | 該当テストだけ（例: `bash tests/scripts/run.sh`） |
+| ドキュメント・scripts のみ | 該当テストだけ（例: `bash tests/scripts/run.sh` や `cd scripts/altharness && go test ./...`） |
 
-テストが落ちていたら ADR は書かず、原因を報告して止まる。ADR は動いた実装の決定記録であり、
-憶測を書く場所ではない。
+テストが落ちていたら `accepted` へ昇格せず、原因を報告して止まる。未検証の計画を `accepted` にすると `docdag query --binding` の現行契約集合が汚染される。
 
-`--only-docs`、または「ADR だけ書いて」「docs だけ」と言われた場合は §1 を飛ばして §2 へ。
-
-## §2. ADR 執筆
+## §2. ADR 執筆ルール
 
 ### 2.1 番号とテンプレート
 
@@ -50,12 +57,19 @@ docdag new "<ADR タイトル>" --dry-run --format json
 `--dry-run` は次の空き番号を計算するだけで何も書かない。返ってきた `id` / `path` をそのまま使う（ディレクトリを `ls` して数えない）。
 ファイル本体は `docs/ADR/template.md` を Read で開き、そのセクション見出しをそのまま使って Write する（`docdag new` に実際にファイルを書かせない — 内蔵の Go template プレースホルダは Alt の `template.md` と形式が違う）。
 
-### 2.2 Frontmatter と許可タグ
+### 2.2 Frontmatter・許可タグ・`supersedes` の `status_drift` 規則
 
-Step 3 で frontmatter を組む前に [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) を Read し、各フィールドの規則（`title`, `date`, `status`, `tags`, `affected_services`, `aliases`, `supersedes`, `depends-on`）と 29 個の許可タグ一覧に従う。要点:
-- `status`: 原則 `accepted`（後継なしの撤回は `withdrawn`）
+frontmatter を組む前に [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) を Read し、各フィールドの規則と 29 個の許可タグ一覧に従う。要点:
+- `status`: Phase 1（実装前ドラフト）は **`proposed`**（本文 `## Status` は `Proposed`）、Phase 2（テスト green 後の確定昇格）で **`accepted`**（本文は `Accepted`）。後継なしの撤回は `withdrawn`
 - `aliases`: `ADR-NNN` と `ADR-000NNN` の両方必須
-- `supersedes` / `depends-on`: 該当しないときはキーごと省略（空 stub は `empty_edge` エラー）
+- `supersedes` / `depends-on`: 該当しないときはキーごと省略（空 stub は `empty_edge` エラー）。**辺を張る前の必須確認（[[001035]]）**: `depends-on` または `supersedes` に記載するすべての ID は、辺を追加する前に必ず 1 本ずつ `docdag context <id>`（必要に応じて `docdag context <id> --section Consequences` 等）で `Decision` 本文を直接読むこと。ADR の題名や他者の要約だけを根拠に辺を追加してはならない。依存先の決定と新 ADR の内容に緊張関係・制約が見つかった場合は、その関係を `## Context` または `## Decision` に明記する
+
+**重要（`docdag.yaml` の `status_drift` 規則と既存 binding ADR の置換手順）:**
+`docdag.yaml` の `status_drift` 規則は、inbound `supersedes:` エッジを持つ ADR の `status` が `superseded` でない限り**常にエラー**となる（新 ADR が `status: proposed` であっても例外ではない）。したがって既存の binding ADR（例: `000NNN`）を置換する場合は必ず次の 3 段階を守る:
+
+1. **着手前に停止してユーザ承認を得る**: 既存の binding ADR と矛盾する変更を独断で始めない。
+2. **Phase 1（`status: proposed` ドラフト段階）**: 置換対象を本文で `[[000NNN]]` として明記し、**frontmatter から `supersedes:` を省略する**（ドラフト段階で旧 binding ADR を `superseded` に変えない）。
+3. **Phase 2（`status: accepted` 昇格段階）**: テスト green 確認後、新 ADR の frontmatter に `supersedes: ["000NNN"]` を追加し、**同一コミットで**旧 ADR `docs/ADR/000NNN.md` の frontmatter を `status: superseded` に更新する（本文でも `[[000NNN]]` を参照すること — `alt-harness adr-gate` 要件）。
 
 ### 2.3 本文ルール
 
@@ -75,34 +89,38 @@ Alt は OSS として公開されている。以下を含めない:
 
 `localhost:XXXX` と compose サービス名は OK。振る舞い（何が起きるか、運用者が何をすべきか）で記述する。
 
-### 2.5 書き込み・検証・commit
+## §3. 書き込み・検証・commit
 
-Write ツールで `docs/ADR/NNNNNN.md` を作成し（heredoc や `cat >` 禁止）、必ず検証する:
+Write / Edit ツールで `docs/ADR/NNNNNN.md` を作成・更新し（heredoc や `cat >` 禁止）、必ず検証する:
 
 ```bash
+# Phase 1（ドラフト作成後）および Phase 2（確定昇格後）
 docdag validate --touching docs/ADR/NNNNNN.md
+
+# Phase 2（確定昇格後・コミット前の追加検証: 既確定 ADR の不変条件確認）
+docdag validate --immutable-since origin/main
 ```
 
-エラーが出た場合は [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) §3 の DocDag エラー分類を参照し、findings が 0 になるまで修正と再検証を繰り返す。置換対象の旧 ADR がある場合は同じ commit で `status: superseded` に更新する。
+エラーが出た場合は [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) §3 の DocDag エラー分類を参照し、findings が 0 になるまで修正と再検証を繰り返す。
 
-ADR とコードは同じ commit にまとめ、英語 1 行メッセージで `git commit` する。`Co-Authored-By` は付けない。`git push` はユーザの明示指示があるまで行わない。
+Phase 2 完了時、ADR とコード（および承認済み置換対象の旧 ADR `status: superseded` 更新）は同じ commit にまとめ、英語 1 行メッセージで `git commit` する。`Co-Authored-By` は付けない。`git push` はユーザの明示指示があるまで行わない。
 
-## §3. 完了報告
+## §4. 完了報告
 
-- 書いた ADR のパス（`docs/ADR/NNNNNN.md`）とタイトル
-- 緑だったテスト（どのサービスで何を回したか）
-- `docdag validate --touching docs/ADR/NNNNNN.md` の結果
+- 書いた／昇格した ADR のパス（`docs/ADR/NNNNNN.md`）、タイトル、現在の `status`（`proposed` / `accepted`）
+- 緑だったテスト（Phase 2 の場合: どのサービスで何を回したか）
+- `docdag validate --touching docs/ADR/NNNNNN.md`（および Phase 2 では `--immutable-since origin/main`）の結果
 - 次に目を向けておく指標や運用フォロー（あれば 1 行）
 
-## §4. デプロイを求められた場合
+## §5. デプロイを求められた場合
 
 「ADR 書いて」はデプロイの許可ではない。`./scripts/deploy.sh` や `c2quay` を独断で実行しない。
 ユーザが明示的にデプロイを指示した場合のみ `docs/runbooks/deploy.md` に従う（DB マイグレーションが絡む場合は必ず `migrate → deploy` の順）。
 
 ## 参照
 
-- [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) — Step 3/4 で読む frontmatter 仕様・許可タグ・DocDag エラー一覧
+- [references/frontmatter-and-validation.md](references/frontmatter-and-validation.md) — frontmatter 仕様・許可タグ・`status_drift` 規則・DocDag エラー一覧
 - `docs/ADR/template.md` — セクションと frontmatter のソース。§2.1 で必ず Read する
-- `docs/runbooks/deploy.md` ([[deploy]]) — §4 でデプロイを指示されたときだけ読む
+- `docs/runbooks/deploy.md` ([[deploy]]) — §5 でデプロイを指示されたときだけ読む
 - `docs/runbooks/pact-broker-ops.md` ([[pact-broker-ops]]) — Broker 運用が ADR の対象になったとき
 - `docs/CLAUDE.md` / `docdag.yaml` — vault 全体の編集ルールと DAG 検証設定

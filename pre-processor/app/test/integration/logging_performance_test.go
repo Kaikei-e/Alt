@@ -229,7 +229,7 @@ func TestLoggingPerformance_MemoryUsage(t *testing.T) {
 	runtime.ReadMemStats(&finalMemStats)
 	finalAlloc := finalMemStats.Alloc
 
-	memoryUsed := finalAlloc - baselineAlloc
+	memoryUsed := retainedHeapDelta(baselineAlloc, finalAlloc)
 	memoryPerOperation := float64(memoryUsed) / float64(iterations)
 
 	t.Logf("Memory usage results:")
@@ -242,6 +242,17 @@ func TestLoggingPerformance_MemoryUsage(t *testing.T) {
 	maxMemoryPerOp := 500.0
 	assert.Less(t, memoryPerOperation, maxMemoryPerOp,
 		"memory per operation should be less than %.2f bytes", maxMemoryPerOp)
+}
+
+// TestRetainedHeapDelta_DoesNotUnderflowOnShrink pins the uint64 underflow
+// flake reproduced under -shuffle=1795714964615587528 (168800 -> 168704) and
+// -shuffle=1795715026366645553 (228768 -> 228480), where GC reclaimed slightly
+// more live heap during the second cycle than the first.
+func TestRetainedHeapDelta_DoesNotUnderflowOnShrink(t *testing.T) {
+	assert.Equal(t, uint64(0), retainedHeapDelta(168800, 168704))
+	assert.Equal(t, uint64(0), retainedHeapDelta(228768, 228480))
+	assert.Equal(t, uint64(0), retainedHeapDelta(500, 500))
+	assert.Equal(t, uint64(960), retainedHeapDelta(584408, 585368))
 }
 
 func TestLoggingPerformance_GoroutineLeaks(t *testing.T) {
@@ -407,6 +418,16 @@ func TestLoggingPerformance_ConcurrentSafety(t *testing.T) {
 	assert.Positive(t, validLines, "should generate at least some log lines")
 
 	t.Logf("Test completed successfully without hanging")
+}
+
+// retainedHeapDelta returns the positive live-heap growth between two GC'd
+// MemStats.Alloc snapshots without uint64 underflow when the second GC frees
+// slightly more prior-test allocations than the first.
+func retainedHeapDelta(baselineAlloc, finalAlloc uint64) uint64 {
+	if finalAlloc <= baselineAlloc {
+		return 0
+	}
+	return finalAlloc - baselineAlloc
 }
 
 // Helper functions

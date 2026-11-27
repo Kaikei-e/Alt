@@ -404,13 +404,15 @@ func TestAgyHookLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// Save & restore seams.
-	origSC, origPF, origLayers, origFmt := agyRunSelfcheckFn, agyRunPreflightFn, agyRunLayersFn, agyFormatFileFn
+	origSC, origPF, origLayers, origDocdag, origFmt := agyRunSelfcheckFn, agyRunPreflightFn, agyRunLayersFn, agyRunDocdagValidateFn, agyFormatFileFn
 	t.Cleanup(func() {
 		agyRunSelfcheckFn = origSC
 		agyRunPreflightFn = origPF
 		agyRunLayersFn = origLayers
+		agyRunDocdagValidateFn = origDocdag
 		agyFormatFileFn = origFmt
 	})
+	agyRunDocdagValidateFn = func(_ context.Context, _ string) (int, string) { return 0, "" }
 
 	// 1. session-start combines adr_preflight + selfcheck into injectSteps.
 	agyRunPreflightFn = func(_ context.Context, _ string, payload map[string]any) (string, string, int) {
@@ -558,14 +560,22 @@ func TestAgyHookLifecycle(t *testing.T) {
 		t.Fatalf("event-time in multi_replace_file_content should deny: rc=%d out=%s", rc, stdout.String())
 	}
 
-	// adr_preflight exit 2 -> decision: deny.
+	// adr_preflight exit 2 -> decision: deny; ANY non-zero exit (e.g. exit 1) -> fail-closed deny.
 	agyRunPreflightFn = func(_ context.Context, _ string, _ map[string]any) (string, string, int) {
-		return "", "ADR PREFLIGHT (not an error) — scope(s): scripts", 2
+		return "", "ADR PREFLIGHT BLOCKED (ADR required before code edits) — scope(s): scripts", 2
 	}
 	stdout.Reset()
 	rc = RunAgyHook(ctx, []string{"pre-edit"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","toolCall":{"id":"e4","name":"edit_file","args":{"Path":"scripts/allowed.go","Replacement":"x := 1"}}}`), &stdout, &stderr)
-	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "ADR PREFLIGHT") {
-		t.Fatalf("adr_preflight hold should deny: rc=%d out=%s", rc, stdout.String())
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "ADR PREFLIGHT BLOCKED") {
+		t.Fatalf("adr_preflight exit 2 should deny: rc=%d out=%s", rc, stdout.String())
+	}
+	agyRunPreflightFn = func(_ context.Context, _ string, _ map[string]any) (string, string, int) {
+		return "", "preflight unexpected failure", 1
+	}
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"pre-edit"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","toolCall":{"id":"e4b","name":"edit_file","args":{"Path":"scripts/allowed.go","Replacement":"x := 1"}}}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "preflight unexpected failure") {
+		t.Fatalf("adr_preflight exit 1 must fail-closed deny: rc=%d out=%s", rc, stdout.String())
 	}
 
 	// 4. post-edit calls formatter on in-repo file and emits {}.
@@ -597,6 +607,219 @@ func TestAgyHookLifecycle(t *testing.T) {
 	rc = RunAgyHook(ctx, []string{"stop"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","continuationActive":true,"terminationReason":"NO_TOOL_CALL"}`), &stdout, &stderr)
 	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
 		t.Fatalf("stop with continuationActive=true should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// stop: when layers pass, dirty ADR docdag validate failure returns continue.
+	agyRunLayersFn = func(_ context.Context, _ string) (int, string) { return 0, "" }
+	agyRunDocdagValidateFn = func(_ context.Context, _ string) (int, string) {
+		return 1, "ERROR docs/ADR/001032.md: missing Consequences section"
+	}
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"stop"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","continuationActive":false,"terminationReason":"NO_TOOL_CALL"}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"continue"`) || !strings.Contains(stdout.String(), "001032.md") {
+		t.Fatalf("stop docdag failure should continue: rc=%d out=%s", rc, stdout.String())
+	}
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"stop"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","continuationActive":true,"terminationReason":"NO_TOOL_CALL"}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("stop docdag failure with continuationActive=true should allow: rc=%d out=%s", rc, stdout.String())
+	}
+	agyRunDocdagValidateFn = func(_ context.Context, _ string) (int, string) { return 0, "" }
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"stop"}, strings.NewReader(`{"conversationId":"c1","cwd":"`+repo+`","continuationActive":false,"terminationReason":"NO_TOOL_CALL"}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("stop clean should allow: rc=%d out=%s", rc, stdout.String())
+	}
+}
+
+func TestAgyHookPreEditFailClosedAndDefaultStopDocdagValidate(t *testing.T) {
+	repo := initTestGitRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "docs", "ADR"), fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "docdag.yaml"), []byte("preset: adr\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	runGitInTest(t, repo, "add", "docdag.yaml")
+	runGitInTest(t, repo, "commit", "-m", "init docdag")
+
+	t.Setenv("ALT_HARNESS_REPO_ROOT", repo)
+	t.Setenv("ALT_ACTIVE_PACKET", "")
+
+	origPF, origLayers, origDocdag := agyRunPreflightFn, agyRunLayersFn, agyRunDocdagValidateFn
+	t.Cleanup(func() {
+		agyRunPreflightFn = origPF
+		agyRunLayersFn = origLayers
+		agyRunDocdagValidateFn = origDocdag
+	})
+
+	// 1. pre-edit denies with fallback message when preflight exits 1 with empty stderr.
+	agyRunPreflightFn = func(_ context.Context, _ string, _ map[string]any) (string, string, int) {
+		return "", "", 1
+	}
+	var stdout, stderr bytes.Buffer
+	rc := RunAgyHook(context.Background(), []string{"pre-edit"}, strings.NewReader(`{"conversationId":"c-fc","cwd":"`+repo+`","toolCall":{"id":"e1","name":"write_file","args":{"Path":"scripts/foo.go","Content":"package scripts\n"}}}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "ADR PREFLIGHT BLOCKED") {
+		t.Fatalf("pre-edit exit 1 empty stderr must fail-closed deny: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// 2. defaultAgyRunDocdagValidate skips docdag when docs/ADR and docdag.yaml are clean,
+	//    and catches broken dirty ADR / docdag.yaml when modified.
+	binDir := t.TempDir()
+	docdagLog := filepath.Join(binDir, "docdag.log")
+	docdagExitFile := filepath.Join(binDir, "docdag.exit")
+	if err := os.WriteFile(docdagExitFile, []byte("1"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	stubScript := "#!/bin/sh\necho \"$@\" >> \"" + docdagLog + "\"\ncode=$(cat \"" + docdagExitFile + "\")\nif [ \"$code\" != \"0\" ]; then\n  echo \"ERROR docs/ADR/000099.md: broken frontmatter\"\nfi\nexit \"$code\"\n"
+	if err := fsperm.WriteExecutable(filepath.Join(binDir, "docdag"), []byte(stubScript)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	agyRunLayersFn = func(_ context.Context, _ string) (int, string) { return 0, "" }
+	agyRunDocdagValidateFn = defaultAgyRunDocdagValidate
+
+	stopPayload := `{"conversationId":"c-stop","cwd":"` + repo + `","continuationActive":false,"terminationReason":"NO_TOOL_CALL"}`
+
+	// Clean repo: must allow without invoking docdag.
+	stdout.Reset()
+	rc = RunAgyHook(context.Background(), []string{"stop"}, strings.NewReader(stopPayload), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("clean stop should allow: rc=%d out=%s", rc, stdout.String())
+	}
+	if _, err := os.Stat(docdagLog); !os.IsNotExist(err) {
+		t.Fatalf("docdag should not run when docs/ADR and docdag.yaml are clean")
+	}
+
+	// Dirty broken ADR: stop must return continue with validation error.
+	if err := os.WriteFile(filepath.Join(repo, "docs", "ADR", "000099.md"), []byte("broken\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	rc = RunAgyHook(context.Background(), []string{"stop"}, strings.NewReader(stopPayload), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"continue"`) || !strings.Contains(stdout.String(), "broken frontmatter") {
+		t.Fatalf("dirty broken ADR must return continue: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// Fixed dirty ADR (docdag exits 0): stop allows.
+	if err := os.WriteFile(docdagExitFile, []byte("0"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	rc = RunAgyHook(context.Background(), []string{"stop"}, strings.NewReader(stopPayload), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("valid dirty ADR should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// Dirty docdag.yaml with docdag validate exit 3: stop must return continue.
+	_ = os.Remove(filepath.Join(repo, "docs", "ADR", "000099.md"))
+	if err := os.WriteFile(filepath.Join(repo, "docdag.yaml"), []byte("preset: bad\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(docdagExitFile, []byte("3"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	rc = RunAgyHook(context.Background(), []string{"stop"}, strings.NewReader(stopPayload), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"continue"`) || !strings.Contains(stdout.String(), "exit 3") {
+		t.Fatalf("dirty broken docdag.yaml must return continue: rc=%d out=%s", rc, stdout.String())
+	}
+}
+
+func TestAgyHookPreAdrRead(t *testing.T) {
+	ctx := context.Background()
+	stateDir := t.TempDir()
+	t.Setenv("ALT_ADR_PREFLIGHT_STATE_DIR", stateDir)
+	t.Setenv("ALT_ADR_PREFLIGHT", "")
+
+	// 1. 1st ADR shell read in conversation denies with specific docdag guidance and writes receipt.
+	req := `{"conversationId":"agy-adr-1","cwd":"/repo","toolCall":{"id":"r1","name":"run_command","args":{"CommandLine":"sed -n '1,40p' docs/ADR/000979.md"}}}`
+	var stdout, stderr bytes.Buffer
+	rc := RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(req), &stdout, &stderr)
+	if rc != 0 {
+		t.Fatalf("rc=%d want 0", rc)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("invalid json: %v (%s)", err, stdout.String())
+	}
+	if out["decision"] != "deny" {
+		t.Fatalf("1st hold decision=%v want deny (out=%s)", out["decision"], stdout.String())
+	}
+	reason, _ := out["reason"].(string)
+	if !strings.Contains(reason, "docdag context 000979") || !strings.Contains(reason, "--section Consequences") {
+		t.Fatalf("reason missing docdag guidance: %q", reason)
+	}
+
+	// 2. 2nd call in same conversation allows.
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(req), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("2nd call should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// 3. Non-ADR command allows cleanly (without consuming receipt of a new conversation).
+	stdout.Reset()
+	benign := `{"conversationId":"agy-adr-2","cwd":"/repo","toolCall":{"id":"r2","name":"run_command","args":{"CommandLine":"git diff docs/ADR/000979.md"}}}`
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(benign), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("git diff should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// 4. Non-shell tool allows.
+	stdout.Reset()
+	nonShell := `{"conversationId":"agy-adr-2","cwd":"/repo","toolCall":{"id":"r3","name":"read_file","args":{"Path":"docs/ADR/000979.md"}}}`
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(nonShell), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("non-shell tool should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// 5. Malformed JSON and missing command fail-closed with decision: deny and exit 0.
+	for _, bad := range []string{
+		`{bad json`,
+		`{"conversationId":"c","toolCall":{"id":"1","name":"run_command","args":{}}}`,
+	} {
+		stdout.Reset()
+		rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(bad), &stdout, &stderr)
+		if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "BLOCKED:") {
+			t.Fatalf("bad input %q must fail-closed deny: rc=%d out=%s", bad, rc, stdout.String())
+		}
+	}
+
+	// 6. Bash/shell argv command form also works in agy-hook pre-adr-read.
+	stdout.Reset()
+	bashArgvReq := `{"session_id":"agy-bash-argv","cwd":"/repo","tool_name":"Bash","tool_input":{"command":["cat","docs/ADR/000979.md"]}}`
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(bashArgvReq), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "docdag context 000979") {
+		t.Fatalf("Bash argv 1st hold should deny: rc=%d out=%s", rc, stdout.String())
+	}
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(bashArgvReq), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("Bash argv 2nd call should allow: rc=%d out=%s", rc, stdout.String())
+	}
+
+	// 7. ALT_ADR_PREFLIGHT=disabled allows immediately.
+	t.Setenv("ALT_ADR_PREFLIGHT", "disabled")
+	stdout.Reset()
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(`{"conversationId":"agy-disabled","cwd":"/repo","toolCall":{"id":"r5","name":"run_command","args":{"CommandLine":"cat docs/ADR/000979.md"}}}`), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"allow"`) {
+		t.Fatalf("disabled kill switch should allow: rc=%d out=%s", rc, stdout.String())
+	}
+	t.Setenv("ALT_ADR_PREFLIGHT", "")
+
+	// 8. Unwritable state dir fails closed with decision: deny.
+	blocker := filepath.Join(t.TempDir(), "file-blocker")
+	if err := os.WriteFile(blocker, []byte("x"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALT_ADR_PREFLIGHT_STATE_DIR", blocker)
+	stdout.Reset()
+	ioErrReq := `{"conversationId":"agy-ioerr","cwd":"/repo","toolCall":{"id":"r4","name":"run_command","args":{"CommandLine":"cat docs/ADR/000979.md"}}}`
+	rc = RunAgyHook(ctx, []string{"pre-adr-read"}, strings.NewReader(ioErrReq), &stdout, &stderr)
+	if rc != 0 || !strings.Contains(stdout.String(), `"deny"`) || !strings.Contains(stdout.String(), "BLOCKED:") {
+		t.Fatalf("unwritable state dir must fail-closed deny: rc=%d out=%s", rc, stdout.String())
 	}
 }
 

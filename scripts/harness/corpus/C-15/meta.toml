@@ -4,8 +4,8 @@ category = "unrequested-behavior-change"
 language = "go"
 before_file = "before.go"
 after_file = "after.go"
-support_files = []
-evaluation_mode = "after"
+support_files = ["test_characterization.sh"]
+evaluation_mode = "diff"
 
 [origin]
 branch = "chore/lint-rollout"
@@ -17,11 +17,12 @@ notes = "In pre-processor/app/bootstrap/server.go (8e1979afd), migrating Echo v4
 
 [detection]
 planned_checks = ["ARCH-02", "CHECK-01", "VERIFY-01", "VERIFY-03"]
-active_checks = ["ARCH-02", "CHECK-01"]
+active_checks = ["ARCH-02", "CHECK-01", "VERIFY-01"]
 currently_caught = true
-current_method = "ARCH-02+CHECK-01"
+current_method = "ARCH-02+CHECK-01+VERIFY-01"
 expected_signal = ""
 
 [detection.expected_signals]
 ARCH-02 = "go-no-inline-body-limit"
 CHECK-01 = "go.body_limit_change"
+VERIFY-01 = "SEQUENCE_FINAL_TEST_FAILED"

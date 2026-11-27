@@ -375,6 +375,9 @@ func TestEnvoyHTTPClient_ErrorHandling(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			withStubResolver(t, func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("203.0.113.10")}, nil
+			})
 			client := NewEnvoyHTTPClient(tc.config, logger)
 
 			resp, err := client.Get(context.Background(), tc.targetURL)

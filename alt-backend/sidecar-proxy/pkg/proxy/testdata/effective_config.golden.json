@@ -1,0 +1,44 @@
+{
+  "error_response": {
+    "body": "Proxy Error: upstream <err> & \"quote\"\nTrace-ID: trace-golden-1\n",
+    "content_type": "text/plain; charset=utf-8",
+    "status": 502,
+    "x_content_type_options": "nosniff",
+    "x_trace_id": "trace-golden-1"
+  },
+  "proxy_settings": {
+    "allowed_domains": [
+      "feeds\\.bbci\\.co\\.uk",
+      "feeds\\.feedburner\\.com",
+      "feeds\\.reuters\\.com",
+      "github\\.com",
+      "httpbin\\.org",
+      "qiita\\.com",
+      "rss\\.cnn\\.com",
+      "zenn\\.dev"
+    ],
+    "autolearn_enabled": false,
+    "buffer_size_bytes": 4096,
+    "connect_client_timeout": "10m0s",
+    "connect_timeout": "30s",
+    "dns_cache_timeout": "5m0s",
+    "dns_servers": [
+      "8.8.8.8:53",
+      "1.1.1.1:53",
+      "208.67.222.222:53"
+    ],
+    "dns_timeout": "5s",
+    "max_concurrent_reqs": 100,
+    "max_request_size_bytes": 10485760,
+    "request_timeout": "30s"
+  },
+  "server": {
+    "addr": ":8080",
+    "idle_timeout": "2m0s",
+    "max_header_bytes": 0,
+    "read_header_timeout": "0s",
+    "read_timeout": "30s",
+    "write_timeout": "30s"
+  },
+  "service": "sidecar-proxy"
+}
