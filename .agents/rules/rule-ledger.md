@@ -52,3 +52,8 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-37 | 本番 `-p alt` から完全隔離した実機検証スキル・Feature Map で SSE 終端・境界値・認証・転送ヘッダを実証する | `scripts/altharness/alt-harness verify-live`, `scripts/verify/verify-live.sh` | C-07 / C-14 / C-15 / ADR-001036 / ADR-001037 |
 | R-38 | 不安定テストはシャッフルシード付きで再現・特定してから修正し、回帰テストで固定する | `scripts/altharness/alt-harness flaky-hunt`, `scripts/verify/flaky-hunt.sh` | ADR-001037 |
 | R-39 | 実装報告の挙動主張ごとに再実行可能なコマンドと出力証拠の保存先を必須とし、裏付けのない包括主張を拒否する | `scripts/altharness/alt-harness verify-claims`, `scripts/agent-harness/templates/implementation-report.md.tmpl` | ADR-001037 |
+| R-40 | ホスト受入検証は実 `git diff`・AST 関数計数・検証コマンド再実行・乱数順テストと事前実測予算（`--turn-limit-s`）を強制する | `scripts/altharness/alt-harness packet`, `scripts/altharness/alt-harness host-final`, `scripts/verify/host-final-check.sh` | ADR-001038 |
+| R-41 | ブランチ単位の判断ログ（`decisions.tsv`）の 6 列スキーマ・1 行目方針/完了定義・ポインタ証拠・信頼に基づく並列数変更記録を維持する | `scripts/altharness/alt-harness harness-run` | ADR-001038 |
+| R-42 | push 前の敵対的レビューは異系統モデル・4 分類・非自動適用・`fix` の再現証明・`safe` の `blast-radius` 実行証明と重点 7 項目網羅を強制する | `scripts/altharness/alt-harness loop-review` | C-01 / C-04 / C-06 / C-07 / C-11 / ADR-001038 |
+| R-43 | パケット定型や規則の改訂は中立ディレクトリ隔離・決定論的採点・トランスクリプト読込検証と前後 3 試行以上比較で評価し判断ログへ記録する | `scripts/altharness/alt-harness loop-eval` | C-01 / C-06 / C-07 / C-11 / C-15 / C-16 / C-18 / ADR-001038 |
+| R-44 | 区切りごとの `/correct` で 2 回以上再発した失敗クラスを抽出し、コーパス登録と `ARCH→CHECK→VERIFY→LEDGER` 上位段却下理由の記録を強制する | `scripts/altharness/alt-harness loop-correct` | ADR-001038 |

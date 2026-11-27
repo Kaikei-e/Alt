@@ -20,6 +20,9 @@ import (
 	"alt/scripts/altharness/internal/lang"
 	"alt/scripts/altharness/internal/ledgers"
 	"alt/scripts/altharness/internal/lint"
+	"alt/scripts/altharness/internal/loopcorrect"
+	"alt/scripts/altharness/internal/loopeval"
+	"alt/scripts/altharness/internal/loopreview"
 	"alt/scripts/altharness/internal/meta"
 	"alt/scripts/altharness/internal/packet"
 	"alt/scripts/altharness/internal/pki"
@@ -136,6 +139,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return verifylive.Run(ctx, args[1:], stdout, stderr)
 	case "flaky-hunt":
 		return flakyhunt.Run(ctx, args[1:], stdout, stderr)
+	case "loop-review":
+		return loopreview.Run(ctx, args[1:], stdout, stderr)
+	case "loop-eval":
+		return loopeval.Run(ctx, args[1:], stdout, stderr)
+	case "loop-correct":
+		return loopcorrect.Run(ctx, args[1:], stdout, stderr)
 	case "gate":
 		if len(args) != 2 {
 			fmt.Fprintln(stderr, "usage: alt-harness gate <repo|harness|both>")
@@ -162,7 +171,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return code
 	case "help", "-h", "--help":
-		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand verify-claims verify-diff verify-golden verify-live flaky-hunt gate")
+		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand verify-claims verify-diff verify-golden verify-live flaky-hunt loop-review loop-eval loop-correct gate")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])

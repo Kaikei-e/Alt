@@ -17,6 +17,7 @@ import (
 	"alt/scripts/altharness/internal/generated"
 	"alt/scripts/altharness/internal/hygiene"
 	"alt/scripts/altharness/internal/ledgers"
+	"alt/scripts/altharness/internal/loopeval"
 	"alt/scripts/altharness/internal/packet"
 	"alt/scripts/altharness/internal/pki"
 	"alt/scripts/altharness/internal/pyver"
@@ -109,6 +110,7 @@ func harnessSteps(repo, base string) []Step {
 		inProc("verify_diff_clean", "verify-diff:check-clean:"+repo, true, verifydiff.Run, "check-clean", "--repo-root", repo),
 		inProc("verify_golden_files", "verify-golden:--check-files-only:"+repo, true, verifygolden.Run, "--check-files-only", "--repo-root", repo),
 		inProc("verify_live_doctor", "verify-live:doctor:--hygiene-only:"+repo, true, verifylive.Run, "doctor", "--hygiene-only", "--repo-root", repo),
+		inProc("loop_eval_scenarios", "loop-eval:validate:"+repo, true, loopeval.Run, "validate", "--repo-root", repo),
 		inProc("go_canonical_sync", "sync-go:--check:"+repo, true, codegen.Run, "--check", "--repo-root", repo),
 		inProc("python_pki_sync", "pki:--check:"+repo, true, pki.Run, "--check", "--repo-root", repo),
 		inProc("suppression_ratchet", "ratchet:"+repo, true, ratchet.Run, "--repo-root", repo),

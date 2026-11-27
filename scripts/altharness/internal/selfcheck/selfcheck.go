@@ -69,6 +69,9 @@ var validAltHarnessSubcommands = map[string]struct{}{
 	"verify-golden":     {},
 	"verify-live":       {},
 	"flaky-hunt":        {},
+	"loop-review":       {},
+	"loop-eval":         {},
+	"loop-correct":      {},
 }
 
 var requiredLeadins = []string{

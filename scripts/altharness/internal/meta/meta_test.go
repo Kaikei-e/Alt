@@ -306,6 +306,7 @@ func TestCatalogPropertiesAndUnionSteps(t *testing.T) {
 		"migration_destructive_gate": false,
 		"adr_supersede_gate":         false,
 		"task_packet_templates":      false,
+		"loop_eval_scenarios":        false,
 		"entrypoint_canary":          false,
 		"altharness_gofmt":           false,
 		"altharness_govet":           false,
