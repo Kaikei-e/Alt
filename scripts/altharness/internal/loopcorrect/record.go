@@ -90,36 +90,118 @@ func cmdRecord(ctx context.Context, args []string, stdout, stderr io.Writer) int
 
 func resolveRecordTargets(repoRoot, branch, decisionsFile, runsDir string) (string, string, error) {
 	if runsDir != "" {
-		if isSymlink(runsDir) {
-			return "", "", fmt.Errorf("runs-dir must not be a symlink: %s", runsDir)
+		if err := rejectSymlinkOrNonDir(runsDir, "runs-dir"); err != nil {
+			return "", "", err
+		}
+		if isWithinDir(filepath.Clean(runsDir), filepath.Clean(repoRoot)) {
+			if err := rejectSymlinkChainUnder(repoRoot, runsDir); err != nil {
+				return "", "", err
+			}
 		}
 		safeBranch := guards.SanitizeBranchName(guards.ResolveGitBranch(repoRoot, branch))
 		runDir := filepath.Join(runsDir, safeBranch)
 		if !isWithinDir(runDir, runsDir) {
 			return "", "", fmt.Errorf("resolved run directory escapes runs-dir: %s", runDir)
 		}
+		if err := rejectSymlinkChainUnder(runsDir, runDir); err != nil {
+			return "", "", err
+		}
 		decPath := decisionsFile
 		if decPath == "" {
 			decPath = filepath.Join(runDir, "decisions.tsv")
 		}
+		if err := validateRecordDecisionsTarget(repoRoot, runsDir, runDir, decPath); err != nil {
+			return "", "", err
+		}
 		return runDir, decPath, nil
 	}
 	if decisionsFile != "" {
-		return filepath.Dir(decisionsFile), decisionsFile, nil
+		runDir := filepath.Dir(decisionsFile)
+		if err := validateRecordDecisionsTarget(repoRoot, "", runDir, decisionsFile); err != nil {
+			return "", "", err
+		}
+		return runDir, decisionsFile, nil
 	}
 	runDir, err := guards.RunDirForBranch(repoRoot, branch)
 	if err != nil {
 		return "", "", err
 	}
-	return runDir, filepath.Join(runDir, "decisions.tsv"), nil
+	if err := rejectSymlinkChainUnder(repoRoot, runDir); err != nil {
+		return "", "", err
+	}
+	decPath := filepath.Join(runDir, "decisions.tsv")
+	if err := validateRecordDecisionsTarget(repoRoot, "", runDir, decPath); err != nil {
+		return "", "", err
+	}
+	return runDir, decPath, nil
+}
+
+func validateRecordDecisionsTarget(repoRoot, runsDir, runDir, decisionsPath string) error {
+	parentDir := filepath.Dir(decisionsPath)
+	if err := rejectSymlinkOrNonDir(parentDir, "decisions parent directory"); err != nil {
+		return err
+	}
+	if err := rejectSymlinkOrDir(decisionsPath, "decisions file"); err != nil {
+		return err
+	}
+	cleanDec := filepath.Clean(decisionsPath)
+	if repoRoot != "" && isWithinDir(cleanDec, filepath.Clean(repoRoot)) {
+		if err := rejectSymlinkChainUnder(repoRoot, cleanDec); err != nil {
+			return err
+		}
+	}
+	if runsDir != "" && isWithinDir(cleanDec, filepath.Clean(runsDir)) {
+		if err := rejectSymlinkChainUnder(runsDir, cleanDec); err != nil {
+			return err
+		}
+	}
+	if runDir != "" && isWithinDir(cleanDec, filepath.Clean(runDir)) {
+		if err := rejectSymlinkChainUnder(runDir, cleanDec); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RecordDisposition writes <runDir>/correct/<milestone_id>.{md,json} (checking
-// non-symlink and path containment) and appends one row per class to decisions.tsv.
+// non-symlink and path containment via os.OpenRoot) and appends one row per
+// class to decisions.tsv.
 func RecordDisposition(repoRoot, runDir, decisionsPath string, disp *Disposition) (RecordReport, error) {
-	if isSymlink(runDir) {
-		return RecordReport{}, fmt.Errorf("run directory must not be a symlink: %s", runDir)
+	// Pre-flight all symlink and containment checks BEFORE creating directories or files.
+	if err := rejectSymlinkOrNonDir(runDir, "run directory"); err != nil {
+		return RecordReport{}, err
 	}
+	cleanRunDir := filepath.Clean(runDir)
+	cleanRepo := filepath.Clean(repoRoot)
+	runUnderRepo := repoRoot != "" && isWithinDir(cleanRunDir, cleanRepo)
+	if runUnderRepo {
+		if err := rejectSymlinkChainUnder(repoRoot, cleanRunDir); err != nil {
+			return RecordReport{}, err
+		}
+	}
+
+	correctDir := filepath.Join(runDir, "correct")
+	if err := rejectSymlinkOrNonDir(correctDir, "correct directory"); err != nil {
+		return RecordReport{}, err
+	}
+
+	mdName := disp.MilestoneID + ".md"
+	jsonName := disp.MilestoneID + ".json"
+	mdPath := filepath.Join(correctDir, mdName)
+	jsonPath := filepath.Join(correctDir, jsonName)
+	for _, target := range []string{mdPath, jsonPath} {
+		if !isWithinDir(filepath.Clean(target), filepath.Clean(correctDir)) {
+			return RecordReport{}, fmt.Errorf("artifact path escapes correct directory: %s", target)
+		}
+		if err := rejectSymlinkOrDir(target, "artifact path"); err != nil {
+			return RecordReport{}, err
+		}
+	}
+
+	if err := validateRecordDecisionsTarget(repoRoot, "", runDir, decisionsPath); err != nil {
+		return RecordReport{}, err
+	}
+
 	if err := os.MkdirAll(runDir, fsperm.Dir); err != nil {
 		return RecordReport{}, fmt.Errorf("create run directory %s: %w", runDir, err)
 	}
@@ -127,18 +209,13 @@ func RecordDisposition(repoRoot, runDir, decisionsPath string, disp *Disposition
 	if err != nil {
 		return RecordReport{}, fmt.Errorf("resolve run directory %s: %w", runDir, err)
 	}
-
-	correctDir := filepath.Join(runDir, "correct")
-	if info, err := os.Lstat(correctDir); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return RecordReport{}, fmt.Errorf("correct directory must not be a symlink: %s", correctDir)
+	if runUnderRepo {
+		repoReal := resolveExistingPath(repoRoot)
+		if !isWithinDir(runDirReal, repoReal) {
+			return RecordReport{}, fmt.Errorf("run directory escapes repository root: %s", runDirReal)
 		}
-		if !info.IsDir() {
-			return RecordReport{}, fmt.Errorf("correct path exists and is not a directory: %s", correctDir)
-		}
-	} else if !os.IsNotExist(err) {
-		return RecordReport{}, fmt.Errorf("stat correct directory %s: %w", correctDir, err)
 	}
+
 	if err := os.MkdirAll(correctDir, fsperm.Dir); err != nil {
 		return RecordReport{}, fmt.Errorf("create correct directory %s: %w", correctDir, err)
 	}
@@ -150,35 +227,32 @@ func RecordDisposition(repoRoot, runDir, decisionsPath string, disp *Disposition
 		return RecordReport{}, fmt.Errorf("correct directory escapes run directory: %s", correctDirReal)
 	}
 
-	mdPath := filepath.Join(correctDir, disp.MilestoneID+".md")
-	jsonPath := filepath.Join(correctDir, disp.MilestoneID+".json")
-	for _, target := range []string{mdPath, jsonPath} {
-		if !isWithinDir(filepath.Clean(target), filepath.Clean(correctDir)) {
-			return RecordReport{}, fmt.Errorf("artifact path escapes correct directory: %s", target)
-		}
-		if info, err := os.Lstat(target); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				return RecordReport{}, fmt.Errorf("artifact path must not be a symlink: %s", target)
-			}
-			if info.IsDir() {
-				return RecordReport{}, fmt.Errorf("artifact path is a directory: %s", target)
-			}
-		} else if !os.IsNotExist(err) {
-			return RecordReport{}, fmt.Errorf("stat artifact path %s: %w", target, err)
-		}
+	decParent := filepath.Dir(decisionsPath)
+	if err := os.MkdirAll(decParent, fsperm.Dir); err != nil {
+		return RecordReport{}, fmt.Errorf("create decisions directory %s: %w", decParent, err)
+	}
+	if err := validateRecordDecisionsTarget(repoRoot, "", runDir, decisionsPath); err != nil {
+		return RecordReport{}, err
+	}
+	decParentReal, err := filepath.EvalSymlinks(decParent)
+	if err != nil {
+		return RecordReport{}, fmt.Errorf("resolve decisions directory %s: %w", decParent, err)
+	}
+	if isWithinDir(filepath.Clean(decisionsPath), cleanRunDir) && !isWithinDir(decParentReal, runDirReal) {
+		return RecordReport{}, fmt.Errorf("decisions directory escapes run directory: %s", decParentReal)
+	}
+	if repoRoot != "" && isWithinDir(filepath.Clean(decisionsPath), cleanRepo) && !isWithinDir(decParentReal, resolveExistingPath(repoRoot)) {
+		return RecordReport{}, fmt.Errorf("decisions directory escapes repository root: %s", decParentReal)
 	}
 
-	if info, err := os.Lstat(decisionsPath); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return RecordReport{}, fmt.Errorf("decisions file must not be a symlink: %s", decisionsPath)
-		}
-		if info.IsDir() {
-			return RecordReport{}, fmt.Errorf("decisions path is a directory: %s", decisionsPath)
-		}
+	correctRoot, err := os.OpenRoot(correctDir)
+	if err != nil {
+		return RecordReport{}, fmt.Errorf("open correct directory root %s: %w", correctDir, err)
 	}
+	defer func() { _ = correctRoot.Close() }()
 
 	mdContent := RenderDispositionMarkdown(disp, time.Now().UTC().Format("2006-01-02T15:04:05Z"))
-	if err := os.WriteFile(mdPath, []byte(mdContent), fsperm.File); err != nil {
+	if err := writeFileInRoot(correctRoot, mdName, []byte(mdContent)); err != nil {
 		return RecordReport{}, fmt.Errorf("write markdown artifact %s: %w", mdPath, err)
 	}
 
@@ -186,8 +260,12 @@ func RecordDisposition(repoRoot, runDir, decisionsPath string, disp *Disposition
 	if err != nil {
 		return RecordReport{}, err
 	}
-	if err := os.WriteFile(jsonPath, jsonBytes, fsperm.File); err != nil {
+	if err := writeFileInRoot(correctRoot, jsonName, jsonBytes); err != nil {
 		return RecordReport{}, fmt.Errorf("write json artifact %s: %w", jsonPath, err)
+	}
+
+	if err := rejectSymlinkOrDir(decisionsPath, "decisions file"); err != nil {
+		return RecordReport{}, err
 	}
 
 	evidenceRef := displayRelPath(repoRoot, mdPath)
@@ -211,6 +289,31 @@ func RecordDisposition(repoRoot, runDir, decisionsPath string, disp *Disposition
 		EvidenceRef:   evidenceRef,
 		RowsAppended:  appended,
 	}, nil
+}
+
+func writeFileInRoot(root *os.Root, name string, data []byte) error {
+	if info, err := root.Lstat(name); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("artifact path must not be a symlink: %s", name)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("artifact path is a directory: %s", name)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat artifact path %s: %w", name, err)
+	}
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fsperm.File)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", name, err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write %s: %w", name, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", name, err)
+	}
+	return nil
 }
 
 // RenderDispositionMarkdown renders the canonical LOOP-07 /correct Markdown table.

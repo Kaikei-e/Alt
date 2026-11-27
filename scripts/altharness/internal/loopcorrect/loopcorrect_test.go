@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,16 +45,40 @@ func setupFakeRepo(t *testing.T) string {
 	}
 
 	// Create concrete repo files for enforcement_ref validation.
-	for _, rel := range []string{
-		"scripts/verify/verify-live.sh",
-		".agents/rules/rule-ledger.md",
-		"scripts/altharness/alt-harness",
-	} {
+	repoFiles := map[string]string{
+		"scripts/verify/verify-live.sh":                                "#!/bin/sh\n",
+		"scripts/lint/run.sh":                                          "#!/bin/sh\n",
+		"scripts/README-notes.md":                                      "# Script notes\n",
+		"scripts/tests/test-check.py":                                  "def test_ok(): assert True\n",
+		"scripts/harness/eval/scenarios/E-01/test_characterization.sh": "#!/bin/sh\n",
+		"scripts/harness/eval/scenarios/E-01/packet.md":                "# Packet\n",
+		".claude/hooks/deny-unsafe-commands.sh":                        "#!/bin/sh\n",
+		".claude/skills/correct/SKILL.md":                              "# Correct skill\n",
+		".agents/rules/task-packet.md":                                 "# Task packet rules\n",
+		".agents/rules/rule-ledger.md": strings.Join([]string{
+			"---",
+			"max_judgment_rules: 1",
+			"---",
+			"| ID | 規則 | 強制手段 | 由来 |",
+			"|---|---|---|---|",
+			"| R-27 | Rebuild compiled services with --build | 判断 | AGENTS.md |",
+			"| R-44 | LOOP-07 /correct cadence | `scripts/altharness/alt-harness loop-correct` | ADR-001038 |",
+		}, "\n") + "\n",
+		"README.md":          "# Alt\n",
+		"AGENTS.md":          "# AGENTS\n",
+		"CLAUDE.md":          "# CLAUDE\n",
+		"docs/ADR/001038.md": "# ADR-001038\n",
+		"docs/sample.yaml":   "key: value\n",
+		"alt-backend/app/internal/httpserver/server.go":      "package httpserver\n",
+		"alt-backend/app/internal/httpserver/server_test.go": "package httpserver\n",
+		"scripts/altharness/alt-harness":                     "#!/bin/sh\n",
+	}
+	for rel, content := range repoFiles {
 		full := filepath.Join(root, rel)
 		if err := os.MkdirAll(filepath.Dir(full), fsperm.Dir); err != nil {
 			t.Fatalf("mkdir %s: %v", rel, err)
 		}
-		if err := os.WriteFile(full, []byte("#!/bin/sh\n"), fsperm.File); err != nil {
+		if err := os.WriteFile(full, []byte(content), fsperm.File); err != nil {
 			t.Fatalf("write %s: %v", rel, err)
 		}
 	}
@@ -439,12 +464,24 @@ func TestValidateValidRungLadderAndEnforcementForms(t *testing.T) {
 		t.Fatalf("expected valid:true in output, got:\n%s", out)
 	}
 
-	// Also verify short form `alt-harness <subcommand>` works (including new loop-correct subcommand).
-	shortDisp := baseValidDisposition()
-	shortDisp["classes"].([]map[string]any)[0]["enforcement_ref"] = "alt-harness loop-correct"
-	shortPath := writeJSONFixture(t, tmp, "short.json", shortDisp)
-	if code, out, stderr := runCLI(t, "validate", shortPath, "--repo-root", repo, "--format", "json"); code != 0 {
-		t.Fatalf("expected short alt-harness subcommand to pass, code=%d stderr=%s out=%s", code, stderr, out)
+	// Also verify short form `alt-harness <subcommand>` works for both ARCH and CHECK rungs.
+	shortCheckDisp := baseValidDisposition()
+	shortCheckCls := shortCheckDisp["classes"].([]map[string]any)[0]
+	shortCheckCls["chosen_rung"] = "CHECK"
+	shortCheckCls["higher_rungs_rejected"] = map[string]string{
+		"ARCH": "Milestone cadence checks operate across repository logs rather than type boundaries.",
+	}
+	shortCheckCls["enforcement_ref"] = "alt-harness loop-correct"
+	shortCheckPath := writeJSONFixture(t, tmp, "short-check.json", shortCheckDisp)
+	if code, out, stderr := runCLI(t, "validate", shortCheckPath, "--repo-root", repo, "--format", "json"); code != 0 {
+		t.Fatalf("expected short CHECK alt-harness subcommand to pass, code=%d stderr=%s out=%s", code, stderr, out)
+	}
+
+	shortArchDisp := baseValidDisposition()
+	shortArchDisp["classes"].([]map[string]any)[0]["enforcement_ref"] = "alt-harness layers"
+	shortArchPath := writeJSONFixture(t, tmp, "short-arch.json", shortArchDisp)
+	if code, out, stderr := runCLI(t, "validate", shortArchPath, "--repo-root", repo, "--format", "json"); code != 0 {
+		t.Fatalf("expected short ARCH alt-harness subcommand to pass, code=%d stderr=%s out=%s", code, stderr, out)
 	}
 }
 
@@ -724,13 +761,25 @@ func TestRecordWritesMarkdownJSONAndAppendsDecisions(t *testing.T) {
 
 	tsvBytes := readTestFile(t, decisionsPath)
 	lines := strings.Split(strings.TrimSpace(string(tsvBytes)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected header + 2 appended rows, got %d lines:\n%s", len(lines), string(tsvBytes))
+	if len(lines) < 3 || lines[0] != "ts\tphase\tdecision\twhy\tevidence\tresult" {
+		t.Fatalf("expected canonical header + appended rows, got %d lines:\n%s", len(lines), string(tsvBytes))
 	}
-	row1 := strings.Split(lines[1], "\t")
-	if len(row1) != 6 {
-		t.Fatalf("expected 6 TSV columns, got %d: %q", len(row1), lines[1])
+	var correctRows [][]string
+	for idx, line := range lines[1:] {
+		cols := strings.Split(line, "\t")
+		if len(cols) != 6 {
+			t.Fatalf("expected 6 TSV columns in line %d, got %d: %q", idx+1, len(cols), line)
+		}
+		if idx == 0 && cols[1] == "init" {
+			// Tolerate SPEC-02 auto-init Row 1 written by guards.AppendDecisionToFile.
+			continue
+		}
+		correctRows = append(correctRows, cols)
 	}
+	if len(correctRows) != 2 {
+		t.Fatalf("expected 2 appended correct rows, got %d:\n%s", len(correctRows), string(tsvBytes))
+	}
+	row1 := correctRows[0]
 	if row1[1] != "correct" {
 		t.Fatalf("expected phase=correct, got %q", row1[1])
 	}
@@ -748,10 +797,7 @@ func TestRecordWritesMarkdownJSONAndAppendsDecisions(t *testing.T) {
 	}
 
 	// Row 2 verifies tabs/newlines in rejected_higher are sanitized to single-line.
-	row2 := strings.Split(lines[2], "\t")
-	if len(row2) != 6 {
-		t.Fatalf("expected 6 TSV columns in row2, got %d: %q", len(row2), lines[2])
-	}
+	row2 := correctRows[1]
 	if !strings.HasPrefix(row2[3], "occurrences=3; rejected_higher=ARCH=") || strings.ContainsAny(row2[3], "\t\n\r") {
 		t.Fatalf("unexpected row2 why: %q", row2[3])
 	}
@@ -963,4 +1009,629 @@ func TestAgainstRealRepositoryAssets(t *testing.T) {
 	if !strings.Contains(out, `"written": false`) || !strings.Contains(out, `"corpus_id": "C-23"`) {
 		t.Fatalf("unexpected real repo dry-run output:\n%s", out)
 	}
+}
+
+func TestValidateRejectsTrailingGarbageAndInvalidLedgerAnchor(t *testing.T) {
+	repo := setupFakeRepo(t)
+	tmp := t.TempDir()
+
+	cases := []struct {
+		name           string
+		rung           string
+		rejected       map[string]string
+		enforcementRef string
+	}{
+		{
+			name:           "ast-grep trailing extra token",
+			rung:           "ARCH",
+			rejected:       map[string]string{},
+			enforcementRef: "ast-grep:go-no-raw-http-server --extra",
+		},
+		{
+			name:           "ast-grep whitespace after colon",
+			rung:           "ARCH",
+			rejected:       map[string]string{},
+			enforcementRef: "ast-grep: go-no-raw-http-server",
+		},
+		{
+			name: "alt-harness trailing garbage",
+			rung: "CHECK",
+			rejected: map[string]string{
+				"ARCH": "Third-party framework prevents compile-time structural restriction.",
+			},
+			enforcementRef: "alt-harness screener --fake-garbage",
+		},
+		{
+			name: "full-path alt-harness trailing garbage",
+			rung: "CHECK",
+			rejected: map[string]string{
+				"ARCH": "Third-party framework prevents compile-time structural restriction.",
+			},
+			enforcementRef: "scripts/altharness/alt-harness screener --fake-garbage",
+		},
+		{
+			name:           "SPEC-06 rule-ledger with trailing garbage",
+			rung:           "ARCH",
+			rejected:       map[string]string{},
+			enforcementRef: ".agents/rules/rule-ledger.md --fake-garbage",
+		},
+		{
+			name:           "SEC-07 README with trailing bogus",
+			rung:           "ARCH",
+			rejected:       map[string]string{},
+			enforcementRef: "README.md --bogus",
+		},
+		{
+			name: "verify script with trailing args",
+			rung: "VERIFY",
+			rejected: map[string]string{
+				"ARCH":  "Third-party transport prevents compile-time structural guard.",
+				"CHECK": "Static AST checks cannot observe live loopback socket shutdown.",
+			},
+			enforcementRef: "scripts/verify/verify-live.sh --probe all",
+		},
+		{
+			name: "SEC-07 nonexistent rule-ledger anchor on LEDGER",
+			rung: "LEDGER",
+			rejected: map[string]string{
+				"ARCH":   "Build flags live outside compiled package boundaries.",
+				"CHECK":  "Static source checks cannot inspect local container layers.",
+				"VERIFY": "Offline sandbox tests cannot exercise full image rebuilds.",
+			},
+			enforcementRef: ".agents/rules/rule-ledger.md#R-9999",
+		},
+		{
+			name: "empty anchor hash",
+			rung: "LEDGER",
+			rejected: map[string]string{
+				"ARCH":   "Build flags live outside compiled package boundaries.",
+				"CHECK":  "Static source checks cannot inspect local container layers.",
+				"VERIFY": "Offline sandbox tests cannot exercise full image rebuilds.",
+			},
+			enforcementRef: ".agents/rules/rule-ledger.md#",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := baseValidDisposition()
+			c := d["classes"].([]map[string]any)[0]
+			c["chosen_rung"] = tc.rung
+			c["higher_rungs_rejected"] = tc.rejected
+			c["enforcement_ref"] = tc.enforcementRef
+			p := writeJSONFixture(t, tmp, strings.ReplaceAll(tc.name, " ", "_")+".json", d)
+			code, out, _ := runCLI(t, "validate", p, "--repo-root", repo, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1 for %s, got %d; out=%s", tc.name, code, out)
+			}
+			assertHasIssueCode(t, out, "INVALID_ENFORCEMENT_REF")
+		})
+	}
+}
+
+func TestValidateRungEnforcementCoherence(t *testing.T) {
+	repo := setupFakeRepo(t)
+	tmp := t.TempDir()
+
+	higherFor := func(rung string) map[string]string {
+		switch rung {
+		case "ARCH":
+			return map[string]string{}
+		case "CHECK":
+			return map[string]string{
+				"ARCH": "Third-party framework types prevent compile-time structural exclusion.",
+			}
+		case "VERIFY":
+			return map[string]string{
+				"ARCH":  "Third-party runtime lifecycle prevents compile-time structural guard.",
+				"CHECK": "Static AST checks cannot observe actual socket termination behavior.",
+			}
+		case "LEDGER":
+			return map[string]string{
+				"ARCH":   "External deployment step lives outside compiled module boundaries.",
+				"CHECK":  "Static source checks cannot inspect external daemon image timestamps.",
+				"VERIFY": "Offline sandbox tests cannot execute full host daemon rebuild loops.",
+			}
+		default:
+			return map[string]string{}
+		}
+	}
+
+	mismatchCases := []struct {
+		name           string
+		rung           string
+		enforcementRef string
+	}{
+		{"ARCH with rule-ledger.md", "ARCH", ".agents/rules/rule-ledger.md"},
+		{"ARCH with rule-ledger.md#R-27", "ARCH", ".agents/rules/rule-ledger.md#R-27"},
+		{"ARCH with README.md", "ARCH", "README.md"},
+		{"ARCH with AGENTS.md", "ARCH", "AGENTS.md"},
+		{"ARCH with CLAUDE.md", "ARCH", "CLAUDE.md"},
+		{"ARCH with skill markdown", "ARCH", ".claude/skills/correct/SKILL.md"},
+		{"ARCH with docs yaml", "ARCH", "docs/sample.yaml"},
+		{"ARCH with CHECK subcommand screener", "ARCH", "alt-harness screener"},
+		{"ARCH with VERIFY subcommand verify-live", "ARCH", "alt-harness verify-live"},
+		{"CHECK with rule-ledger.md", "CHECK", ".agents/rules/rule-ledger.md"},
+		{"CHECK with README.md", "CHECK", "README.md"},
+		{"CHECK with markdown under scripts", "CHECK", "scripts/README-notes.md"},
+		{"CHECK with VERIFY subcommand verify-live", "CHECK", "alt-harness verify-live"},
+		{"VERIFY with rule-ledger.md", "VERIFY", ".agents/rules/rule-ledger.md"},
+		{"VERIFY with README.md", "VERIFY", "README.md"},
+		{"VERIFY with markdown under eval", "VERIFY", "scripts/harness/eval/scenarios/E-01/packet.md"},
+		{"VERIFY with ast-grep rule", "VERIFY", "ast-grep:go-no-raw-http-server"},
+		{"VERIFY with CHECK subcommand screener", "VERIFY", "alt-harness screener"},
+		{"LEDGER with README.md", "LEDGER", "README.md"},
+		{"LEDGER with ADR markdown", "LEDGER", "docs/ADR/001038.md"},
+	}
+
+	for _, tc := range mismatchCases {
+		t.Run("reject_"+tc.name, func(t *testing.T) {
+			d := baseValidDisposition()
+			c := d["classes"].([]map[string]any)[0]
+			c["chosen_rung"] = tc.rung
+			c["higher_rungs_rejected"] = higherFor(tc.rung)
+			c["enforcement_ref"] = tc.enforcementRef
+			p := writeJSONFixture(t, tmp, "mm_"+strings.ReplaceAll(tc.name, " ", "_")+".json", d)
+			code, out, _ := runCLI(t, "validate", p, "--repo-root", repo, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1 for %s, got %d; out=%s", tc.name, code, out)
+			}
+			assertHasIssueCode(t, out, "RUNG_ENFORCEMENT_MISMATCH")
+		})
+	}
+
+	validCases := []struct {
+		name           string
+		rung           string
+		enforcementRef string
+	}{
+		{"ARCH with ast-grep", "ARCH", "ast-grep:go-no-raw-http-server"},
+		{"ARCH with sync-go", "ARCH", "alt-harness sync-go"},
+		{"ARCH with go code file", "ARCH", "alt-backend/app/internal/httpserver/server.go"},
+		{"CHECK with ast-grep", "CHECK", "ast-grep:go-no-raw-http-server"},
+		{"CHECK with guard-exec", "CHECK", "alt-harness guard-exec"},
+		{"CHECK with script under scripts", "CHECK", "scripts/lint/run.sh"},
+		{"CHECK with claude hook", "CHECK", ".claude/hooks/deny-unsafe-commands.sh"},
+		{"VERIFY with verify-live cmd", "VERIFY", "alt-harness verify-live"},
+		{"VERIFY with loop-eval cmd", "VERIFY", "alt-harness loop-eval"},
+		{"VERIFY with go test file", "VERIFY", "alt-backend/app/internal/httpserver/server_test.go"},
+		{"VERIFY with scripts tests", "VERIFY", "scripts/tests/test-check.py"},
+		{"VERIFY with eval char script", "VERIFY", "scripts/harness/eval/scenarios/E-01/test_characterization.sh"},
+		{"LEDGER with rule-ledger", "LEDGER", ".agents/rules/rule-ledger.md"},
+		{"LEDGER with valid anchor", "LEDGER", ".agents/rules/rule-ledger.md#R-44"},
+		{"LEDGER with agents rule", "LEDGER", ".agents/rules/task-packet.md"},
+		{"LEDGER with AGENTS.md", "LEDGER", "AGENTS.md"},
+		{"LEDGER with CLAUDE.md", "LEDGER", "CLAUDE.md"},
+		{"LEDGER with skill doc", "LEDGER", ".claude/skills/correct/SKILL.md"},
+		{"LEDGER with stronger ref", "LEDGER", "alt-harness screener"},
+	}
+
+	for _, tc := range validCases {
+		t.Run("accept_"+tc.name, func(t *testing.T) {
+			d := baseValidDisposition()
+			c := d["classes"].([]map[string]any)[0]
+			c["chosen_rung"] = tc.rung
+			c["higher_rungs_rejected"] = higherFor(tc.rung)
+			c["enforcement_ref"] = tc.enforcementRef
+			p := writeJSONFixture(t, tmp, "ok_"+strings.ReplaceAll(tc.name, " ", "_")+".json", d)
+			code, out, stderr := runCLI(t, "validate", p, "--repo-root", repo, "--format", "json")
+			if code != 0 {
+				t.Fatalf("expected exit 0 for %s, got %d; stderr=%s out=%s", tc.name, code, stderr, out)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsUnverifiedCorpusCases(t *testing.T) {
+	repo := setupFakeRepo(t)
+	tmp := t.TempDir()
+
+	// 1. Unfilled scaffold-corpus --write stub (C-23) MUST fail with UNVERIFIED_CORPUS_CASE.
+	code, out, stderr := runCLI(t, "scaffold-corpus",
+		"--class-id", "stub-class",
+		"--title", "Scaffolded stub case",
+		"--language", "go",
+		"--category", "autofix-logic-corruption",
+		"--write",
+		"--repo-root", repo,
+		"--format", "json",
+	)
+	if code != 0 {
+		t.Fatalf("scaffold-corpus --write failed: code=%d stderr=%s out=%s", code, stderr, out)
+	}
+
+	dStub := baseValidDisposition()
+	dStub["classes"].([]map[string]any)[0]["corpus_id"] = "C-23"
+	stubPath := writeJSONFixture(t, tmp, "stub.json", dStub)
+	code, out, _ = runCLI(t, "validate", stubPath, "--repo-root", repo, "--format", "json")
+	if code != 1 {
+		t.Fatalf("expected exit 1 for unfilled scaffold stub C-23, got %d; out=%s", code, out)
+	}
+	assertHasIssueCode(t, out, "UNVERIFIED_CORPUS_CASE")
+
+	// Helper to write a custom corpus case with specific defects.
+	makeCustomCase := func(id, metaContent string, createBefore, createAfter, symlinkAfter bool) {
+		dir := filepath.Join(repo, "scripts", "harness", "corpus", id)
+		if err := os.MkdirAll(dir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir %s: %v", id, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "meta.toml"), []byte(metaContent), fsperm.File); err != nil {
+			t.Fatalf("write meta.toml: %v", err)
+		}
+		if createBefore {
+			if err := os.WriteFile(filepath.Join(dir, "before.go"), []byte("package a\n"), fsperm.File); err != nil {
+				t.Fatalf("write before.go: %v", err)
+			}
+		}
+		if symlinkAfter {
+			outside := filepath.Join(tmp, id+"-outside.go")
+			if err := os.WriteFile(outside, []byte("package a\n"), fsperm.File); err != nil {
+				t.Fatalf("write outside: %v", err)
+			}
+			if err := os.Symlink(outside, filepath.Join(dir, "after.go")); err != nil {
+				t.Fatalf("symlink after.go: %v", err)
+			}
+		} else if createAfter {
+			if err := os.WriteFile(filepath.Join(dir, "after.go"), []byte("package a // bad\n"), fsperm.File); err != nil {
+				t.Fatalf("write after.go: %v", err)
+			}
+		}
+	}
+
+	makeCustomCase("C-30", `id = "C-99"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "main"
+base_commit = "abcdef1"
+[detection]
+currently_caught = true
+`, true, true, false)
+
+	makeCustomCase("C-31", `id = "C-31"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "main"
+base_commit = "0000000"
+[detection]
+currently_caught = true
+`, true, true, false)
+
+	makeCustomCase("C-32", `id = "C-32"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "TODO-fill-branch"
+base_commit = "abcdef1"
+[detection]
+currently_caught = true
+`, true, true, false)
+
+	makeCustomCase("C-33", `id = "C-33"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "main"
+base_commit = "abcdef1"
+[detection]
+currently_caught = false
+`, true, true, false)
+
+	makeCustomCase("C-34", `id = "C-34"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "main"
+base_commit = "abcdef1"
+[detection]
+currently_caught = true
+`, true, false, false)
+
+	makeCustomCase("C-35", `id = "C-35"
+before_file = "before.go"
+after_file = "after.go"
+[origin]
+branch = "main"
+base_commit = "abcdef1"
+[detection]
+currently_caught = true
+`, true, false, true)
+
+	for _, cid := range []string{"C-30", "C-31", "C-32", "C-33", "C-34", "C-35"} {
+		t.Run("unverified_"+cid, func(t *testing.T) {
+			d := baseValidDisposition()
+			d["classes"].([]map[string]any)[0]["corpus_id"] = cid
+			p := writeJSONFixture(t, tmp, "unv_"+cid+".json", d)
+			code, out, _ := runCLI(t, "validate", p, "--repo-root", repo, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1 for %s, got %d; out=%s", cid, code, out)
+			}
+			assertHasIssueCode(t, out, "UNVERIFIED_CORPUS_CASE")
+		})
+	}
+}
+
+func TestValidateRejectsPunctuationAndFillerHigherRungReasons(t *testing.T) {
+	repo := setupFakeRepo(t)
+	tmp := t.TempDir()
+
+	badReasons := []string{
+		"----....!!!!????",
+		"1234567890123456",
+		"abc....!!!!????",
+		"too hard right now",
+		"too difficult to implement",
+		"wip: do later",
+		"placeholder reason for now",
+		"do later when refactoring",
+		"not possible right now",
+		"cannot be done in this PR",
+		"will fix later in follow-up",
+		"skip this check for now",
+		"skipped due to time limits",
+	}
+
+	for i, reason := range badReasons {
+		t.Run("reason_"+strings.ReplaceAll(reason, " ", "_"), func(t *testing.T) {
+			d := baseValidDisposition()
+			c := d["classes"].([]map[string]any)[0]
+			c["chosen_rung"] = "CHECK"
+			c["higher_rungs_rejected"] = map[string]string{"ARCH": reason}
+			c["enforcement_ref"] = "alt-harness screener"
+			p := writeJSONFixture(t, tmp, fmt.Sprintf("bad_reason_%d.json", i), d)
+			code, out, _ := runCLI(t, "validate", p, "--repo-root", repo, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1 for reason %q, got %d; out=%s", reason, code, out)
+			}
+			assertHasIssueCode(t, out, "MISSING_HIGHER_RUNG_REASON")
+		})
+	}
+}
+
+func TestRecordSymlinkDefenseAndOpenRoot(t *testing.T) {
+	tmp := t.TempDir()
+
+	t.Run("dangling decisions-file symlink rejected without creating victim", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		victim := filepath.Join(outside, "victim.tsv")
+		linkDir := filepath.Join(repo, ".harness", "runs", "dangling-dec")
+		if err := os.MkdirAll(linkDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		danglingLink := filepath.Join(linkDir, "decisions.tsv")
+		if err := os.Symlink(victim, danglingLink); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "dangling-dec.json", baseValidDisposition())
+		code, _, stderr := runCLI(t, "record", dispPath, "--decisions-file", danglingLink, "--repo-root", repo)
+		if code == 0 {
+			t.Fatalf("expected failure on dangling --decisions-file symlink, got 0")
+		}
+		if _, err := os.Lstat(victim); !os.IsNotExist(err) {
+			t.Fatalf("dangling symlink victim must not be created (stderr=%s)", stderr)
+		}
+		if _, err := os.Stat(filepath.Join(linkDir, "correct")); !os.IsNotExist(err) {
+			t.Fatalf("no orphan correct directory or artifacts should be created when decisions-file is a symlink")
+		}
+	})
+
+	t.Run("live --runs-dir and branch dir symlinks rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		liveRunsLink := filepath.Join(tmp, "live-runs-link")
+		if err := os.Symlink(outside, liveRunsLink); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "live-runs.json", baseValidDisposition())
+		if code, _, _ := runCLI(t, "record", dispPath, "--runs-dir", liveRunsLink, "--branch", "main", "--repo-root", repo); code == 0 {
+			t.Fatalf("expected failure on live --runs-dir symlink, got 0")
+		}
+		entries, _ := os.ReadDir(outside)
+		if len(entries) != 0 {
+			t.Fatalf("outside dir must remain empty, got %d entries", len(entries))
+		}
+
+		realRuns := filepath.Join(tmp, "real-runs-with-sym-branch")
+		if err := os.MkdirAll(realRuns, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir realRuns: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(realRuns, "main")); err != nil {
+			t.Fatalf("symlink branch: %v", err)
+		}
+		if code, _, _ := runCLI(t, "record", dispPath, "--runs-dir", realRuns, "--branch", "main", "--repo-root", repo); code == 0 {
+			t.Fatalf("expected failure on symlinked <runs-dir>/<branch>, got 0")
+		}
+		entries, _ = os.ReadDir(outside)
+		if len(entries) != 0 {
+			t.Fatalf("outside dir must remain empty after symlinked branch, got %d entries", len(entries))
+		}
+	})
+
+	t.Run("SEC-01 symlinked .harness/runs/<branch> rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		runsDir := filepath.Join(repo, ".harness", "runs")
+		if err := os.MkdirAll(runsDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir runs: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(runsDir, "main")); err != nil {
+			t.Fatalf("symlink branch: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "sec01-branch.json", baseValidDisposition())
+		code, _, stderr := runCLI(t, "record", dispPath, "--branch", "main", "--repo-root", repo)
+		if code == 0 {
+			t.Fatalf("expected failure on symlinked .harness/runs/main, got 0")
+		}
+		entries, err := os.ReadDir(outside)
+		if err != nil {
+			t.Fatalf("readdir outside: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("outside dir must remain empty, got %d entries (stderr=%s)", len(entries), stderr)
+		}
+	})
+
+	t.Run("SEC-01 symlinked .harness/runs rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repo, ".harness"), fsperm.Dir); err != nil {
+			t.Fatalf("mkdir .harness: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(repo, ".harness", "runs")); err != nil {
+			t.Fatalf("symlink runs: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "sec01-runs.json", baseValidDisposition())
+		code, _, _ := runCLI(t, "record", dispPath, "--branch", "main", "--repo-root", repo)
+		if code == 0 {
+			t.Fatalf("expected failure on symlinked .harness/runs, got 0")
+		}
+		entries, _ := os.ReadDir(outside)
+		if len(entries) != 0 {
+			t.Fatalf("outside dir must remain empty, got %d entries", len(entries))
+		}
+	})
+
+	t.Run("dangling --runs-dir symlink rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := filepath.Join(t.TempDir(), "nonexistent-runs")
+		link := filepath.Join(tmp, "dangling-runs-dir")
+		if err := os.Symlink(outside, link); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "dangling-runs.json", baseValidDisposition())
+		if code, _, _ := runCLI(t, "record", dispPath, "--runs-dir", link, "--branch", "main", "--repo-root", repo); code == 0 {
+			t.Fatalf("expected failure on dangling --runs-dir symlink, got 0")
+		}
+	})
+
+	t.Run("symlinked parent dir of --decisions-file rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		parentLink := filepath.Join(tmp, "dec-parent-link")
+		if err := os.Symlink(outside, parentLink); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "dec-parent.json", baseValidDisposition())
+		if code, _, _ := runCLI(t, "record", dispPath, "--decisions-file", filepath.Join(parentLink, "decisions.tsv"), "--repo-root", repo); code == 0 {
+			t.Fatalf("expected failure on symlinked parent of --decisions-file, got 0")
+		}
+		entries, _ := os.ReadDir(outside)
+		if len(entries) != 0 {
+			t.Fatalf("outside dir must remain empty, got %d entries", len(entries))
+		}
+	})
+
+	t.Run("dangling artifact md/json symlink rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		outside := t.TempDir()
+		correctDir := filepath.Join(repo, ".harness", "runs", "art-branch", "correct")
+		if err := os.MkdirAll(correctDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir correct: %v", err)
+		}
+		victimMD := filepath.Join(outside, "victim.md")
+		if err := os.Symlink(victimMD, filepath.Join(correctDir, "service-auth-hub-2026-11-28.md")); err != nil {
+			t.Fatalf("symlink md: %v", err)
+		}
+		dispPath := writeJSONFixture(t, tmp, "art-md.json", baseValidDisposition())
+		if code, _, _ := runCLI(t, "record", dispPath, "--branch", "art-branch", "--repo-root", repo); code == 0 {
+			t.Fatalf("expected failure on dangling artifact md symlink, got 0")
+		}
+		if _, err := os.Lstat(victimMD); !os.IsNotExist(err) {
+			t.Fatalf("victim.md must not be created through dangling symlink")
+		}
+	})
+}
+
+func TestScanRejectsSymlinks(t *testing.T) {
+	tmp := t.TempDir()
+	outsideFile := filepath.Join(tmp, "outside.tsv")
+	tsvContent := "ts\tphase\tdecision\twhy\tevidence\tresult\n2026-11-28T00:00:00Z\thandoff\tclass=sym\tbad\tC-11\treverted\n"
+	if err := os.WriteFile(outsideFile, []byte(tsvContent), fsperm.File); err != nil {
+		t.Fatalf("write outside: %v", err)
+	}
+
+	t.Run("symlinked --decisions-file rejected (absolute and relative)", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		link := filepath.Join(tmp, "dec-link.tsv")
+		if err := os.Symlink(outsideFile, link); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--decisions-file", link, "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject absolute symlinked --decisions-file")
+		}
+		relLink := filepath.Join(tmp, "dec-rel-link.tsv")
+		if err := os.Symlink("outside.tsv", relLink); err != nil {
+			t.Fatalf("relative symlink: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--decisions-file", relLink, "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject relative intra-dir symlinked --decisions-file")
+		}
+	})
+
+	t.Run("symlinked --runs-dir rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		realRuns := filepath.Join(tmp, "real-runs")
+		if err := os.MkdirAll(filepath.Join(realRuns, "main"), fsperm.Dir); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		linkRuns := filepath.Join(tmp, "runs-link")
+		if err := os.Symlink(realRuns, linkRuns); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--runs-dir", linkRuns, "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject symlinked --runs-dir")
+		}
+	})
+
+	t.Run("symlinked branch entry inside --runs-dir rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		runsDir := filepath.Join(tmp, "runs-with-sym-branch")
+		outsideBranch := filepath.Join(tmp, "outside-branch")
+		if err := os.MkdirAll(runsDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir runsDir: %v", err)
+		}
+		if err := os.MkdirAll(outsideBranch, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir outsideBranch: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(outsideBranch, "decisions.tsv"), []byte(tsvContent), fsperm.File); err != nil {
+			t.Fatalf("write tsv: %v", err)
+		}
+		if err := os.Symlink(outsideBranch, filepath.Join(runsDir, "evil-branch")); err != nil {
+			t.Fatalf("symlink branch: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--runs-dir", runsDir, "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject symlinked branch dir inside --runs-dir")
+		}
+	})
+
+	t.Run("symlinked decisions.tsv inside --runs-dir rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		runsDir := filepath.Join(tmp, "runs-with-sym-tsv")
+		branchDir := filepath.Join(runsDir, "feat-a")
+		if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir branchDir: %v", err)
+		}
+		if err := os.Symlink(outsideFile, filepath.Join(branchDir, "decisions.tsv")); err != nil {
+			t.Fatalf("symlink tsv: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--runs-dir", runsDir, "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject symlinked decisions.tsv inside --runs-dir")
+		}
+	})
+
+	t.Run("symlinked default branch decisions.tsv rejected", func(t *testing.T) {
+		repo := setupFakeRepo(t)
+		branchDir := filepath.Join(repo, ".harness", "runs", "main")
+		if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir branchDir: %v", err)
+		}
+		if err := os.Symlink(outsideFile, filepath.Join(branchDir, "decisions.tsv")); err != nil {
+			t.Fatalf("symlink tsv: %v", err)
+		}
+		if code, _, _ := runCLI(t, "scan", "--branch", "main", "--repo-root", repo); code == 0 {
+			t.Fatalf("expected scan to reject symlinked default branch decisions.tsv")
+		}
+	})
 }

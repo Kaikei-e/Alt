@@ -22,12 +22,14 @@ const (
 
 	defaultThreshold        = 2
 	minHigherRungReasonRune = 12
+	minReasonLetters        = 8
 	minDistinctReasonRunes  = 4
 	maxFallbackClauseRunes  = 48
 
 	astGrepRulesRel = "scripts/lint/ast-grep/rules"
 	corpusDirRel    = "scripts/harness/corpus"
 	altHarnessRel   = "scripts/altharness/alt-harness"
+	ruleLedgerRel   = ".agents/rules/rule-ledger.md"
 )
 
 // rungOrder defines the strict LOOP-07 /correct precedence ladder from highest
@@ -42,10 +44,66 @@ var rungRank = map[string]int{
 }
 
 var (
-	milestoneIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
-	corpusIDRE    = regexp.MustCompile(`^C-(\d{2,})$`)
-	astGrepIDRE   = regexp.MustCompile(`^\s*id\s*:\s*([A-Za-z0-9_.-]+)\s*$`)
+	milestoneIDRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
+	corpusIDRE      = regexp.MustCompile(`^C-(\d{2,})$`)
+	astGrepIDRE     = regexp.MustCompile(`^\s*id\s*:\s*([A-Za-z0-9_.-]+)\s*$`)
+	ruleLedgerIDRE  = regexp.MustCompile(`^R-\d{2,}$`)
+	ruleLedgerRowRE = regexp.MustCompile(`^\|\s*(R-\d{2,})\s*\|`)
 )
+
+var archAltHarnessSubcommands = map[string]struct{}{
+	"sync-go":   {},
+	"pki":       {},
+	"pyver":     {},
+	"layers":    {},
+	"generated": {},
+}
+
+var checkAltHarnessSubcommands = map[string]struct{}{
+	"screener":          {},
+	"ratchet":           {},
+	"suppressions":      {},
+	"suppression-diff":  {},
+	"canary":            {},
+	"entrypoint-canary": {},
+	"workflow":          {},
+	"hygiene":           {},
+	"generated":         {},
+	"preflight":         {},
+	"selfcheck":         {},
+	"lint":              {},
+	"lang":              {},
+	"adr-gate":          {},
+	"migration-gate":    {},
+	"postmortem":        {},
+	"loop-review":       {},
+	"loop-correct":      {},
+}
+
+var verifyAltHarnessSubcommands = map[string]struct{}{
+	"verify-claims": {},
+	"verify-diff":   {},
+	"verify-golden": {},
+	"verify-live":   {},
+	"flaky-hunt":    {},
+	"packet":        {},
+	"host-final":    {},
+	"corpus":        {},
+	"pytest-rand":   {},
+	"loop-eval":     {},
+}
+
+var archAllowedFileExts = map[string]struct{}{
+	".go":   {},
+	".py":   {},
+	".rs":   {},
+	".ts":   {},
+	".toml": {},
+	".yml":  {},
+	".yaml": {},
+	".json": {},
+	".sh":   {},
+}
 
 // validAltHarnessSubcommands mirrors the canonical alt-harness command set
 // (including LOOP-04..07 commands introduced by ADR-001038) so enforcement_ref
@@ -203,6 +261,70 @@ func sanitizeSingleLine(s string) string {
 func isSymlink(path string) bool {
 	st, err := os.Lstat(path)
 	return err == nil && st.Mode()&os.ModeSymlink != 0
+}
+
+func rejectSymlinkChainUnder(baseDir, targetPath string) error {
+	cleanBase := filepath.Clean(baseDir)
+	cleanTarget := filepath.Clean(targetPath)
+	rel, err := filepath.Rel(cleanBase, cleanTarget)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("path %s escapes base directory %s", targetPath, baseDir)
+	}
+	if rel == "." {
+		return nil
+	}
+	cur := cleanBase
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		st, err := os.Lstat(cur)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("stat path %s: %w", cur, err)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("path must not traverse symlink: %s", cur)
+		}
+	}
+	return nil
+}
+
+func rejectSymlinkOrDir(path, label string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat %s %s: %w", label, path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s must not be a symlink: %s", label, path)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s is a directory: %s", label, path)
+	}
+	return nil
+}
+
+func rejectSymlinkOrNonDir(path, label string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat %s %s: %w", label, path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s must not be a symlink: %s", label, path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s exists and is not a directory: %s", label, path)
+	}
+	return nil
 }
 
 func isWithinDir(path, root string) bool {

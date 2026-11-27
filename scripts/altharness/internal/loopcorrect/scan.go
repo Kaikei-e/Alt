@@ -115,16 +115,41 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 func resolveScanFiles(repoRoot, decisionsFile, runsDir, branch string) ([]string, error) {
 	if decisionsFile != "" {
-		info, err := os.Stat(decisionsFile)
-		if err != nil || !info.Mode().IsRegular() {
+		info, err := os.Lstat(decisionsFile)
+		if err != nil {
 			return nil, fmt.Errorf("decisions file not found: %s", decisionsFile)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("decisions file must not be a symlink: %s", decisionsFile)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("decisions file is not a regular file: %s", decisionsFile)
+		}
+		if isSymlink(filepath.Dir(decisionsFile)) {
+			return nil, fmt.Errorf("decisions parent directory must not be a symlink: %s", filepath.Dir(decisionsFile))
+		}
+		if repoRoot != "" && isWithinDir(filepath.Clean(decisionsFile), filepath.Clean(repoRoot)) {
+			if err := rejectSymlinkChainUnder(repoRoot, decisionsFile); err != nil {
+				return nil, err
+			}
 		}
 		return []string{decisionsFile}, nil
 	}
 	if runsDir != "" {
-		info, err := os.Stat(runsDir)
-		if err != nil || !info.IsDir() {
+		info, err := os.Lstat(runsDir)
+		if err != nil {
 			return nil, fmt.Errorf("runs directory not found: %s", runsDir)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("runs directory must not be a symlink: %s", runsDir)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("runs directory is not a directory: %s", runsDir)
+		}
+		if repoRoot != "" && isWithinDir(filepath.Clean(runsDir), filepath.Clean(repoRoot)) {
+			if err := rejectSymlinkChainUnder(repoRoot, runsDir); err != nil {
+				return nil, err
+			}
 		}
 		entries, err := os.ReadDir(runsDir)
 		if err != nil {
@@ -133,11 +158,29 @@ func resolveScanFiles(repoRoot, decisionsFile, runsDir, branch string) ([]string
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 		var out []string
 		for _, ent := range entries {
-			if !ent.IsDir() {
+			entryPath := filepath.Join(runsDir, ent.Name())
+			entInfo, err := os.Lstat(entryPath)
+			if err != nil {
+				return nil, fmt.Errorf("stat runs entry %s: %w", entryPath, err)
+			}
+			if entInfo.Mode()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("runs directory entry must not be a symlink: %s", entryPath)
+			}
+			if !entInfo.IsDir() {
 				continue
 			}
-			candidate := filepath.Join(runsDir, ent.Name(), "decisions.tsv")
-			if st, err := os.Stat(candidate); err == nil && st.Mode().IsRegular() {
+			candidate := filepath.Join(entryPath, "decisions.tsv")
+			st, err := os.Lstat(candidate)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return nil, fmt.Errorf("stat decisions file %s: %w", candidate, err)
+			}
+			if st.Mode()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("decisions file must not be a symlink: %s", candidate)
+			}
+			if st.Mode().IsRegular() {
 				out = append(out, candidate)
 			}
 		}
@@ -148,7 +191,20 @@ func resolveScanFiles(repoRoot, decisionsFile, runsDir, branch string) ([]string
 		return nil, err
 	}
 	candidate := filepath.Join(runDir, "decisions.tsv")
-	if st, err := os.Stat(candidate); err == nil && st.Mode().IsRegular() {
+	if err := rejectSymlinkChainUnder(repoRoot, candidate); err != nil {
+		return nil, err
+	}
+	st, err := os.Lstat(candidate)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("stat decisions file %s: %w", candidate, err)
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("decisions file must not be a symlink: %s", candidate)
+	}
+	if st.Mode().IsRegular() {
 		return []string{candidate}, nil
 	}
 	return []string{}, nil
@@ -400,6 +456,16 @@ func normalizeSlug(s string, maxRunes int) string {
 }
 
 func readDecisionRows(path string) ([]decisionRow, error) {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("decisions file must not be a symlink: %s", path)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("decisions file is not a regular file: %s", path)
+	}
 	raw, err := readFileInParentRoot(path)
 	if err != nil {
 		return nil, err
