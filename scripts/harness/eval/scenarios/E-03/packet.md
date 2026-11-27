@@ -12,7 +12,6 @@ scope:
     - "src/**"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -44,7 +43,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `stream-handler`
 - **編集許可パス**: `src/**`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `pyrefly`
 - **要件**: `src/stream.py` を事前に読んだうえで、ストリームの `aclose()` が例外を送出しても `finally` で終端センチネル `None` が必ずキューへ投入される挙動を維持すること。

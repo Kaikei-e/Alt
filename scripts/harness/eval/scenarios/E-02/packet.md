@@ -12,7 +12,6 @@ scope:
     - "src/**"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -45,7 +44,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `worker-queue`
 - **編集許可パス**: `src/**`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `C901`, `PLR0912`
 - **要件**: `src/queue.py` を事前に読んだうえで、制御フロー分割時も正常系 `(wait_time, sid)` の返却と `CancelledError` 時のキャンセル再送出を維持すること。

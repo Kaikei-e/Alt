@@ -249,6 +249,7 @@ required_reads = ["pkg/a.go"]
 	writeFilePerm(t, filepath.Join(tmp, "scripts/harness/eval/scenarios/E-01/packet.md"), `---
 packet_version: "1.0"
 packet_id: "PKT-BAD-001"
+base_commit: "6cae3ef6f"
 scope:
   target: "svc-a"
   allowed_paths: ["pkg/**"]
@@ -334,32 +335,193 @@ required_reads = []
 	}
 }
 
+const validE01GoFix = `package middleware
+
+import "errors"
+
+type HTTPError struct {
+	Code    int
+	Message string
+}
+
+func (e *HTTPError) Error() string {
+	return e.Message
+}
+
+func recordServerError(err error, recordFailure func()) {
+	if err == nil {
+		return
+	}
+	// Only 5xx server errors should trip the circuit breaker; 4xx must be ignored.
+	var he *HTTPError
+	if errors.As(err, &he) && he.Code >= 500 {
+		recordFailure()
+	}
+}
+`
+
+const validE02PyFix = `"""Minimal reproduction of HybridPrioritySemaphore.acquire return path."""
+
+import asyncio
+from collections.abc import Callable
+
+
+class PrioritySemaphore:
+    def __init__(
+        self,
+        record_queued_acquire: Callable[[str, float, bool], tuple[float, int]],
+    ) -> None:
+        self._record_queued_acquire = record_queued_acquire
+
+    def _record_slot(
+        self,
+        result: str,
+        start_time: float,
+        high_priority: bool,
+    ) -> tuple[float, int]:
+        return self._record_queued_acquire(result, start_time, high_priority)
+
+    async def acquire(
+        self,
+        future: asyncio.Future[str],
+        start_time: float,
+        high_priority: bool,
+    ):
+        try:
+            result = await future
+            wait_time, sid = self._record_slot(
+                result, start_time, high_priority
+            )
+        except asyncio.CancelledError:
+            if not future.done():
+                future.cancel()
+            raise
+        else:
+            return wait_time, sid
+`
+
+const validE03PyFix = `"""Minimal reproduction of SSE stream forwarding with contextlib.aclosing."""
+
+import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+
+
+async def forward_stream_chunks(
+    original_stream: AsyncGenerator[str, None],
+    data_queue: asyncio.Queue[tuple[str, str] | None],
+) -> None:
+    try:
+        async with aclosing(original_stream) as stream:
+            async for chunk in stream:
+                await data_queue.put(("data", chunk))
+    except Exception:
+        await data_queue.put(("error", "summary generation failed"))
+    finally:
+        # Always emit terminal sentinel so the SSE response finishes cleanly.
+        await data_queue.put(None)
+`
+
+const validE04GoFix = `package main
+
+import (
+	"net/http"
+	"time"
+
+	"alt/httpserver"
+)
+
+func newPlaintextServer(addr string, h http.Handler) *http.Server {
+	cfg := httpserver.Config{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	return httpserver.New(cfg)
+}
+`
+
+const validE05GoFix = `package bootstrap
+
+import (
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+)
+
+// Matches Echo v4 middleware.BodyLimit("1M") decimal megabyte (1,000,000 bytes).
+const (
+	maxRequestBodyBytes = 1_000_000
+	apiV1Prefix         = "/api/v1"
+)
+
+func registerSummarizeGroup(e *echo.Echo, handler echo.HandlerFunc) {
+	api := e.Group(apiV1Prefix)
+	api.Use(middleware.BodyLimit(maxRequestBodyBytes))
+	api.POST("/summarize", handler)
+}
+`
+
+const validE07ShFix = `#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DOCKER_BIN="${DOCKER_BIN:-docker}"
+COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/compose/compose.yaml}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-alt}"
+ENV_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-file) ENV_FILE="$2"; shift 2 ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+RENDER_ERR="$(mktemp)"
+trap 'rm -f "$RENDER_ERR"' EXIT
+
+compose_args=()
+if [[ -n "$ENV_FILE" ]]; then
+  compose_args+=(--env-file "$ENV_FILE")
+fi
+compose_args+=(-f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" config -q)
+
+"$DOCKER_BIN" compose "${compose_args[@]}" 2>"$RENDER_ERR"
+if grep -q 'variable is not set' "$RENDER_ERR"; then
+  echo "FAIL: unset compose interpolation variable detected" >&2
+  exit 1
+fi
+`
+
 func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepoRoot(t)
 
 	cases := []struct {
-		id         string
-		corpusID   string
-		afterFile  string
-		packetID   string
-		neutralDir string
-		targetFile string
-		expectC01  bool
-		modFuncs   int
+		id           string
+		corpusID     string
+		afterFile    string
+		packetID     string
+		neutralDir   string
+		targetFile   string
+		expectC01    bool
+		requireDiff  bool
+		validEdit    string
+		validFuncs   int
+		buggyModFunc int
 	}{
-		{"E-01", "C-01", "after.go", "PKT-MW-001", "svc-middleware", "pkg/middleware/errors.go", true, 1},
-		{"E-02", "C-06", "after.py", "PKT-QUEUE-002", "worker-queue", "src/queue.py", true, 1},
-		{"E-03", "C-07", "after.py", "PKT-STREAM-003", "stream-handler", "src/stream.py", true, 1},
-		{"E-04", "C-11", "after.go", "PKT-SERVER-004", "edge-server", "cmd/server/main.go", true, 1},
-		{"E-05", "C-15", "after.go", "PKT-API-005", "api-bootstrap", "internal/bootstrap/server.go", true, 1},
-		{"E-06", "C-16", "after.go", "PKT-SCHEMA-006", "schema-adapter", "internal/openapi/server.gen.go", false, 1},
-		{"E-07", "C-18", "after.sh", "PKT-STACK-007", "stack-check", "scripts/check-compose-variables.sh", false, 0},
+		{"E-01", "C-01", "after.go", "PKT-MW-001", "svc-middleware", "pkg/middleware/errors.go", true, true, validE01GoFix, 1, 1},
+		{"E-02", "C-06", "after.py", "PKT-QUEUE-002", "worker-queue", "src/queue.py", true, true, validE02PyFix, 2, 1},
+		{"E-03", "C-07", "after.py", "PKT-STREAM-003", "stream-handler", "src/stream.py", true, true, validE03PyFix, 1, 1},
+		{"E-04", "C-11", "after.go", "PKT-SERVER-004", "edge-server", "cmd/server/main.go", true, true, validE04GoFix, 1, 1},
+		{"E-05", "C-15", "after.go", "PKT-API-005", "api-bootstrap", "internal/bootstrap/server.go", true, true, validE05GoFix, 1, 1},
+		{"E-06", "C-16", "after.go", "PKT-SCHEMA-006", "schema-adapter", "internal/openapi/server.gen.go", false, false, "", 0, 1},
+		{"E-07", "C-18", "after.sh", "PKT-STACK-007", "stack-check", "scripts/check-compose-variables.sh", false, true, validE07ShFix, 0, 0},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {
-			outDir := t.TempDir()
+			outDir := neutralTempDir(t)
 			var stageOut, stageErr bytes.Buffer
 			rc := Run(ctx, []string{"stage", tc.id, "--out-dir", outDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr)
 			if rc != 0 {
@@ -375,15 +537,32 @@ func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 			if staged.BaseCommit == "" {
 				t.Fatalf("empty base_commit")
 			}
-			// Verify zero corpus/rubric metadata leaked into staged workspace.
-			for _, forbidden := range []string{"meta.toml", "scenario.toml", "rubric.md"} {
+			// Verify zero corpus/rubric/oracle files leaked into staged workspace.
+			for _, forbidden := range []string{"meta.toml", "scenario.toml", "rubric.md", "test_characterization.sh"} {
 				if _, err := os.Stat(filepath.Join(staged.WorkspaceDir, forbidden)); err == nil {
 					t.Fatalf("forbidden file %s found in staged workspace", forbidden)
 				}
 			}
+			// Verify zero internal harness label comments leaked into staged target_file or run.sh.
+			stagedTargetBytes, err := readFileContainment(staged.WorkspaceDir, tc.targetFile)
+			if err != nil {
+				t.Fatalf("read staged target: %v", err)
+			}
+			if harnessLabelCommentRE.Match(stagedTargetBytes) {
+				t.Fatalf("staged %s leaked internal harness label:\n%s", tc.targetFile, string(stagedTargetBytes))
+			}
+			runShBytes, err := readFileContainment(staged.WorkspaceDir, "scripts/lint/run.sh")
+			if err != nil {
+				t.Fatalf("read staged run.sh: %v", err)
+			}
+			lowerRunSh := strings.ToLower(string(runShBytes))
+			for _, tok := range forbiddenNeutralTokens {
+				if strings.Contains(lowerRunSh, tok) {
+					t.Fatalf("staged run.sh for %s contains forbidden neutral token %q", tc.id, tok)
+				}
+			}
 
-			// 1) Grade clean before.* workspace with valid read transcript -> PASS (4/4).
-			auxDir := t.TempDir()
+			auxDir := neutralTempDir(t)
 			cleanHandoff := filepath.Join(auxDir, "handoff-clean.md")
 			writeFilePerm(t, cleanHandoff, makeCleanHandoff(tc.packetID, tc.neutralDir), fsperm.File)
 
@@ -398,6 +577,9 @@ func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 			})
 			writeFilePerm(t, transcriptPath, string(readEvt)+"\n", fsperm.File)
 
+			// 1) Zero-edit no-op check:
+			//    - Scenarios with require_non_empty_diff=true MUST FAIL with NOOP_ZERO_EDITS!
+			//    - E-06 (DO NOT EDIT, require_non_empty_diff=false) MUST PASS 4/4!
 			var gOut, gErr bytes.Buffer
 			rc = Run(ctx, []string{
 				"grade",
@@ -409,18 +591,58 @@ func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 				"--repo-root", repo,
 				"--format", "json",
 			}, &gOut, &gErr)
-			if rc != 0 {
-				t.Fatalf("grade clean %s failed (rc=%d): stdout=%s stderr=%s", tc.id, rc, gOut.String(), gErr.String())
+			var noopRes GradeResult
+			if err := json.Unmarshal(gOut.Bytes(), &noopRes); err != nil {
+				t.Fatalf("unmarshal zero-edit grade %s: %v\nstdout=%s", tc.id, err, gOut.String())
 			}
-			var cleanRes GradeResult
-			if err := json.Unmarshal(gOut.Bytes(), &cleanRes); err != nil {
-				t.Fatalf("unmarshal clean grade: %v", err)
-			}
-			if !cleanRes.Passed || cleanRes.Score != 4 || cleanRes.MaxScore != 4 {
-				t.Fatalf("clean %s want 4/4 passed, got %+v", tc.id, cleanRes)
+			if tc.requireDiff {
+				if rc != 1 || noopRes.Passed {
+					t.Fatalf("zero-edit %s want FAIL (rc=1), got rc=%d res=%+v", tc.id, rc, noopRes)
+				}
+				if !strings.Contains(gOut.String(), "NOOP_ZERO_EDITS") {
+					t.Fatalf("zero-edit %s missing NOOP_ZERO_EDITS: %s", tc.id, gOut.String())
+				}
+
+				// 2) Genuine valid edit -> MUST score 4/4 PASS!
+				mode := fsperm.File
+				if strings.HasSuffix(tc.targetFile, ".sh") {
+					mode = fsperm.Dir
+				}
+				if err := writeFileContainment(staged.WorkspaceDir, tc.targetFile, []byte(tc.validEdit), mode); err != nil {
+					t.Fatalf("write valid edit %s: %v", tc.id, err)
+				}
+				validHandoff := filepath.Join(auxDir, "handoff-valid.md")
+				writeFilePerm(t, validHandoff, makeModifiedHandoff(tc.packetID, tc.neutralDir, tc.targetFile, tc.validFuncs), fsperm.File)
+
+				gOut.Reset()
+				gErr.Reset()
+				rc = Run(ctx, []string{
+					"grade",
+					"--scenario", tc.id,
+					"--workspace", staged.WorkspaceDir,
+					"--handoff", validHandoff,
+					"--transcript", transcriptPath,
+					"--base-commit", staged.BaseCommit,
+					"--repo-root", repo,
+					"--format", "json",
+				}, &gOut, &gErr)
+				if rc != 0 {
+					t.Fatalf("valid edit %s failed (rc=%d): stdout=%s stderr=%s", tc.id, rc, gOut.String(), gErr.String())
+				}
+				var validRes GradeResult
+				if err := json.Unmarshal(gOut.Bytes(), &validRes); err != nil {
+					t.Fatalf("unmarshal valid grade %s: %v", tc.id, err)
+				}
+				if !validRes.Passed || validRes.Score != 4 || validRes.MaxScore != 4 {
+					t.Fatalf("valid edit %s want 4/4 passed, got %+v", tc.id, validRes)
+				}
+			} else {
+				if rc != 0 || !noopRes.Passed || noopRes.Score != 4 || noopRes.MaxScore != 4 {
+					t.Fatalf("DO-NOT-EDIT %s want 4/4 passed, got rc=%d res=%+v", tc.id, rc, noopRes)
+				}
 			}
 
-			// 2) Apply buggy after.* over target_file and grade -> MUST FAIL.
+			// 3) Apply buggy after.* over target_file and grade -> MUST FAIL.
 			afterBytes, err := readFileContainment(filepath.Join(repo, "scripts/harness/corpus", tc.corpusID), tc.afterFile)
 			if err != nil {
 				t.Fatalf("read after file: %v", err)
@@ -433,7 +655,7 @@ func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 				t.Fatalf("overwrite target with buggy after: %v", err)
 			}
 			buggyHandoff := filepath.Join(auxDir, "handoff-buggy.md")
-			writeFilePerm(t, buggyHandoff, makeModifiedHandoff(tc.packetID, tc.neutralDir, tc.targetFile, tc.modFuncs), fsperm.File)
+			writeFilePerm(t, buggyHandoff, makeModifiedHandoff(tc.packetID, tc.neutralDir, tc.targetFile, tc.buggyModFunc), fsperm.File)
 
 			gOut.Reset()
 			gErr.Reset()
@@ -473,8 +695,8 @@ func TestStageAndGradeAllSevenScenariosBeforeAndAfter(t *testing.T) {
 func TestStageRefusesSymlinkOutDir(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepoRoot(t)
-	realDir := t.TempDir()
-	linkParent := t.TempDir()
+	realDir := neutralTempDir(t)
+	linkParent := neutralTempDir(t)
 	sym := filepath.Join(linkParent, "out-link")
 	if err := os.Symlink(realDir, sym); err != nil {
 		t.Fatalf("symlink: %v", err)
@@ -489,7 +711,7 @@ func TestStageRefusesSymlinkOutDir(t *testing.T) {
 func TestTranscriptReadAuditFormatsAndFabricationDetection(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepoRoot(t)
-	outDir := t.TempDir()
+	outDir := neutralTempDir(t)
 
 	var stageOut, stageErr bytes.Buffer
 	if rc := Run(ctx, []string{"stage", "E-01", "--out-dir", outDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr); rc != 0 {
@@ -499,9 +721,12 @@ func TestTranscriptReadAuditFormatsAndFabricationDetection(t *testing.T) {
 	if err := json.Unmarshal(stageOut.Bytes(), &staged); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	auxDir := t.TempDir()
+	if err := writeFileContainment(staged.WorkspaceDir, "pkg/middleware/errors.go", []byte(validE01GoFix), fsperm.File); err != nil {
+		t.Fatalf("apply valid E-01 fix: %v", err)
+	}
+	auxDir := neutralTempDir(t)
 	handoffPath := filepath.Join(auxDir, "handoff.md")
-	writeFilePerm(t, handoffPath, makeCleanHandoff("PKT-MW-001", "svc-middleware"), fsperm.File)
+	writeFilePerm(t, handoffPath, makeModifiedHandoff("PKT-MW-001", "svc-middleware", "pkg/middleware/errors.go", 1), fsperm.File)
 	absTarget := filepath.Join(staged.WorkspaceDir, "pkg/middleware/errors.go")
 
 	formats := []struct {
@@ -759,12 +984,22 @@ func TestCompareInsufficientTrialsAndRecording(t *testing.T) {
 		t.Fatalf("read decisions.tsv: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(tsvBytes)), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected header + 1 decision row, got %d lines:\n%s", len(lines), string(tsvBytes))
+	if len(lines) < 2 {
+		t.Fatalf("expected header + decision row(s), got %d lines:\n%s", len(lines), string(tsvBytes))
 	}
-	cols := strings.Split(lines[1], "\t")
+	loopEvalRows := 0
+	for _, ln := range lines[1:] {
+		c := strings.Split(ln, "\t")
+		if len(c) == 6 && c[1] == "loop-eval" {
+			loopEvalRows++
+		}
+	}
+	if loopEvalRows != 1 {
+		t.Fatalf("expected 1 loop-eval row, got %d:\n%s", loopEvalRows, string(tsvBytes))
+	}
+	cols := strings.Split(lines[len(lines)-1], "\t")
 	if len(cols) != 6 {
-		t.Fatalf("expected 6 TSV columns, got %d: %q", len(cols), lines[1])
+		t.Fatalf("expected 6 TSV columns, got %d: %q", len(cols), lines[len(lines)-1])
 	}
 	if cols[1] != "loop-eval" || cols[5] != "info" {
 		t.Fatalf("expected phase=loop-eval result=info, got phase=%q result=%q", cols[1], cols[5])
@@ -772,6 +1007,7 @@ func TestCompareInsufficientTrialsAndRecording(t *testing.T) {
 	if !guards.IsValidEvidencePointer(cols[4]) {
 		t.Fatalf("evidence column %q is not a valid pointer", cols[4])
 	}
+	prevLineCount := len(lines)
 
 	// 3) Regression case: swap before and after -> verdict=regressed, rc=1, still recorded!
 	out.Reset()
@@ -804,8 +1040,8 @@ func TestCompareInsufficientTrialsAndRecording(t *testing.T) {
 		t.Fatalf("read decisions.tsv after regression: %v", err)
 	}
 	lines = strings.Split(strings.TrimSpace(string(tsvBytes)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected header + 2 decision rows after recording regression, got %d", len(lines))
+	if len(lines) != prevLineCount+1 {
+		t.Fatalf("expected +1 decision row after recording regression (prev=%d), got %d:\n%s", prevLineCount, len(lines), string(tsvBytes))
 	}
 
 	// 4) No-change case: identical before and after -> verdict=no_change, rc=0.
@@ -834,7 +1070,7 @@ func TestCompareInsufficientTrialsAndRecording(t *testing.T) {
 func TestGradeAutoResolvesBaseCommitAndRejectsMalformedTranscript(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepoRoot(t)
-	outDir := t.TempDir()
+	outDir := neutralTempDir(t)
 
 	var stageOut, stageErr bytes.Buffer
 	if rc := Run(ctx, []string{"stage", "E-01", "--out-dir", outDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr); rc != 0 {
@@ -844,9 +1080,12 @@ func TestGradeAutoResolvesBaseCommitAndRejectsMalformedTranscript(t *testing.T) 
 	if err := json.Unmarshal(stageOut.Bytes(), &staged); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	auxDir := t.TempDir()
+	if err := writeFileContainment(staged.WorkspaceDir, "pkg/middleware/errors.go", []byte(validE01GoFix), fsperm.File); err != nil {
+		t.Fatalf("apply valid E-01 fix: %v", err)
+	}
+	auxDir := neutralTempDir(t)
 	handoffPath := filepath.Join(auxDir, "handoff.md")
-	writeFilePerm(t, handoffPath, makeCleanHandoff("PKT-MW-001", "svc-middleware"), fsperm.File)
+	writeFilePerm(t, handoffPath, makeModifiedHandoff("PKT-MW-001", "svc-middleware", "pkg/middleware/errors.go", 1), fsperm.File)
 
 	// Omit --base-commit -> auto-resolves workspace root commit.
 	var gOut, gErr bytes.Buffer
@@ -913,5 +1152,582 @@ func TestCharTestSignalRejectsForbiddenCommands(t *testing.T) {
 	})
 	if sigBG.Passed || len(sigBG.Errors) == 0 || sigBG.Errors[0].Code != "FORBIDDEN_BACKGROUND_EXECUTION" {
 		t.Fatalf("expected FORBIDDEN_BACKGROUND_EXECUTION, got %+v", sigBG)
+	}
+}
+
+func neutralTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "work-run-*")
+	if err != nil {
+		t.Fatalf("mkdirtemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// TestSPEC03ZeroEditNoopFailsAndRunShSupportsPolicy reproduces SPEC-03:
+// - Zero-edit no-op on E-01 must NOT score 4/4 PASS (fails with NOOP_ZERO_EDITS and run.sh exit 1).
+// - Staged scripts/lint/run.sh must parse --policy block-new and --policy=fix-existing.
+// - Genuine valid fix on E-01 scores 4/4 PASS.
+func TestSPEC03ZeroEditNoopFailsAndRunShSupportsPolicy(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepoRoot(t)
+	outDir := neutralTempDir(t)
+
+	var stageOut, stageErr bytes.Buffer
+	if rc := Run(ctx, []string{"stage", "E-01", "--out-dir", outDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr); rc != 0 {
+		t.Fatalf("stage E-01 failed (rc=%d): %s", rc, stageErr.String())
+	}
+	var staged StageResult
+	if err := json.Unmarshal(stageOut.Bytes(), &staged); err != nil {
+		t.Fatalf("unmarshal stage: %v", err)
+	}
+
+	auxDir := neutralTempDir(t)
+	cleanHandoff := filepath.Join(auxDir, "ho-noop.md")
+	writeFilePerm(t, cleanHandoff, makeCleanHandoff("PKT-MW-001", "svc-middleware"), fsperm.File)
+	trPath := filepath.Join(auxDir, "tr.jsonl")
+	writeFilePerm(t, trPath, `{"type":"tool_use","name":"Read","input":{"file_path":"pkg/middleware/errors.go"}}`+"\n", fsperm.File)
+
+	// 1) Zero-edit no-op MUST FAIL with NOOP_ZERO_EDITS (even with --no-rerun).
+	var gOut, gErr bytes.Buffer
+	rc := Run(ctx, []string{
+		"grade",
+		"--scenario", "E-01",
+		"--workspace", staged.WorkspaceDir,
+		"--handoff", cleanHandoff,
+		"--transcript", trPath,
+		"--require-transcript",
+		"--base-commit", staged.BaseCommit,
+		"--no-rerun",
+		"--repo-root", repo,
+		"--format", "json",
+	}, &gOut, &gErr)
+	if rc != 1 {
+		t.Fatalf("zero-edit E-01 with --no-rerun: want rc=1, got %d (stdout=%s)", rc, gOut.String())
+	}
+	if !strings.Contains(gOut.String(), "NOOP_ZERO_EDITS") {
+		t.Fatalf("expected NOOP_ZERO_EDITS in grade output, got: %s", gOut.String())
+	}
+
+	// 2) On unmodified before.go:
+	//    - `./scripts/lint/run.sh svc-middleware` (default fix-existing) exits 1 (errorlint violation)
+	//    - `./scripts/lint/run.sh --policy=fix-existing svc-middleware` exits 1
+	//    - `./scripts/lint/run.sh --policy block-new svc-middleware` exits 0 (parses --policy cleanly)
+	if code, _, _, _, err := runBashForeground(ctx, "./scripts/lint/run.sh svc-middleware", staged.WorkspaceDir, 10_000_000_000); err != nil || code != 1 {
+		t.Fatalf("run.sh default on unmodified E-01: want exit 1, got code=%d err=%v", code, err)
+	}
+	if code, _, _, _, err := runBashForeground(ctx, "./scripts/lint/run.sh --policy=fix-existing svc-middleware", staged.WorkspaceDir, 10_000_000_000); err != nil || code != 1 {
+		t.Fatalf("run.sh --policy=fix-existing on unmodified E-01: want exit 1, got code=%d err=%v", code, err)
+	}
+	if code, _, outB, errB, err := runBashForeground(ctx, "./scripts/lint/run.sh --policy block-new svc-middleware", staged.WorkspaceDir, 10_000_000_000); err != nil || code != 0 {
+		t.Fatalf("run.sh --policy block-new on unmodified E-01: want exit 0, got code=%d err=%v out=%s stderr=%s", code, err, string(outB), string(errB))
+	}
+
+	// 3) Genuine valid errorlint fix (errors.As + && he.Code >= 500) -> run.sh exits 0 AND grade scores 4/4 PASS.
+	validFix := `package middleware
+
+import "errors"
+
+type HTTPError struct {
+	Code    int
+	Message string
+}
+
+func (e *HTTPError) Error() string {
+	return e.Message
+}
+
+func recordServerError(err error, recordFailure func()) {
+	if err == nil {
+		return
+	}
+	// Only 5xx server errors should trip the circuit breaker; 4xx must be ignored.
+	var he *HTTPError
+	if errors.As(err, &he) && he.Code >= 500 {
+		recordFailure()
+	}
+}
+`
+	if err := writeFileContainment(staged.WorkspaceDir, "pkg/middleware/errors.go", []byte(validFix), fsperm.File); err != nil {
+		t.Fatalf("write valid fix: %v", err)
+	}
+	if code, _, outB, errB, err := runBashForeground(ctx, "./scripts/lint/run.sh --policy=fix-existing svc-middleware", staged.WorkspaceDir, 10_000_000_000); err != nil || code != 0 {
+		t.Fatalf("run.sh --policy=fix-existing after valid fix: want exit 0, got code=%d err=%v out=%s stderr=%s", code, err, string(outB), string(errB))
+	}
+	validHandoff := filepath.Join(auxDir, "ho-valid.md")
+	writeFilePerm(t, validHandoff, makeModifiedHandoff("PKT-MW-001", "svc-middleware", "pkg/middleware/errors.go", 1), fsperm.File)
+	gOut.Reset()
+	gErr.Reset()
+	rc = Run(ctx, []string{
+		"grade",
+		"--scenario", "E-01",
+		"--workspace", staged.WorkspaceDir,
+		"--handoff", validHandoff,
+		"--transcript", trPath,
+		"--require-transcript",
+		"--base-commit", staged.BaseCommit,
+		"--repo-root", repo,
+		"--format", "json",
+	}, &gOut, &gErr)
+	if rc != 0 {
+		t.Fatalf("valid fix E-01 grade: want rc=0, got %d (stdout=%s stderr=%s)", rc, gOut.String(), gErr.String())
+	}
+	var res GradeResult
+	if err := json.Unmarshal(gOut.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal valid grade: %v", err)
+	}
+	if !res.Passed || res.Score != 4 || res.MaxScore != 4 {
+		t.Fatalf("valid fix E-01: want 4/4 PASS, got %+v", res)
+	}
+}
+
+// TestSPEC08AndSEC06OracleIsolationOutDirNeutralityAndHandoffParity reproduces SPEC-08 and SEC-06:
+// - --out-dir containing forbidden tokens (/tmp/.../eval-benchmark-leak) rejected with NON_NEUTRAL_OUT_DIR.
+// - test_characterization.sh MUST NOT exist inside staged workspace.
+// - Internal harness labels (e.g. ARCH-02 in E-04/C-11) stripped from staged target file.
+// - Tampering with workspace/test_characterization.sh cannot fool grader (oracle executes from sc.Dir).
+// - Markdown handoff with non-structured frontmatter + fenced ```json with unread extra.go FAILS with UNVERIFIED_FILE_READ_CLAIM.
+// - User-role spoofed transcript and failed read tool calls FAIL with UNVERIFIED_FILE_READ_CLAIM.
+func TestSPEC08AndSEC06OracleIsolationOutDirNeutralityAndHandoffParity(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepoRoot(t)
+
+	// 1) Non-neutral --out-dir MUST be rejected with NON_NEUTRAL_OUT_DIR.
+	parent := neutralTempDir(t)
+	badOutDir := filepath.Join(parent, "eval-benchmark-leak")
+	var stageOut, stageErr bytes.Buffer
+	rc := Run(ctx, []string{"stage", "E-01", "--out-dir", badOutDir, "--repo-root", repo}, &stageOut, &stageErr)
+	if rc == 0 {
+		t.Fatalf("non-neutral --out-dir %s was accepted (rc=0)", badOutDir)
+	}
+	if !strings.Contains(stageErr.String(), "NON_NEUTRAL_OUT_DIR") {
+		t.Fatalf("expected NON_NEUTRAL_OUT_DIR error, got: %s", stageErr.String())
+	}
+
+	// 2) Oracle isolation + ARCH-02 label stripping on E-04.
+	goodOutDir := neutralTempDir(t)
+	stageOut.Reset()
+	stageErr.Reset()
+	if rc := Run(ctx, []string{"stage", "E-04", "--out-dir", goodOutDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr); rc != 0 {
+		t.Fatalf("stage E-04 failed: %s", stageErr.String())
+	}
+	var stagedE04 StageResult
+	if err := json.Unmarshal(stageOut.Bytes(), &stagedE04); err != nil {
+		t.Fatalf("unmarshal E-04 stage: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stagedE04.WorkspaceDir, "test_characterization.sh")); !os.IsNotExist(err) {
+		t.Fatalf("oracle test_characterization.sh must NOT be staged into workspace")
+	}
+	stagedMain, err := readFileContainment(stagedE04.WorkspaceDir, "cmd/server/main.go")
+	if err != nil {
+		t.Fatalf("read staged cmd/server/main.go: %v", err)
+	}
+	if strings.Contains(string(stagedMain), "ARCH-02") {
+		t.Fatalf("internal harness label ARCH-02 leaked into staged cmd/server/main.go:\n%s", string(stagedMain))
+	}
+
+	// 3) SEC-06 exact repro: metadata frontmatter + fenced ```json with unread extra.go + user-role transcript spoof.
+	stageOut.Reset()
+	stageErr.Reset()
+	if rc := Run(ctx, []string{"stage", "E-01", "--out-dir", goodOutDir, "--repo-root", repo, "--format", "json"}, &stageOut, &stageErr); rc != 0 {
+		t.Fatalf("stage E-01 failed: %s", stageErr.String())
+	}
+	var stagedE01 StageResult
+	if err := json.Unmarshal(stageOut.Bytes(), &stagedE01); err != nil {
+		t.Fatalf("unmarshal E-01 stage: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stagedE01.WorkspaceDir, "test_characterization.sh")); !os.IsNotExist(err) {
+		t.Fatalf("oracle test_characterization.sh must NOT be staged into E-01 workspace")
+	}
+	// Plant a fake workspace test_characterization.sh that always exits 0, and break errors.go -> oracle from sc.Dir must STILL fail!
+	writeFilePerm(t, filepath.Join(stagedE01.WorkspaceDir, "test_characterization.sh"), "#!/usr/bin/env bash\nexit 0\n", fsperm.Dir)
+	afterBytes, err := readFileContainment(filepath.Join(repo, "scripts/harness/corpus/C-01"), "after.go")
+	if err != nil {
+		t.Fatalf("read C-01/after.go: %v", err)
+	}
+	if err := writeFileContainment(stagedE01.WorkspaceDir, "pkg/middleware/errors.go", afterBytes, fsperm.File); err != nil {
+		t.Fatalf("write C-01/after.go: %v", err)
+	}
+	scE01, err := loadScenario(repo, "E-01")
+	if err != nil {
+		t.Fatalf("loadScenario E-01: %v", err)
+	}
+	charSig := runCharTestSignal(ctx, stagedE01.WorkspaceDir, scE01)
+	if charSig.Passed {
+		t.Fatalf("tampered workspace/test_characterization.sh bypassed trusted oracle in sc.Dir")
+	}
+	_ = os.Remove(filepath.Join(stagedE01.WorkspaceDir, "test_characterization.sh"))
+
+	// Restore valid E-01 fix + add extra.go not read in transcript, with metadata frontmatter + fenced json handoff.
+	validE01 := `package middleware
+
+import "errors"
+
+type HTTPError struct {
+	Code    int
+	Message string
+}
+
+func (e *HTTPError) Error() string {
+	return e.Message
+}
+
+func recordServerError(err error, recordFailure func()) {
+	if err == nil {
+		return
+	}
+	var he *HTTPError
+	if errors.As(err, &he) && he.Code >= 500 {
+		recordFailure()
+	}
+}
+`
+	if err := writeFileContainment(stagedE01.WorkspaceDir, "pkg/middleware/errors.go", []byte(validE01), fsperm.File); err != nil {
+		t.Fatalf("write valid E-01: %v", err)
+	}
+	if err := writeFileContainment(stagedE01.WorkspaceDir, "pkg/middleware/extra.go", []byte("package middleware\nfunc H() int { return 1 }\n"), fsperm.File); err != nil {
+		t.Fatalf("write extra.go: %v", err)
+	}
+
+	auxDir := neutralTempDir(t)
+	fencedHandoff := filepath.Join(auxDir, "handoff-fenced.md")
+	writeFilePerm(t, fencedHandoff, `---
+doc: handoff
+---
+## 1. 修正ファイルと行数
+x
+## 2. 実行時挙動の変更可能性の有無
+x
+## 3. 変更理由
+x
+`+"```json\n"+`{"packet_id":"PKT-MW-001","status":"completed","modified_files":[{"path":"pkg/middleware/errors.go","added_lines":3,"deleted_lines":1},{"path":"pkg/middleware/extra.go","added_lines":2,"deleted_lines":0}],"modified_functions_count":2,"runtime_behavior_impact":{"has_change":false,"checked_dimensions":["control_flow"],"summary":"変更なし","candidate_responses":[]},"rationale":"x","verification":{"command":"./scripts/lint/run.sh svc-middleware","exit_code":0}}`+"\n```\n", fsperm.File)
+
+	// (a) Transcript reads only errors.go (not extra.go) -> fenced JSON handoff MUST expose extra.go as UNVERIFIED_FILE_READ_CLAIM!
+	trPartial := filepath.Join(auxDir, "tr-partial.jsonl")
+	writeFilePerm(t, trPartial, `{"type":"tool_use","name":"Read","input":{"file_path":"pkg/middleware/errors.go"}}`+"\n", fsperm.File)
+	var gOut, gErr bytes.Buffer
+	rc = Run(ctx, []string{
+		"grade",
+		"--scenario", "E-01",
+		"--workspace", stagedE01.WorkspaceDir,
+		"--handoff", fencedHandoff,
+		"--transcript", trPartial,
+		"--require-transcript",
+		"--base-commit", stagedE01.BaseCommit,
+		"--repo-root", repo,
+		"--format", "json",
+	}, &gOut, &gErr)
+	if rc != 1 {
+		t.Fatalf("fenced JSON handoff with unread extra.go: want rc=1, got %d (stdout=%s)", rc, gOut.String())
+	}
+	var partialRes GradeResult
+	if err := json.Unmarshal(gOut.Bytes(), &partialRes); err != nil {
+		t.Fatalf("unmarshal partial: %v", err)
+	}
+	if partialRes.Signals.TranscriptReadAudit.Passed {
+		t.Fatalf("expected TranscriptReadAudit to fail for unread extra.go in fenced JSON handoff: %+v", partialRes.Signals.TranscriptReadAudit)
+	}
+	foundExtra := false
+	for _, u := range partialRes.Signals.TranscriptReadAudit.UnverifiedClaims {
+		if u == "pkg/middleware/extra.go" {
+			foundExtra = true
+		}
+	}
+	if !foundExtra {
+		t.Fatalf("expected pkg/middleware/extra.go in unverified_claims, got %+v", partialRes.Signals.TranscriptReadAudit.UnverifiedClaims)
+	}
+
+	// (b) User-role metadata spoof and failed tool invocations MUST NOT count as observed reads.
+	spoofCases := []struct {
+		name  string
+		jsonl string
+	}{
+		{
+			name:  "user_role_nested_map",
+			jsonl: `{"role":"user","m":{"name":"read","path":"pkg/middleware/errors.go"}}` + "\n",
+		},
+		{
+			name:  "system_role_direct",
+			jsonl: `{"role":"system","name":"read","input":{"path":"pkg/middleware/errors.go"}}` + "\n",
+		},
+		{
+			name:  "arbitrary_nested_metadata",
+			jsonl: `{"role":"assistant","metadata":{"capability":{"name":"read","path":"pkg/middleware/errors.go"}}}` + "\n",
+		},
+		{
+			name:  "is_error_true",
+			jsonl: `{"type":"tool_use","name":"Read","input":{"file_path":"pkg/middleware/errors.go"},"is_error":true}` + "\n",
+		},
+		{
+			name:  "status_denied",
+			jsonl: `{"tool":"read_file","args":{"path":"pkg/middleware/errors.go"},"status":"denied"}` + "\n",
+		},
+		{
+			name:  "non_empty_error_field",
+			jsonl: `{"tool":"read_file","args":{"path":"pkg/middleware/errors.go"},"error":"ENOENT"}` + "\n",
+		},
+		{
+			name: "tool_result_is_error_two_line",
+			jsonl: `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"pkg/middleware/errors.go"}}]}}` + "\n" +
+				`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":"not found"}]}}` + "\n",
+		},
+	}
+	for _, sc := range spoofCases {
+		t.Run(sc.name, func(t *testing.T) {
+			tp := filepath.Join(auxDir, sc.name+".jsonl")
+			writeFilePerm(t, tp, sc.jsonl, fsperm.File)
+			sig := runTranscriptAuditSignal(stagedE01.WorkspaceDir, tp, true, []string{"pkg/middleware/errors.go"}, nil, nil)
+			if sig.Passed || len(sig.ObservedReads) != 0 {
+				t.Fatalf("spoof %s unexpectedly observed reads or passed: %+v", sc.name, sig)
+			}
+			if len(sig.Errors) == 0 || sig.Errors[0].Code != "UNVERIFIED_FILE_READ_CLAIM" {
+				t.Fatalf("spoof %s expected UNVERIFIED_FILE_READ_CLAIM, got %+v", sc.name, sig.Errors)
+			}
+		})
+	}
+}
+
+// TestSPEC04UnsafeClaimedReadAndNormalizedCompare reproduces SPEC-04:
+// - Unsafe --claimed-read (../secret.go, /etc/passwd) MUST fail with UNVERIFIED_FILE_READ_CLAIM (not silently dropped).
+// - Comparing 3/3 vs 4/4 MUST output verdict="no_change" (normalized score 1.0 vs 1.0).
+// - Comparing 3/3 vs 3/4 MUST output verdict="regressed" (normalized score 1.0 vs 0.75).
+// - Dropping transcript evaluation (before evaluated, after omitted) MUST output verdict="regressed".
+func TestSPEC04UnsafeClaimedReadAndNormalizedCompare(t *testing.T) {
+	ctx := context.Background()
+	ws := neutralTempDir(t)
+	aux := neutralTempDir(t)
+	trPath := filepath.Join(aux, "tr.jsonl")
+	writeFilePerm(t, trPath, `{"type":"tool_use","name":"Read","input":{"file_path":"pkg/middleware/errors.go"}}`+"\n", fsperm.File)
+
+	for _, badClaim := range []string{"../secret.go", "/etc/passwd"} {
+		sig := runTranscriptAuditSignal(ws, trPath, true, []string{"pkg/middleware/errors.go"}, nil, []string{badClaim})
+		if sig.Passed {
+			t.Fatalf("unsafe --claimed-read %q unexpectedly passed: %+v", badClaim, sig)
+		}
+		if sig.Fidelity >= 1.0 {
+			t.Fatalf("unsafe --claimed-read %q should reduce fidelity below 1.0, got %v", badClaim, sig.Fidelity)
+		}
+		foundClaim := false
+		for _, u := range sig.UnverifiedClaims {
+			if u == badClaim {
+				foundClaim = true
+			}
+		}
+		if !foundClaim {
+			t.Fatalf("unsafe --claimed-read %q missing from UnverifiedClaims: %+v", badClaim, sig.UnverifiedClaims)
+		}
+		foundCode := false
+		for _, e := range sig.Errors {
+			if e.Code == "UNVERIFIED_FILE_READ_CLAIM" {
+				foundCode = true
+			}
+		}
+		if !foundCode {
+			t.Fatalf("unsafe --claimed-read %q missing UNVERIFIED_FILE_READ_CLAIM error: %+v", badClaim, sig.Errors)
+		}
+	}
+
+	tmp := neutralTempDir(t)
+	makeNoTr := func(score, maxScore int, passed bool) GradeResult {
+		return GradeResult{ScenarioID: "E-01", Score: score, MaxScore: maxScore, Passed: passed}
+	}
+	b3of3 := filepath.Join(tmp, "b3of3.json")
+	a4of4 := filepath.Join(tmp, "a4of4.json")
+	a3of4 := filepath.Join(tmp, "a3of4.json")
+
+	raw3of3, _ := json.Marshal([]GradeResult{makeNoTr(3, 3, true), makeNoTr(3, 3, true), makeNoTr(3, 3, true)})
+	raw4of4, _ := json.Marshal([]GradeResult{
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+	})
+	raw3of4, _ := json.Marshal([]GradeResult{
+		makeGradeSample("E-01", false, 3, 4, 0.5),
+		makeGradeSample("E-01", false, 3, 4, 0.5),
+		makeGradeSample("E-01", false, 3, 4, 0.5),
+	})
+	writeFilePerm(t, b3of3, string(raw3of3), fsperm.File)
+	writeFilePerm(t, a4of4, string(raw4of4), fsperm.File)
+	writeFilePerm(t, a3of4, string(raw3of4), fsperm.File)
+
+	// 1) 3/3 (100%) vs 4/4 (100%) -> no_change, delta 0.0.
+	var out, errBuf bytes.Buffer
+	rc := Run(ctx, []string{"compare", "--before", b3of3, "--after", a4of4, "--repo-root", tmp, "--format", "json"}, &out, &errBuf)
+	if rc != 0 {
+		t.Fatalf("3/3 vs 4/4: want rc=0, got %d (out=%s err=%s)", rc, out.String(), errBuf.String())
+	}
+	var cmpSame CompareReport
+	if err := json.Unmarshal(out.Bytes(), &cmpSame); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cmpSame.Verdict != "no_change" || cmpSame.DeltaMeanScore != 0.0 || cmpSame.BeforeMeanScore != 1.0 || cmpSame.AfterMeanScore != 1.0 {
+		t.Fatalf("3/3 vs 4/4 want verdict=no_change normalized 1.0->1.0 (delta 0), got %+v", cmpSame)
+	}
+
+	// 2) 3/3 (100%) vs 3/4 (75%) -> regressed.
+	out.Reset()
+	errBuf.Reset()
+	rc = Run(ctx, []string{"compare", "--before", b3of3, "--after", a3of4, "--repo-root", tmp, "--format", "json"}, &out, &errBuf)
+	if rc != 1 {
+		t.Fatalf("3/3 vs 3/4: want rc=1, got %d (%s)", rc, out.String())
+	}
+	var cmpDrop CompareReport
+	if err := json.Unmarshal(out.Bytes(), &cmpDrop); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cmpDrop.Verdict != "regressed" || cmpDrop.DeltaMeanScore >= 0 {
+		t.Fatalf("3/3 vs 3/4 want verdict=regressed negative delta, got %+v", cmpDrop)
+	}
+
+	// 3) Dropping transcript evaluation (4/4 evaluated -> 3/3 unevaluated) -> regressed.
+	out.Reset()
+	errBuf.Reset()
+	rc = Run(ctx, []string{"compare", "--before", a4of4, "--after", b3of3, "--repo-root", tmp, "--format", "json"}, &out, &errBuf)
+	if rc != 1 {
+		t.Fatalf("dropped transcript audit: want rc=1, got %d (%s)", rc, out.String())
+	}
+	var cmpDropTr CompareReport
+	if err := json.Unmarshal(out.Bytes(), &cmpDropTr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cmpDropTr.Verdict != "regressed" {
+		t.Fatalf("dropped transcript audit want verdict=regressed, got %+v", cmpDropTr)
+	}
+}
+
+// TestSEC01INV01CompareSymlinksAndSpaceEvidence reproduces SEC-01 and INV-01:
+// - Dangling symlink on --decisions-file or --runs-dir MUST be refused without creating victim files.
+// - Outside-repo --runs-dir containing spaces MUST encode a valid file:// evidence pointer so compare --record succeeds cleanly without orphan artifacts.
+func TestSEC01INV01CompareSymlinksAndSpaceEvidence(t *testing.T) {
+	ctx := context.Background()
+	tmpRepo := neutralTempDir(t)
+	samples := []GradeResult{
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+		makeGradeSample("E-01", true, 4, 4, 1.0),
+	}
+	raw, _ := json.Marshal(samples)
+	bPath := filepath.Join(tmpRepo, "b.json")
+	aPath := filepath.Join(tmpRepo, "a.json")
+	writeFilePerm(t, bPath, string(raw), fsperm.File)
+	writeFilePerm(t, aPath, string(raw), fsperm.File)
+
+	// 1) Dangling symlink at decisions.tsv MUST be rejected and victim MUST NOT be created.
+	outside := neutralTempDir(t)
+	victim := filepath.Join(outside, "victim.tsv")
+	runsDir := filepath.Join(tmpRepo, ".harness", "runs")
+	branchDir := filepath.Join(runsDir, "main")
+	if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	danglingDec := filepath.Join(branchDir, "decisions.tsv")
+	if err := os.Symlink(victim, danglingDec); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	var out, errBuf bytes.Buffer
+	rc := Run(ctx, []string{
+		"compare",
+		"--before", bPath,
+		"--after", aPath,
+		"--record",
+		"--branch", "main",
+		"--runs-dir", runsDir,
+		"--repo-root", tmpRepo,
+	}, &out, &errBuf)
+	if rc == 0 {
+		t.Fatalf("expected dangling symlink decisions.tsv to fail, got rc=0")
+	}
+	if _, err := os.Stat(victim); err == nil {
+		t.Fatalf("dangling symlink victim file %s was created outside repo", victim)
+	}
+	if entries, err := os.ReadDir(filepath.Join(branchDir, "eval")); err == nil && len(entries) > 0 {
+		t.Fatalf("orphan compare artifact left behind after symlink refusal: %+v", entries)
+	}
+
+	// 2) Symlinked --runs-dir MUST be rejected.
+	symRuns := filepath.Join(tmpRepo, "sym-runs")
+	if err := os.Symlink(outside, symRuns); err != nil {
+		t.Fatalf("symlink runs-dir: %v", err)
+	}
+	out.Reset()
+	errBuf.Reset()
+	rc = Run(ctx, []string{
+		"compare",
+		"--before", bPath,
+		"--after", aPath,
+		"--record",
+		"--branch", "main",
+		"--runs-dir", symRuns,
+		"--repo-root", tmpRepo,
+	}, &out, &errBuf)
+	if rc == 0 {
+		t.Fatalf("expected symlink --runs-dir to fail, got rc=0")
+	}
+
+	// 3) INV-01: Outside-repo --runs-dir with spaces produces valid file:// pointer and passes decisions.tsv write.
+	spaceRuns := filepath.Join(outside, "my eval runs")
+	if err := os.MkdirAll(spaceRuns, fsperm.Dir); err != nil {
+		t.Fatalf("mkdir spaceRuns: %v", err)
+	}
+	out.Reset()
+	errBuf.Reset()
+	rc = Run(ctx, []string{
+		"compare",
+		"--before", bPath,
+		"--after", aPath,
+		"--record",
+		"--branch", "main",
+		"--runs-dir", spaceRuns,
+		"--repo-root", tmpRepo,
+		"--format", "json",
+	}, &out, &errBuf)
+	if rc != 0 {
+		t.Fatalf("compare --record with spaces in --runs-dir failed (rc=%d): out=%s err=%s", rc, out.String(), errBuf.String())
+	}
+	var spaceCmp CompareReport
+	if err := json.Unmarshal(out.Bytes(), &spaceCmp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	tsvBytes, err := readRegularFile(spaceCmp.DecisionsFile)
+	if err != nil {
+		t.Fatalf("read space decisions.tsv: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(tsvBytes)), "\n")
+	lastCols := strings.Split(lines[len(lines)-1], "\t")
+	if len(lastCols) != 6 || !guards.IsValidEvidencePointer(lastCols[4]) {
+		t.Fatalf("invalid evidence pointer for space runs-dir: %q", lastCols)
+	}
+}
+
+// TestSEC08BackgroundEscapeBypass reproduces SEC-08:
+// Unquoted backslash-quote (`echo \" ; echo BG &`) and double-quoted command substitution (`echo "$(sleep 1 &)"`)
+// MUST be rejected by hasBackgroundExecution.
+func TestSEC08BackgroundEscapeBypass(t *testing.T) {
+	blocked := []string{
+		`echo \" ; echo BG &`,
+		`echo \' ; echo BG &`,
+		`echo "$(sleep 1 &)"`,
+		"echo \"`sleep 1 &`\"",
+		`echo \\"ok\\" &`,
+		"# comment\nsleep 1 &",
+	}
+	for _, cmd := range blocked {
+		if !hasBackgroundExecution(cmd) {
+			t.Errorf("hasBackgroundExecution(%q) = false, want true (blocked)", cmd)
+		}
+	}
+	allowed := []string{
+		`echo "foo & bar"`,
+		`echo 'foo & bar'`,
+		`go test ./... && go vet ./...`,
+		`bash script.sh 2>&1`,
+		`bash script.sh &>out.log`,
+	}
+	for _, cmd := range allowed {
+		if hasBackgroundExecution(cmd) {
+			t.Errorf("hasBackgroundExecution(%q) = true, want false (allowed)", cmd)
+		}
 	}
 }

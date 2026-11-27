@@ -467,6 +467,9 @@ func stageScenario(ctx context.Context, repoRoot, scenarioID, outDir string) (St
 	if strings.TrimSpace(outDir) == "" {
 		return StageResult{}, errors.New("--out-dir must be non-empty")
 	}
+	if err := checkOutDirNeutrality(outDir); err != nil {
+		return StageResult{}, err
+	}
 	if st, err := os.Lstat(outDir); err == nil {
 		if st.Mode()&os.ModeSymlink != 0 {
 			return StageResult{}, fmt.Errorf("refusing symlink --out-dir: %s", outDir)
@@ -506,7 +509,8 @@ func stageScenario(ctx context.Context, repoRoot, scenarioID, outDir string) (St
 		}
 	}()
 
-	// Copy corpus before_file into neutral target_file path.
+	// Copy corpus before_file into neutral target_file path, stripping internal
+	// harness label comments (e.g. ARCH-02) so zero internal labels leak.
 	targetDest := filepath.Join(wsDir, filepath.FromSlash(sc.TargetFile))
 	if !withinDir(targetDest, wsDir) {
 		return StageResult{}, fmt.Errorf("target_file escapes staged workspace: %s", sc.TargetFile)
@@ -518,6 +522,7 @@ func stageScenario(ctx context.Context, repoRoot, scenarioID, outDir string) (St
 	if err != nil {
 		return StageResult{}, fmt.Errorf("read corpus before_file: %w", err)
 	}
+	beforeBytes = stripHarnessLabelComments(beforeBytes)
 	if strings.HasSuffix(sc.TargetFile, ".sh") {
 		if err := fsperm.WriteExecutable(targetDest, beforeBytes); err != nil {
 			return StageResult{}, fmt.Errorf("write target script: %w", err)
@@ -526,26 +531,16 @@ func stageScenario(ctx context.Context, repoRoot, scenarioID, outDir string) (St
 		return StageResult{}, fmt.Errorf("write target file: %w", err)
 	}
 
-	// Copy characterization test script if present.
-	hasScript := false
-	if charSrc, ok := findCharTestScript(sc, caseDir); ok {
-		charBytes, err := readRegularFile(charSrc)
-		if err != nil {
-			return StageResult{}, fmt.Errorf("read test_characterization.sh: %w", err)
-		}
-		if err := fsperm.WriteExecutable(filepath.Join(wsDir, "test_characterization.sh"), charBytes); err != nil {
-			return StageResult{}, fmt.Errorf("write test_characterization.sh: %w", err)
-		}
-		hasScript = true
-	}
+	// NOTE: test_characterization.sh is intentionally NEVER copied into wsDir;
+	// grading executes the trusted oracle directly from sc.Dir against wsDir.
 
-	// Materialize neutral ./scripts/lint/run.sh entrypoint so standard
-	// TaskPacket verification_command executes cleanly in the staged repo.
+	// Materialize neutral ./scripts/lint/run.sh entrypoint supporting --policy
+	// and deterministic target-rule verification.
 	runShDir := filepath.Join(wsDir, "scripts", "lint")
 	if err := os.MkdirAll(runShDir, fsperm.Dir); err != nil {
 		return StageResult{}, fmt.Errorf("create scripts/lint dir: %w", err)
 	}
-	runShBody := renderNeutralLintShim(sc.NeutralWorkspaceName, hasScript)
+	runShBody := renderNeutralLintShim(sc)
 	if err := fsperm.WriteExecutable(filepath.Join(runShDir, "run.sh"), []byte(runShBody)); err != nil {
 		return StageResult{}, fmt.Errorf("write scripts/lint/run.sh: %w", err)
 	}
@@ -591,22 +586,128 @@ func stageScenario(ctx context.Context, repoRoot, scenarioID, outDir string) (St
 	}, nil
 }
 
-func renderNeutralLintShim(target string, hasCharScript bool) string {
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func renderNeutralLintShim(sc Scenario) string {
 	var b strings.Builder
 	b.WriteString("#!/usr/bin/env bash\n")
 	b.WriteString("set -euo pipefail\n")
-	b.WriteString("target=\"${1:-}\"\n")
-	b.WriteString("if [[ \"$target\" != \"" + target + "\" ]]; then\n")
+	b.WriteString("policy=\"${LINT_POLICY:-fix-existing}\"\n")
+	b.WriteString("target=\"\"\n")
+	b.WriteString("while [[ $# -gt 0 ]]; do\n")
+	b.WriteString("  case \"$1\" in\n")
+	b.WriteString("    --policy)\n")
+	b.WriteString("      if [[ $# -lt 2 ]]; then\n")
+	b.WriteString("        echo \"error: --policy requires an argument\" >&2\n")
+	b.WriteString("        exit 2\n")
+	b.WriteString("      fi\n")
+	b.WriteString("      policy=\"$2\"\n")
+	b.WriteString("      shift 2\n")
+	b.WriteString("      ;;\n")
+	b.WriteString("    --policy=*)\n")
+	b.WriteString("      policy=\"${1#--policy=}\"\n")
+	b.WriteString("      shift\n")
+	b.WriteString("      ;;\n")
+	b.WriteString("    -*)\n")
+	b.WriteString("      echo \"error: unknown flag: $1\" >&2\n")
+	b.WriteString("      exit 2\n")
+	b.WriteString("      ;;\n")
+	b.WriteString("    *)\n")
+	b.WriteString("      if [[ -n \"$target\" ]]; then\n")
+	b.WriteString("        echo \"error: unexpected extra argument: $1\" >&2\n")
+	b.WriteString("        exit 2\n")
+	b.WriteString("      fi\n")
+	b.WriteString("      target=\"$1\"\n")
+	b.WriteString("      shift\n")
+	b.WriteString("      ;;\n")
+	b.WriteString("  esac\n")
+	b.WriteString("done\n")
+	b.WriteString("if [[ \"$policy\" != \"fix-existing\" && \"$policy\" != \"block-new\" ]]; then\n")
+	b.WriteString("  echo \"error: invalid --policy: $policy\" >&2\n")
+	b.WriteString("  exit 2\n")
+	b.WriteString("fi\n")
+	b.WriteString("if [[ \"$target\" != \"" + sc.NeutralWorkspaceName + "\" ]]; then\n")
 	b.WriteString("  echo \"error: unknown target: $target\" >&2\n")
 	b.WriteString("  exit 2\n")
 	b.WriteString("fi\n")
 	b.WriteString("ROOT_DIR=\"$(cd \"$(dirname \"$0\")/../..\" && pwd)\"\n")
 	b.WriteString("cd \"$ROOT_DIR\"\n")
-	if hasCharScript {
-		b.WriteString("exec bash ./test_characterization.sh\n")
-	} else {
-		b.WriteString("exit 0\n")
+	b.WriteString("TARGET_REL=" + shellSingleQuote(sc.TargetFile) + "\n")
+	b.WriteString("TARGET=\"$ROOT_DIR/$TARGET_REL\"\n")
+	b.WriteString("if [[ ! -f \"$TARGET\" ]]; then\n")
+	b.WriteString("  echo \"error: missing file $TARGET_REL\" >&2\n")
+	b.WriteString("  exit 1\n")
+	b.WriteString("fi\n")
+
+	switch sc.Language {
+	case "go":
+		b.WriteString("gofmt -e \"$TARGET\" >/dev/null\n")
+	case "python":
+		b.WriteString("python3 -B -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding=\"utf-8\"))' \"$TARGET\"\n")
+	case "shell":
+		b.WriteString("bash -n \"$TARGET\"\n")
 	}
+
+	switch sc.LintRule {
+	case "errorlint":
+		b.WriteString("if [[ \"$policy\" == \"fix-existing\" ]]; then\n")
+		b.WriteString("  if grep -Eq 'err\\.\\(\\*' \"$TARGET\"; then\n")
+		b.WriteString("    echo \"$TARGET_REL: errorlint: type assertion on error fails on wrapped errors; use errors.As\" >&2\n")
+		b.WriteString("    exit 1\n")
+		b.WriteString("  fi\n")
+		b.WriteString("else\n")
+		b.WriteString("  if git diff HEAD -- \"$TARGET_REL\" | grep -Eq '^\\+[^+].*err\\.\\(\\*'; then\n")
+		b.WriteString("    echo \"$TARGET_REL: errorlint: new type assertion on error introduced\" >&2\n")
+		b.WriteString("    exit 1\n")
+		b.WriteString("  fi\n")
+		b.WriteString("fi\n")
+	case "python-complexity":
+		b.WriteString("if [[ \"$policy\" == \"fix-existing\" ]]; then\n")
+		b.WriteString("  python3 -B - \"$TARGET\" <<'PY'\n")
+		b.WriteString("import ast, pathlib, sys\n")
+		b.WriteString("tree = ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding=\"utf-8\"))\n")
+		b.WriteString("defs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]\n")
+		b.WriteString("if len(defs) < 3:\n")
+		b.WriteString("    sys.stderr.write(\"C901: acquire requires helper decomposition\\n\")\n")
+		b.WriteString("    sys.exit(1)\n")
+		b.WriteString("PY\n")
+		b.WriteString("fi\n")
+	case "python-aclosing":
+		b.WriteString("python3 -B - \"$TARGET\" <<'PY'\n")
+		b.WriteString("import ast, pathlib, sys\n")
+		b.WriteString("tree = ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding=\"utf-8\"))\n")
+		b.WriteString("for node in ast.walk(tree):\n")
+		b.WriteString("    if isinstance(node, ast.Try):\n")
+		b.WriteString("        for stmt in node.finalbody:\n")
+		b.WriteString("            for sub in ast.walk(stmt):\n")
+		b.WriteString("                if isinstance(sub, ast.Attribute) and sub.attr == \"aclose\":\n")
+		b.WriteString("                    sys.stderr.write(\"lint: avoid manual aclose() in finally; use contextlib.aclosing\\n\")\n")
+		b.WriteString("                    sys.exit(1)\n")
+		b.WriteString("PY\n")
+	case "go-httpserver-g112":
+		b.WriteString("if grep -Eq '&http\\.Server\\{' \"$TARGET\"; then\n")
+		b.WriteString("  echo \"$TARGET_REL: G112: construct servers via httpserver.New rather than raw &http.Server{}\" >&2\n")
+		b.WriteString("  exit 1\n")
+		b.WriteString("fi\n")
+	case "go-body-limit":
+		b.WriteString("if grep -Eq 'BodyLimit\\(1\\s*<<\\s*20\\)' \"$TARGET\"; then\n")
+		b.WriteString("  echo \"$TARGET_REL: lint: decimal 1M body limit drifted to 1 << 20\" >&2\n")
+		b.WriteString("  exit 1\n")
+		b.WriteString("fi\n")
+	case "generated-code-guard":
+		b.WriteString("if grep -q 'DO NOT EDIT' \"$TARGET\" && grep -q 'v2\\.5\\.1' \"$TARGET\" && grep -q 'github\\.com/labstack/echo/v5' \"$TARGET\"; then\n")
+		b.WriteString("  echo \"$TARGET_REL: lint: generated file must not be hand-edited\" >&2\n")
+		b.WriteString("  exit 1\n")
+		b.WriteString("fi\n")
+	case "compose-var-check":
+		b.WriteString("if grep -q -- '--no-env-resolution' \"$TARGET\"; then\n")
+		b.WriteString("  echo \"$TARGET_REL: lint: --no-env-resolution disables env_file checks\" >&2\n")
+		b.WriteString("  exit 1\n")
+		b.WriteString("fi\n")
+	}
+	b.WriteString("exit 0\n")
 	return b.String()
 }
 

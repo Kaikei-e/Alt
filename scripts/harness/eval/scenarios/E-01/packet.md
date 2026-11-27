@@ -12,7 +12,6 @@ scope:
     - "pkg/middleware/**"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -44,7 +43,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `svc-middleware`
 - **編集許可パス**: `pkg/middleware/**`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `errorlint`
 - **要件**: `pkg/middleware/errors.go` を事前に読んだうえで、エラー型アサーションを `errors.As` へ書き換える際も 4xx エラーを除外し 5xx のみ失敗記録する現行挙動を維持すること。

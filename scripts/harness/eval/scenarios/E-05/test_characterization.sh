@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TARGET="$SCRIPT_DIR/internal/bootstrap/server.go"
+WORKSPACE_DIR="${WORKSPACE_DIR:-$(pwd)}"
+TARGET="$WORKSPACE_DIR/internal/bootstrap/server.go"
 
 if [[ ! -f "$TARGET" ]]; then
   echo "FAIL: missing target file $TARGET" >&2

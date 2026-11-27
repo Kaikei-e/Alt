@@ -8,4 +8,6 @@ target_file = "src/stream.py"
 check01_expected_signal = "python.finally_body_change"
 has_char_test = true
 char_test_command = "bash test_characterization.sh"
+require_non_empty_diff = true
+lint_rule = "python-aclosing"
 required_reads = ["src/stream.py"]

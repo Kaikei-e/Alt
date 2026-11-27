@@ -12,7 +12,6 @@ scope:
     - "scripts/check-compose-variables.sh"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -44,7 +43,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `stack-check`
 - **編集許可パス**: `scripts/check-compose-variables.sh`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `compose-var-check`
 - **要件**: `scripts/check-compose-variables.sh` を事前に読んだうえで、引数なし（`--env-file` なし）での呼び出し互換性を維持し、`docker compose config` に `--no-env-resolution` を付与しないこと。

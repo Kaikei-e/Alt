@@ -32,12 +32,13 @@ const (
 )
 
 var (
-	scenarioIDRE  = regexp.MustCompile(`^E-(\d{2,})$`)
-	corpusIDRE    = regexp.MustCompile(`^C-(\d{2,})$`)
-	commitSHARE   = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
-	allZeroSHARE  = regexp.MustCompile(`^0+$`)
-	neutralNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{2,31}$`)
-	nohupRE       = regexp.MustCompile("(?:^|[\\s`('\"])nohup\\s+")
+	scenarioIDRE          = regexp.MustCompile(`^E-(\d{2,})$`)
+	corpusIDRE            = regexp.MustCompile(`^C-(\d{2,})$`)
+	commitSHARE           = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+	allZeroSHARE          = regexp.MustCompile(`^0+$`)
+	neutralNameRE         = regexp.MustCompile(`^[a-z][a-z0-9-]{2,31}$`)
+	nohupRE               = regexp.MustCompile("(?:^|[\\s`('\"])nohup\\s+")
+	harnessLabelCommentRE = regexp.MustCompile(`(?i)\b(?:ARCH|CHECK|VERIFY|LOOP|CORPUS|EXEC)-\d{2}\b`)
 
 	validLanguages = map[string]struct{}{
 		"go":         {},
@@ -81,6 +82,7 @@ var (
 		"benchmark harness",
 		"grading rubric",
 		"you are being evaluated",
+		"test_characterization.sh",
 	}
 
 	forbiddenAutofixPatterns = []struct {
@@ -114,6 +116,8 @@ type Scenario struct {
 	Check01ExpectedSignal string   `toml:"check01_expected_signal" json:"check01_expected_signal"`
 	HasCharTest           bool     `toml:"has_char_test" json:"has_char_test"`
 	CharTestCommand       string   `toml:"char_test_command" json:"char_test_command"`
+	RequireNonEmptyDiff   bool     `toml:"require_non_empty_diff" json:"require_non_empty_diff"`
+	LintRule              string   `toml:"lint_rule" json:"lint_rule,omitempty"`
 	RequiredReads         []string `toml:"required_reads" json:"required_reads"`
 
 	// Dir is the absolute path to the scenario directory (omitted from JSON).
@@ -365,11 +369,29 @@ func hasBackgroundExecution(command string) bool {
 			escaped = false
 			continue
 		}
-		if quote == '"' && ch == '\\' {
+		if (quote == 0 || quote == '"') && ch == '\\' {
 			escaped = true
 			continue
 		}
 		if quote != 0 {
+			if quote == '"' {
+				if ch == '$' && i+1 < len(command) && command[i+1] == '(' {
+					end := findClosingParen(command, i+1)
+					if hasBackgroundExecution(command[i+2 : end]) {
+						return true
+					}
+					i = end
+					continue
+				}
+				if ch == '`' {
+					end := findClosingBacktick(command, i+1)
+					if hasBackgroundExecution(command[i+1 : end]) {
+						return true
+					}
+					i = end
+					continue
+				}
+			}
 			if ch == quote {
 				quote = 0
 			}
@@ -379,8 +401,11 @@ func hasBackgroundExecution(command string) bool {
 			quote = ch
 			continue
 		}
-		if ch == '#' && (i == 0 || command[i-1] == ' ' || command[i-1] == '\t') {
-			break
+		if ch == '#' && (i == 0 || command[i-1] == ' ' || command[i-1] == '\t' || command[i-1] == '\n' || command[i-1] == ';') {
+			for i < len(command) && command[i] != '\n' {
+				i++
+			}
+			continue
 		}
 		if ch == '&' {
 			var prev, next byte
@@ -401,6 +426,139 @@ func hasBackgroundExecution(command string) bool {
 		}
 	}
 	return false
+}
+
+func findClosingParen(s string, openIdx int) int {
+	depth := 0
+	var q byte
+	esc := false
+	for i := openIdx; i < len(s); i++ {
+		ch := s[i]
+		if esc {
+			esc = false
+			continue
+		}
+		if (q == 0 || q == '"') && ch == '\\' {
+			esc = true
+			continue
+		}
+		if q != 0 {
+			if ch == q {
+				q = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			q = ch
+			continue
+		}
+		switch ch {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return len(s)
+}
+
+func findClosingBacktick(s string, startIdx int) int {
+	esc := false
+	for i := startIdx; i < len(s); i++ {
+		ch := s[i]
+		if esc {
+			esc = false
+			continue
+		}
+		if ch == '\\' {
+			esc = true
+			continue
+		}
+		if ch == '`' {
+			return i
+		}
+	}
+	return len(s)
+}
+
+func checkOutDirNeutrality(outDir string) error {
+	cleaned := filepath.Clean(strings.TrimSpace(outDir))
+	if cleaned == "" || cleaned == "." || cleaned == string(filepath.Separator) {
+		return nil
+	}
+	var segments []string
+	if !filepath.IsAbs(cleaned) {
+		segments = strings.Split(filepath.ToSlash(cleaned), "/")
+	} else {
+		slash := filepath.ToSlash(cleaned)
+		tempRoots := []string{
+			filepath.ToSlash(filepath.Clean(os.TempDir())),
+			"/tmp",
+			"/var/tmp",
+			"/private/tmp",
+		}
+		matchedTemp := false
+		for _, tr := range tempRoots {
+			tr = strings.TrimRight(tr, "/")
+			if tr != "" && strings.HasPrefix(slash, tr+"/") {
+				segments = strings.Split(strings.TrimPrefix(slash, tr+"/"), "/")
+				matchedTemp = true
+				break
+			}
+		}
+		if !matchedTemp {
+			segments = append(segments, filepath.Base(cleaned))
+			parentDir := filepath.Dir(cleaned)
+			parentBase := filepath.Base(parentDir)
+			if !isSystemDirSegment(parentDir, parentBase) {
+				segments = append(segments, parentBase)
+			}
+		}
+	}
+	for _, seg := range segments {
+		if seg == "" || seg == "." || seg == ".." {
+			continue
+		}
+		lower := strings.ToLower(seg)
+		for _, tok := range forbiddenNeutralTokens {
+			if strings.Contains(lower, tok) {
+				return fmt.Errorf("NON_NEUTRAL_OUT_DIR: --out-dir %q contains forbidden observer-effect substring %q in segment %q", outDir, tok, seg)
+			}
+		}
+	}
+	return nil
+}
+
+func isSystemDirSegment(dirPath, base string) bool {
+	switch base {
+	case "", "/", ".", "tmp", "var", "home", "Users", "root", "opt", "srv", "mnt", "data", "private":
+		return true
+	}
+	grand := filepath.ToSlash(filepath.Dir(dirPath))
+	return grand == "/home" || grand == "/Users"
+}
+
+func stripHarnessLabelComments(raw []byte) []byte {
+	text := string(raw)
+	hadTrailingNL := strings.HasSuffix(text, "\n")
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		isCommentLine := strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#")
+		if isCommentLine && harnessLabelCommentRE.MatchString(trimmed) {
+			continue
+		}
+		out = append(out, line)
+	}
+	joined := strings.Join(out, "\n")
+	if hadTrailingNL {
+		joined += "\n"
+	}
+	return []byte(joined)
 }
 
 func checkNeutralName(name string) (string, bool) {

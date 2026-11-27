@@ -12,7 +12,6 @@ scope:
     - "internal/bootstrap/**"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -44,7 +43,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `api-bootstrap`
 - **編集許可パス**: `internal/bootstrap/**`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `echo-v5-body-limit`
 - **要件**: `internal/bootstrap/server.go` を事前に読んだうえで、リクエストボディ上限が 10 進 1M（1,000,000 bytes）の境界を保ち、`1 << 20`（1,048,576 bytes）へドリフトしないことを維持する。

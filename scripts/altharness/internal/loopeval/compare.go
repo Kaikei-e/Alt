@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -144,8 +145,10 @@ func compareGradeSets(opt compareOptions) (CompareReport, int, error) {
 			scCmp.DeltaReadAuditFidelity = &d
 		}
 
+		droppedTranscript := bFid != nil && aFid == nil
 		regressed := (aPass < bPass-compareEpsilon) ||
 			(aScore < bScore-compareEpsilon) ||
+			droppedTranscript ||
 			(bFid != nil && aFid != nil && *aFid < *bFid-compareEpsilon)
 		improved := !regressed && ((aPass > bPass+compareEpsilon) ||
 			(aScore > bScore+compareEpsilon) ||
@@ -308,7 +311,9 @@ func summarizeTrials(trials []GradeResult) (passRate float64, meanScore float64,
 		if t.Passed {
 			passes++
 		}
-		totalScore += float64(t.Score)
+		if t.MaxScore > 0 {
+			totalScore += float64(t.Score) / float64(t.MaxScore)
+		}
 		if t.Signals.TranscriptReadAudit.Evaluated {
 			fidSum += t.Signals.TranscriptReadAudit.Fidelity
 			fidCount++
@@ -336,60 +341,153 @@ func roundPtr4(p *float64) *float64 {
 	return &v
 }
 
+func formatEvidencePointer(repoRoot, artifactPath string) (string, error) {
+	evidence := artifactPath
+	if resolvedRepo, err := resolvePath(repoRoot); err == nil {
+		if resolvedArt, err := resolvePath(artifactPath); err == nil && withinDir(resolvedArt, resolvedRepo) {
+			if rel, err := filepath.Rel(resolvedRepo, resolvedArt); err == nil {
+				evidence = filepath.ToSlash(rel)
+			}
+		}
+	}
+	if guards.IsValidEvidencePointer(evidence) {
+		return evidence, nil
+	}
+	if absArt, err := filepath.Abs(artifactPath); err == nil {
+		u := url.URL{Scheme: "file", Path: filepath.ToSlash(absArt)}
+		encoded := u.String()
+		if guards.IsValidEvidencePointer(encoded) {
+			return encoded, nil
+		}
+	}
+	return "", fmt.Errorf("computed evidence pointer %q is not valid for decisions.tsv", evidence)
+}
+
+func writeNewArtifactContainment(evalDir, filename string, data []byte) error {
+	root, err := os.OpenRoot(evalDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fsperm.File)
+	if err != nil {
+		return err
+	}
+	_, wErr := f.Write(data)
+	cErr := f.Close()
+	if wErr != nil {
+		return wErr
+	}
+	return cErr
+}
+
 func recordComparison(opt compareOptions, rep *CompareReport) (string, string, error) {
 	var runDir string
 	if strings.TrimSpace(opt.RunsDir) != "" {
+		if isSymlink(opt.RunsDir) {
+			return "", "", fmt.Errorf("refusing symlink --runs-dir: %s", opt.RunsDir)
+		}
+		if st, err := os.Lstat(opt.RunsDir); err == nil && !st.IsDir() {
+			return "", "", fmt.Errorf("--runs-dir is not a directory: %s", opt.RunsDir)
+		}
 		safeBranch := guards.SanitizeBranchName(guards.ResolveGitBranch(opt.RepoRoot, opt.Branch))
 		runDir = filepath.Join(opt.RunsDir, safeBranch)
+		if isSymlink(runDir) {
+			return "", "", fmt.Errorf("refusing symlink in run directory: %s", runDir)
+		}
 		if !withinDir(runDir, opt.RunsDir) {
 			return "", "", fmt.Errorf("run directory escapes --runs-dir: %s", runDir)
 		}
 	} else {
+		harnessDir := filepath.Join(opt.RepoRoot, ".harness")
+		runsBase := filepath.Join(harnessDir, "runs")
+		if isSymlink(harnessDir) || isSymlink(runsBase) {
+			return "", "", fmt.Errorf("refusing symlink in .harness/runs: %s", runsBase)
+		}
 		var err error
 		runDir, err = guards.RunDirForBranch(opt.RepoRoot, opt.Branch)
 		if err != nil {
 			return "", "", err
 		}
+		if isSymlink(runDir) || !withinDir(runDir, opt.RepoRoot) {
+			return "", "", fmt.Errorf("refusing symlink or escaping run directory: %s", runDir)
+		}
 	}
 
 	evalDir := filepath.Join(runDir, "eval")
-	if isSymlink(runDir) || isSymlink(evalDir) {
+	if isSymlink(runDir) || isSymlink(evalDir) || !withinDir(evalDir, runDir) {
 		return "", "", fmt.Errorf("refusing symlink in eval artifact directory: %s", evalDir)
-	}
-	if err := os.MkdirAll(evalDir, fsperm.Dir); err != nil {
-		return "", "", err
-	}
-
-	ts := time.Now().UTC().Format("20060102T150405Z")
-	artifactPath := filepath.Join(evalDir, "compare-"+ts+".json")
-	for suffix := 1; ; suffix++ {
-		if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
-			break
-		}
-		artifactPath = filepath.Join(evalDir, fmt.Sprintf("compare-%s-%d.json", ts, suffix))
 	}
 
 	decisionsPath := strings.TrimSpace(opt.DecisionsFile)
 	if decisionsPath == "" {
 		decisionsPath = filepath.Join(runDir, "decisions.tsv")
 	}
+	// Reject symlinks (including dangling symlinks) on decisionsPath and its parent BEFORE writing any artifact.
+	if isSymlink(decisionsPath) {
+		return "", "", fmt.Errorf("refusing symlink --decisions-file: %s", decisionsPath)
+	}
+	if isSymlink(filepath.Dir(decisionsPath)) {
+		return "", "", fmt.Errorf("refusing symlink decisions parent directory: %s", filepath.Dir(decisionsPath))
+	}
+	if strings.TrimSpace(opt.DecisionsFile) == "" && !withinDir(decisionsPath, runDir) {
+		return "", "", fmt.Errorf("decisions file escapes run directory: %s", decisionsPath)
+	}
 
-	rep.RecordedArtifact = artifactPath
-	rep.DecisionsFile = decisionsPath
-	encoded, err := marshalJSON(rep)
+	ts := time.Now().UTC().Format("20060102T150405Z")
+	artifactName := "compare-" + ts + ".json"
+	artifactPath := filepath.Join(evalDir, artifactName)
+	for suffix := 1; ; suffix++ {
+		st, err := os.Lstat(artifactPath)
+		if os.IsNotExist(err) {
+			break
+		}
+		if err != nil {
+			return "", "", fmt.Errorf("stat artifact path %s: %w", artifactPath, err)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return "", "", fmt.Errorf("refusing symlink artifact path: %s", artifactPath)
+		}
+		artifactName = fmt.Sprintf("compare-%s-%d.json", ts, suffix)
+		artifactPath = filepath.Join(evalDir, artifactName)
+	}
+
+	// Validate the evidence pointer BEFORE creating evalDir or writing any artifact (INV-01).
+	evidence, err := formatEvidencePointer(opt.RepoRoot, artifactPath)
 	if err != nil {
 		return "", "", err
 	}
-	if err := os.WriteFile(artifactPath, encoded, fsperm.File); err != nil {
+
+	if err := os.MkdirAll(evalDir, fsperm.Dir); err != nil {
 		return "", "", err
 	}
+	if isSymlink(evalDir) || !withinDir(evalDir, runDir) {
+		return "", "", fmt.Errorf("refusing symlink eval directory after mkdir: %s", evalDir)
+	}
 
-	evidence := artifactPath
-	if resolvedRepo, err := resolvePath(opt.RepoRoot); err == nil {
-		if resolvedArt, err := resolvePath(artifactPath); err == nil && withinDir(resolvedArt, resolvedRepo) {
-			if rel, err := filepath.Rel(resolvedRepo, resolvedArt); err == nil {
-				evidence = filepath.ToSlash(rel)
-			}
+	// Atomically write compare-<ts>.json inside evalDir via os.OpenRoot (O_CREATE|O_EXCL).
+	for suffix := 1; ; suffix++ {
+		rep.RecordedArtifact = artifactPath
+		rep.DecisionsFile = decisionsPath
+		encoded, encErr := marshalJSON(rep)
+		if encErr != nil {
+			return "", "", encErr
+		}
+		wErr := writeNewArtifactContainment(evalDir, artifactName, encoded)
+		if wErr == nil {
+			break
+		}
+		if !os.IsExist(wErr) {
+			return "", "", wErr
+		}
+		artifactName = fmt.Sprintf("compare-%s-%d.json", ts, suffix)
+		artifactPath = filepath.Join(evalDir, artifactName)
+		if isSymlink(artifactPath) {
+			return "", "", fmt.Errorf("refusing symlink artifact path: %s", artifactPath)
+		}
+		evidence, err = formatEvidencePointer(opt.RepoRoot, artifactPath)
+		if err != nil {
+			return "", "", err
 		}
 	}
 

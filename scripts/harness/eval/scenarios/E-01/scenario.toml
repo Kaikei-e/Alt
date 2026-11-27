@@ -8,4 +8,6 @@ target_file = "pkg/middleware/errors.go"
 check01_expected_signal = "go.condition_operator_change"
 has_char_test = true
 char_test_command = "bash test_characterization.sh"
+require_non_empty_diff = true
+lint_rule = "errorlint"
 required_reads = ["pkg/middleware/errors.go"]

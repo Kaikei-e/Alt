@@ -99,8 +99,26 @@ func gradeWorkspace(ctx context.Context, opt gradeOptions) (GradeResult, error) 
 	// Signal 1: CHECK-01 behavior-change screener.
 	res.Signals.Check01 = runCheck01Signal(ctx, wsAbs, baseCommit, sc.Check01ExpectedSignal, hoSummary.CandidateResponses)
 
-	// Signal 2: Deterministic offline characterization test.
+	// Signal 2: Deterministic offline characterization test + non-empty diff enforcement.
 	res.Signals.CharTest = runCharTestSignal(ctx, wsAbs, sc)
+	if sc.RequireNonEmptyDiff {
+		changed, chErr := workspaceChangedFiles(ctx, wsAbs, baseCommit)
+		if chErr != nil {
+			res.Signals.CharTest.Passed = false
+			res.Signals.CharTest.Errors = append(res.Signals.CharTest.Errors, Issue{
+				Code:    "NOOP_CHECK_ERROR",
+				Path:    wsAbs,
+				Message: fmt.Sprintf("failed to inspect workspace diff against %s: %v", baseCommit, chErr),
+			})
+		} else if len(changed) == 0 {
+			res.Signals.CharTest.Passed = false
+			res.Signals.CharTest.Errors = append(res.Signals.CharTest.Errors, Issue{
+				Code:    "NOOP_ZERO_EDITS",
+				Path:    sc.TargetFile,
+				Message: fmt.Sprintf("scenario %s requires task edits (require_non_empty_diff=true), but 0 files were modified relative to %s", sc.ID, baseCommit),
+			})
+		}
+	}
 
 	// Signal 3: LOOP-01 packet verify-handoff.
 	res.Signals.Loop01 = runLoop01Signal(ctx, wsAbs, opt.HandoffPath, pktPath, baseCommit, opt.NoRerun)
@@ -261,7 +279,29 @@ func runCharTestSignal(ctx context.Context, wsDir string, sc Scenario) CharTestS
 		})
 		return sig
 	}
-	rc, dur, outB, errB, runErr := runBashForeground(ctx, cmdStr, wsDir, time.Duration(defaultCharTimeoutS)*time.Second)
+
+	var (
+		rc     int
+		dur    float64
+		outB   []byte
+		errB   []byte
+		runErr error
+	)
+	if usesCharTestScript(cmdStr) {
+		scriptPath, ok := resolveTrustedCharTestScript(sc)
+		if !ok {
+			sig.ExitCode = 2
+			sig.Errors = append(sig.Errors, Issue{
+				Code:    "MISSING_CHAR_TEST_SCRIPT",
+				Path:    sc.ID,
+				Message: "trusted test_characterization.sh not found in scenario directory",
+			})
+			return sig
+		}
+		rc, dur, outB, errB, runErr = runScriptForeground(ctx, scriptPath, wsDir, time.Duration(defaultCharTimeoutS)*time.Second)
+	} else {
+		rc, dur, outB, errB, runErr = runBashForeground(ctx, cmdStr, wsDir, time.Duration(defaultCharTimeoutS)*time.Second)
+	}
 	sig.ExitCode = rc
 	sig.DurationS = dur
 	snippetSrc := string(errB)
@@ -289,14 +329,40 @@ func runCharTestSignal(ctx context.Context, wsDir string, sc Scenario) CharTestS
 	return sig
 }
 
-func runBashForeground(ctx context.Context, command, cwd string, timeout time.Duration) (int, float64, []byte, []byte, error) {
+func usesCharTestScript(cmdStr string) bool {
+	fields := strings.Fields(cmdStr)
+	if len(fields) == 1 {
+		return fields[0] == "test_characterization.sh" || fields[0] == "./test_characterization.sh"
+	}
+	if len(fields) == 2 && (fields[0] == "bash" || fields[0] == "sh") {
+		return fields[1] == "test_characterization.sh" || fields[1] == "./test_characterization.sh"
+	}
+	return strings.Contains(cmdStr, "test_characterization.sh")
+}
+
+func resolveTrustedCharTestScript(sc Scenario) (string, bool) {
+	if strings.TrimSpace(sc.Dir) == "" {
+		return "", false
+	}
+	cand := filepath.Join(sc.Dir, "test_characterization.sh")
+	if !isRegularNonSymlink(cand) || !withinDir(cand, sc.Dir) {
+		return "", false
+	}
+	abs, err := resolvePath(cand)
+	if err != nil {
+		return "", false
+	}
+	return abs, true
+}
+
+func runScriptForeground(ctx context.Context, scriptPath, cwd string, timeout time.Duration) (int, float64, []byte, []byte, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
 	outStr, errStr, code, err := execx.Combined(runCtx, execx.Cmd{
-		Args: []string{"bash", "-c", command},
+		Args: []string{"bash", scriptPath},
 		Dir:  cwd,
-		Env:  []string{"PYTHONDONTWRITEBYTECODE=1"},
+		Env:  []string{"PYTHONDONTWRITEBYTECODE=1", "WORKSPACE_DIR=" + cwd},
 	})
 	elapsed := float64(int64((float64(time.Since(start))/float64(time.Second))*1000+0.5)) / 1000
 	if err != nil {
@@ -309,6 +375,62 @@ func runBashForeground(ctx context.Context, command, cwd string, timeout time.Du
 		return code, elapsed, []byte(outStr), []byte(errStr), err
 	}
 	return code, elapsed, []byte(outStr), []byte(errStr), nil
+}
+
+func runBashForeground(ctx context.Context, command, cwd string, timeout time.Duration) (int, float64, []byte, []byte, error) {
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	start := time.Now()
+	outStr, errStr, code, err := execx.Combined(runCtx, execx.Cmd{
+		Args: []string{"bash", "-c", command},
+		Dir:  cwd,
+		Env:  []string{"PYTHONDONTWRITEBYTECODE=1", "WORKSPACE_DIR=" + cwd},
+	})
+	elapsed := float64(int64((float64(time.Since(start))/float64(time.Second))*1000+0.5)) / 1000
+	if err != nil {
+		if ctx.Err() != nil {
+			return 1, elapsed, []byte(outStr), []byte(errStr), ctx.Err()
+		}
+		if errors.Is(runCtx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+			return timeoutExitCode, elapsed, []byte(outStr), []byte(errStr), nil
+		}
+		return code, elapsed, []byte(outStr), []byte(errStr), err
+	}
+	return code, elapsed, []byte(outStr), []byte(errStr), nil
+}
+
+func workspaceChangedFiles(ctx context.Context, wsDir, baseCommit string) ([]string, error) {
+	seen := map[string]struct{}{}
+	diffOut, diffErr, code, err := runGit(ctx, wsDir, "diff", "--name-only", baseCommit, "--")
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("git diff --name-only failed (rc=%d): %s", code, strings.TrimSpace(diffErr))
+	}
+	for _, line := range strings.Split(diffOut, "\n") {
+		if rel := strings.TrimSpace(line); rel != "" {
+			seen[rel] = struct{}{}
+		}
+	}
+	untrackedOut, untrackedErr, code, err := runGit(ctx, wsDir, "ls-files", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("git ls-files failed (rc=%d): %s", code, strings.TrimSpace(untrackedErr))
+	}
+	for _, line := range strings.Split(untrackedOut, "\n") {
+		if rel := strings.TrimSpace(line); rel != "" {
+			seen[rel] = struct{}{}
+		}
+	}
+	changed := make([]string, 0, len(seen))
+	for rel := range seen {
+		changed = append(changed, rel)
+	}
+	sort.Strings(changed)
+	return changed, nil
 }
 
 func runLoop01Signal(ctx context.Context, wsDir, handoffPath, packetPath, baseCommit string, noRerun bool) Loop01Signal {
@@ -366,6 +488,18 @@ func runLoop01Signal(ctx context.Context, wsDir, handoffPath, packetPath, baseCo
 	return sig
 }
 
+func isUnsafeClaimedPath(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "/") || strings.Contains(trimmed, `\`) || filepath.IsAbs(trimmed) {
+		return true
+	}
+	clean := strings.TrimPrefix(trimmed, "./")
+	return unsafeRelPath(clean)
+}
+
 func runTranscriptAuditSignal(wsDir, transcriptPath string, requireTranscript bool, requiredReads, modifiedFiles, extraClaimed []string) TranscriptAuditSignal {
 	sig := TranscriptAuditSignal{
 		ExpectedReads:    []string{},
@@ -374,18 +508,31 @@ func runTranscriptAuditSignal(wsDir, transcriptPath string, requireTranscript bo
 		Errors:           []Issue{},
 	}
 	expectedSet := map[string]struct{}{}
+	unsafeSet := map[string]struct{}{}
 	for _, group := range [][]string{requiredReads, modifiedFiles, extraClaimed} {
 		for _, raw := range group {
-			norm := normalizeRelPath(raw)
-			if norm != "" && !unsafeRelPath(norm) {
-				expectedSet[norm] = struct{}{}
+			trimmed := strings.TrimSpace(raw)
+			if isUnsafeClaimedPath(trimmed) {
+				if trimmed == "" {
+					trimmed = raw
+				}
+				unsafeSet[trimmed] = struct{}{}
+				continue
 			}
+			norm := normalizeRelPath(strings.TrimPrefix(trimmed, "./"))
+			expectedSet[norm] = struct{}{}
 		}
 	}
 	for rel := range expectedSet {
 		sig.ExpectedReads = append(sig.ExpectedReads, rel)
 	}
 	sort.Strings(sig.ExpectedReads)
+
+	unsafeClaims := make([]string, 0, len(unsafeSet))
+	for bad := range unsafeSet {
+		unsafeClaims = append(unsafeClaims, bad)
+	}
+	sort.Strings(unsafeClaims)
 
 	if strings.TrimSpace(transcriptPath) == "" {
 		if requireTranscript {
@@ -397,6 +544,28 @@ func runTranscriptAuditSignal(wsDir, transcriptPath string, requireTranscript bo
 				Path:    "$",
 				Message: "--require-transcript was set but no --transcript JSONL file was supplied",
 			})
+			for _, bad := range unsafeClaims {
+				sig.UnverifiedClaims = append(sig.UnverifiedClaims, bad)
+				sig.Errors = append(sig.Errors, Issue{
+					Code:    "UNVERIFIED_FILE_READ_CLAIM",
+					Path:    bad,
+					Message: fmt.Sprintf("claimed read path %q is unsafe or escapes workspace", bad),
+				})
+			}
+			return sig
+		}
+		if len(unsafeClaims) > 0 {
+			sig.Evaluated = true
+			sig.Passed = false
+			sig.Fidelity = 0.0
+			for _, bad := range unsafeClaims {
+				sig.UnverifiedClaims = append(sig.UnverifiedClaims, bad)
+				sig.Errors = append(sig.Errors, Issue{
+					Code:    "UNVERIFIED_FILE_READ_CLAIM",
+					Path:    bad,
+					Message: fmt.Sprintf("claimed read path %q is unsafe or escapes workspace", bad),
+				})
+			}
 			return sig
 		}
 		sig.Evaluated = false
@@ -425,10 +594,19 @@ func runTranscriptAuditSignal(wsDir, transcriptPath string, requireTranscript bo
 			})
 		}
 	}
-	if len(sig.ExpectedReads) == 0 {
+	for _, bad := range unsafeClaims {
+		sig.UnverifiedClaims = append(sig.UnverifiedClaims, bad)
+		sig.Errors = append(sig.Errors, Issue{
+			Code:    "UNVERIFIED_FILE_READ_CLAIM",
+			Path:    bad,
+			Message: fmt.Sprintf("claimed read path %q is unsafe or escapes workspace", bad),
+		})
+	}
+	totalClaims := len(sig.ExpectedReads) + len(unsafeClaims)
+	if totalClaims == 0 {
 		sig.Fidelity = 1.0
 	} else {
-		sig.Fidelity = float64(verified) / float64(len(sig.ExpectedReads))
+		sig.Fidelity = float64(verified) / float64(totalClaims)
 	}
 	sig.Passed = len(sig.Errors) == 0
 	return sig
@@ -452,6 +630,22 @@ var readPathKeys = map[string]struct{}{
 	"filename":      {},
 }
 
+var failedToolStatuses = map[string]struct{}{
+	"error":     {},
+	"failed":    {},
+	"failure":   {},
+	"denied":    {},
+	"rejected":  {},
+	"cancelled": {},
+	"canceled":  {},
+	"timeout":   {},
+}
+
+type recordedReadCall struct {
+	callID string
+	paths  []string
+}
+
 func parseTranscriptReadPaths(transcriptPath, wsDir string) (map[string]struct{}, []Issue) {
 	observed := map[string]struct{}{}
 	var issues []Issue
@@ -468,6 +662,9 @@ func parseTranscriptReadPaths(transcriptPath, wsDir string) (map[string]struct{}
 
 	absWS, _ := filepath.Abs(wsDir)
 	resolvedWS, _ := resolvePath(wsDir)
+
+	var calls []recordedReadCall
+	failedCallIDs := map[string]struct{}{}
 
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -487,13 +684,12 @@ func parseTranscriptReadPaths(transcriptPath, wsDir string) (map[string]struct{}
 			})
 			continue
 		}
-		var rawPaths []string
-		collectReadToolPaths(evt, &rawPaths)
-		for _, p := range rawPaths {
-			if norm, ok := normalizeWorkspacePath(p, absWS, resolvedWS); ok {
-				observed[norm] = struct{}{}
-			}
+		obj, ok := evt.(map[string]any)
+		if !ok {
+			continue
 		}
+		collectFailedToolResultIDs(obj, failedCallIDs)
+		collectEnvelopeReadCalls(obj, &calls)
 	}
 	if err := sc.Err(); err != nil {
 		issues = append(issues, Issue{
@@ -502,23 +698,217 @@ func parseTranscriptReadPaths(transcriptPath, wsDir string) (map[string]struct{}
 			Message: err.Error(),
 		})
 	}
+
+	for _, call := range calls {
+		if call.callID != "" {
+			if _, failed := failedCallIDs[call.callID]; failed {
+				continue
+			}
+		}
+		for _, p := range call.paths {
+			if norm, ok := normalizeWorkspacePath(p, absWS, resolvedWS); ok {
+				observed[norm] = struct{}{}
+			}
+		}
+	}
 	return observed, issues
 }
 
-func collectReadToolPaths(node any, out *[]string) {
-	switch t := node.(type) {
-	case map[string]any:
-		if isReadToolObject(t) {
-			extractPathsFromToolObject(t, out)
-		}
-		for _, v := range t {
-			collectReadToolPaths(v, out)
-		}
-	case []any:
-		for _, elem := range t {
-			collectReadToolPaths(elem, out)
+func isUserOrSystemRole(m map[string]any) bool {
+	role := strings.ToLower(strings.TrimSpace(strField(m, "role")))
+	return role == "user" || role == "system"
+}
+
+func isToolInvocationFailed(m map[string]any) bool {
+	if isErr, ok := m["is_error"].(bool); ok && isErr {
+		return true
+	}
+	if errVal, exists := m["error"]; exists && errVal != nil {
+		switch v := errVal.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return true
+			}
+		case bool:
+			if v {
+				return true
+			}
+		default:
+			return true
 		}
 	}
+	if status := strings.ToLower(strings.TrimSpace(strField(m, "status"))); status != "" {
+		if _, bad := failedToolStatuses[status]; bad {
+			return true
+		}
+	}
+	if okVal, exists := m["ok"]; exists {
+		if b, ok := okVal.(bool); ok && !b {
+			return true
+		}
+	}
+	if sucVal, exists := m["success"]; exists {
+		if b, ok := sucVal.(bool); ok && !b {
+			return true
+		}
+	}
+	return false
+}
+
+func toolCallID(m map[string]any) string {
+	for _, k := range []string{"id", "call_id", "tool_use_id"} {
+		if id := strField(m, k); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func collectFailedToolResultIDs(evt map[string]any, failed map[string]struct{}) {
+	t := strings.ToLower(strings.TrimSpace(strField(evt, "type")))
+	if (t == "tool_result" || t == "function_call_output") && isToolInvocationFailed(evt) {
+		if id := toolCallID(evt); id != "" {
+			failed[id] = struct{}{}
+		}
+	}
+	if t == "response_item" {
+		if payload, ok := evt["payload"].(map[string]any); ok {
+			pt := strings.ToLower(strings.TrimSpace(strField(payload, "type")))
+			if (pt == "tool_result" || pt == "function_call_output") && isToolInvocationFailed(payload) {
+				if id := toolCallID(payload); id != "" {
+					failed[id] = struct{}{}
+				}
+			}
+		}
+	}
+	if msg, ok := evt["message"].(map[string]any); ok {
+		if content, ok := msg["content"].([]any); ok {
+			for _, item := range content {
+				obj, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				it := strings.ToLower(strings.TrimSpace(strField(obj, "type")))
+				if (it == "tool_result" || it == "function_call_output") && isToolInvocationFailed(obj) {
+					if id := toolCallID(obj); id != "" {
+						failed[id] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+}
+
+func isValidEnvelopeToolType(t string) bool {
+	return t == "tool_use" || t == "function_call" || t == "tool_call"
+}
+
+func appendReadToolObject(obj map[string]any, fallbackID string, out *[]recordedReadCall) {
+	if isUserOrSystemRole(obj) || isToolInvocationFailed(obj) || !isReadToolObject(obj) {
+		return
+	}
+	var paths []string
+	extractPathsFromToolObject(obj, &paths)
+	if len(paths) == 0 {
+		return
+	}
+	id := toolCallID(obj)
+	if id == "" {
+		id = fallbackID
+	}
+	*out = append(*out, recordedReadCall{callID: id, paths: paths})
+}
+
+func collectEnvelopeReadCalls(evt map[string]any, out *[]recordedReadCall) {
+	if isUserOrSystemRole(evt) || isToolInvocationFailed(evt) {
+		return
+	}
+	outerType := strings.ToLower(strings.TrimSpace(strField(evt, "type")))
+	if outerType == "user" || outerType == "system" || outerType == "tool_result" || outerType == "function_call_output" {
+		return
+	}
+
+	// Shape A: Claude Code assistant message.content[] tool_use items.
+	if msg, ok := evt["message"].(map[string]any); ok {
+		if !isUserOrSystemRole(msg) && !isToolInvocationFailed(msg) {
+			if content, ok := msg["content"].([]any); ok {
+				for _, item := range content {
+					obj, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					itemType := strings.ToLower(strings.TrimSpace(strField(obj, "type")))
+					if isValidEnvelopeToolType(itemType) {
+						appendReadToolObject(obj, "", out)
+					}
+				}
+			}
+			collectOpenAIToolCalls(msg["tool_calls"], out)
+		}
+	}
+
+	// Shape B: Assistant/OpenAI tool_calls[] array.
+	collectOpenAIToolCalls(evt["tool_calls"], out)
+
+	// Shape C: Codex rollout response_item.payload function_call envelope.
+	if outerType == "response_item" {
+		if payload, ok := evt["payload"].(map[string]any); ok {
+			pType := strings.ToLower(strings.TrimSpace(strField(payload, "type")))
+			if isValidEnvelopeToolType(pType) {
+				appendReadToolObject(payload, "", out)
+			}
+		}
+		return
+	}
+
+	// Shape D: Explicit top-level tool invocation object.
+	if outerType != "" && !isValidEnvelopeToolType(outerType) {
+		return
+	}
+	if !isExplicitTopLevelToolCall(evt, outerType) {
+		return
+	}
+	appendReadToolObject(evt, "", out)
+}
+
+func collectOpenAIToolCalls(raw any, out *[]recordedReadCall) {
+	items, ok := raw.([]any)
+	if !ok {
+		return
+	}
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok || isUserOrSystemRole(obj) || isToolInvocationFailed(obj) {
+			continue
+		}
+		if fn, ok := obj["function"].(map[string]any); ok {
+			appendReadToolObject(fn, toolCallID(obj), out)
+			continue
+		}
+		if isReadToolObject(obj) {
+			appendReadToolObject(obj, "", out)
+		}
+	}
+}
+
+func isExplicitTopLevelToolCall(m map[string]any, outerType string) bool {
+	if isValidEnvelopeToolType(outerType) {
+		return true
+	}
+	if _, hasTool := m["tool"]; hasTool {
+		return true
+	}
+	if _, hasToolName := m["tool_name"]; hasToolName {
+		return true
+	}
+	if _, hasName := m["name"]; hasName {
+		for _, k := range []string{"input", "args", "arguments", "parameters"} {
+			if _, ok := m[k]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isReadToolObject(m map[string]any) bool {
@@ -589,69 +979,25 @@ func normalizeWorkspacePath(rawPath, absWS, resolvedWS string) (string, bool) {
 		}
 		return "", false
 	}
-	norm := normalizeRelPath(p)
+	if isUnsafeClaimedPath(p) {
+		return "", false
+	}
+	norm := normalizeRelPath(strings.TrimPrefix(p, "./"))
 	if norm == "" || unsafeRelPath(norm) {
 		return "", false
 	}
 	return norm, true
 }
 
-// parseHandoffMetadata extracts modified_files paths and candidate_responses
-// from either a JSON handoff or a Markdown handoff with YAML frontmatter / fenced JSON.
+// parseHandoffMetadata loads the TaskHandoff using packet.LoadDocument so
+// JSON, YAML frontmatter, inline YAML arrays, and metadata-frontmatter +
+// fenced ```json blocks are parsed identically to LOOP-01 verify-handoff.
 func parseHandoffMetadata(path string) (handoffSummary, error) {
-	raw, err := readRegularFile(path)
+	doc, err := packet.LoadDocument(path)
 	if err != nil {
 		return handoffSummary{}, err
 	}
-	text := strings.TrimPrefix(string(raw), "\uFEFF")
-	trimmed := strings.TrimSpace(text)
-
-	// Case 1: Pure JSON handoff.
-	if strings.HasPrefix(trimmed, "{") {
-		var m map[string]any
-		if err := json.Unmarshal([]byte(trimmed), &m); err != nil {
-			return handoffSummary{}, err
-		}
-		return summaryFromMap(m), nil
-	}
-
-	// Case 2: Markdown with YAML frontmatter.
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		end := -1
-		for i := 1; i < len(lines); i++ {
-			s := strings.TrimSpace(lines[i])
-			if s == "---" || s == "..." {
-				end = i
-				break
-			}
-		}
-		if end > 1 {
-			return parseHandoffYAMLFrontmatter(lines[1:end]), nil
-		}
-	}
-
-	// Case 3: Markdown with fenced ```json block.
-	inJSON := false
-	var block []string
-	for _, line := range lines {
-		s := strings.TrimSpace(line)
-		if !inJSON && strings.HasPrefix(strings.ToLower(s), "```json") {
-			inJSON = true
-			continue
-		}
-		if inJSON && strings.HasPrefix(s, "```") {
-			var m map[string]any
-			if err := json.Unmarshal([]byte(strings.Join(block, "\n")), &m); err == nil {
-				return summaryFromMap(m), nil
-			}
-			break
-		}
-		if inJSON {
-			block = append(block, line)
-		}
-	}
-	return handoffSummary{}, nil
+	return summaryFromMap(doc.Data), nil
 }
 
 func summaryFromMap(m map[string]any) handoffSummary {
@@ -663,7 +1009,7 @@ func summaryFromMap(m map[string]any) handoffSummary {
 				continue
 			}
 			if p, ok := obj["path"].(string); ok && strings.TrimSpace(p) != "" {
-				out.ModifiedFiles = append(out.ModifiedFiles, normalizeRelPath(p))
+				out.ModifiedFiles = append(out.ModifiedFiles, strings.TrimSpace(p))
 			}
 		}
 	}
@@ -692,104 +1038,4 @@ func summaryFromMap(m map[string]any) handoffSummary {
 func strField(m map[string]any, key string) string {
 	s, _ := m[key].(string)
 	return strings.TrimSpace(s)
-}
-
-func parseHandoffYAMLFrontmatter(lines []string) handoffSummary {
-	var out handoffSummary
-	section := ""
-	sectionIndent := -1
-	var curResp *candidateResponse
-
-	flushResp := func() {
-		if curResp != nil {
-			out.CandidateResponses = append(out.CandidateResponses, *curResp)
-			curResp = nil
-		}
-	}
-
-	for _, rawLine := range lines {
-		if strings.TrimSpace(rawLine) == "" || strings.HasPrefix(strings.TrimSpace(rawLine), "#") {
-			continue
-		}
-		indent := len(rawLine) - len(strings.TrimLeft(rawLine, " "))
-		trimmed := strings.TrimSpace(rawLine)
-
-		if indent == 0 {
-			flushResp()
-			section = ""
-			sectionIndent = -1
-			if strings.HasPrefix(trimmed, "modified_files:") {
-				section = "modified_files"
-				sectionIndent = 0
-			} else if strings.HasPrefix(trimmed, "runtime_behavior_impact:") {
-				section = "runtime_behavior_impact"
-				sectionIndent = 0
-			}
-			continue
-		}
-
-		if section == "runtime_behavior_impact" && strings.HasPrefix(trimmed, "candidate_responses:") {
-			section = "candidate_responses"
-			sectionIndent = indent
-			continue
-		}
-
-		if section == "candidate_responses" && indent <= sectionIndent {
-			flushResp()
-			section = "runtime_behavior_impact"
-			continue
-		}
-
-		if section == "modified_files" {
-			kv := strings.TrimPrefix(trimmed, "- ")
-			kv = strings.TrimSpace(kv)
-			if k, v, ok := splitYAMLKV(kv); ok && k == "path" && v != "" {
-				out.ModifiedFiles = append(out.ModifiedFiles, normalizeRelPath(v))
-			}
-			continue
-		}
-
-		if section == "candidate_responses" {
-			isItemStart := strings.HasPrefix(trimmed, "- ")
-			kv := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
-			if isItemStart {
-				flushResp()
-				curResp = &candidateResponse{}
-			}
-			if curResp == nil {
-				curResp = &candidateResponse{}
-			}
-			if k, v, ok := splitYAMLKV(kv); ok {
-				switch k {
-				case "candidate_id":
-					curResp.CandidateID = v
-				case "file":
-					curResp.File = v
-				case "function":
-					curResp.Function = v
-				case "kind":
-					curResp.Kind = v
-				case "disposition":
-					curResp.Disposition = v
-				case "test_name":
-					curResp.TestName = v
-				}
-			}
-		}
-	}
-	flushResp()
-	return out
-}
-
-func splitYAMLKV(s string) (string, string, bool) {
-	idx := strings.IndexByte(s, ':')
-	if idx <= 0 {
-		return "", "", false
-	}
-	k := strings.TrimSpace(s[:idx])
-	v := strings.TrimSpace(s[idx+1:])
-	if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
-		v = v[1 : len(v)-1]
-	}
-	return k, strings.TrimSpace(v), true
 }

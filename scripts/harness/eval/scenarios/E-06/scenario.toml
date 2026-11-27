@@ -8,4 +8,6 @@ target_file = "internal/openapi/server.gen.go"
 check01_expected_signal = ""
 has_char_test = true
 char_test_command = "bash test_characterization.sh"
+require_non_empty_diff = false
+lint_rule = "generated-code-guard"
 required_reads = ["internal/openapi/server.gen.go"]

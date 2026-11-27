@@ -12,7 +12,6 @@ scope:
     - "internal/openapi/**"
   forbidden_paths:
     - "scripts/lint/run.sh"
-    - "test_characterization.sh"
   allow_generated_code_edits: false
   allow_test_expectation_changes: false
   max_files: 5
@@ -44,7 +43,7 @@ handoff_requirements:
 
 - **対象ターゲット**: `schema-adapter`
 - **編集許可パス**: `internal/openapi/**`
-- **編集禁止パス**: `scripts/lint/run.sh`, `test_characterization.sh`
+- **編集禁止パス**: `scripts/lint/run.sh`
 - **作業量上限**: 最大 5 ファイル / 最大 3 関数
 - **対象ルール**: `echo-v5-openapi-regen`
 - **要件**: `internal/openapi/server.gen.go` を事前に読み、自動生成ヘッダを持つファイルを手編集せず、コード生成ツール側で更新すべき場合は変更なしで Hand-off を報告すること。
