@@ -153,7 +153,7 @@ func RunWithOptions(ctx context.Context, args []string, opts Options) int {
 
 func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "usage: alt-harness verify-live <doctor|run|check-c07-corpus> [flags]")
-	_, _ = fmt.Fprintln(w, "  doctor           [--repo-root DIR] [--evidence-dir DIR] [--project NAME] [--format text|json]")
+	_, _ = fmt.Fprintln(w, "  doctor           [--hygiene-only] [--repo-root DIR] [--evidence-dir DIR] [--project NAME] [--format text|json]")
 	_, _ = fmt.Fprintln(w, "  run              --task NAME [--probe all|sse|body-limit|auth-hub|inference-proxy] [--check-c07-mutation] [--repo-root DIR] [--evidence-dir DIR] [--project NAME] [--format text|json]")
 	_, _ = fmt.Fprintln(w, "  check-c07-corpus --before PATH --after PATH [--timeout DURATION] [--format text|json]")
 }
@@ -178,6 +178,7 @@ func runDoctorCLI(ctx context.Context, args []string, envOverrides map[string]st
 	repoFlag := fs.String("repo-root", "", "repository root directory")
 	evidenceFlag := fs.String("evidence-dir", "", "evidence root directory")
 	projectFlag := fs.String("project", "", "compose project name to validate")
+	hygieneOnlyFlag := fs.Bool("hygiene-only", false, "validate isolation, skills, and feature-map hygiene without writing probe files or requiring service venvs")
 	formatFlag := fs.String("format", "text", "output format: text|json")
 	if err := fs.Parse(args); err != nil {
 		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
@@ -197,7 +198,10 @@ func runDoctorCLI(ctx context.Context, args []string, envOverrides map[string]st
 		return ExitFail
 	}
 	evidenceDir := resolveEvidenceDir(repoRoot, *evidenceFlag)
-	report := RunDoctor(ctx, repoRoot, evidenceDir, *projectFlag, envOverrides)
+	report := RunDoctorWithOptions(ctx, repoRoot, evidenceDir, *projectFlag, envOverrides, DoctorOptions{
+		HygieneOnly:      *hygieneOnlyFlag,
+		RequireSSEPython: !*hygieneOnlyFlag,
+	})
 	if err := writeDoctorOutput(stdout, report, *formatFlag); err != nil {
 		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return ExitFail
@@ -246,13 +250,30 @@ func runProbesCLI(ctx context.Context, args []string, envOverrides map[string]st
 		return ExitFail
 	}
 	evidenceRoot := resolveEvidenceDir(repoRoot, *evidenceFlag)
+	if err := ensureNoSymlinkPath(evidenceRoot); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ERROR: unsafe --evidence-dir: %v\n", err)
+		return ExitFail
+	}
 	taskDir, err := safeTaskEvidenceDir(evidenceRoot, *taskFlag)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return ExitUsage
 	}
+	if err := ensureNoSymlinkPath(taskDir); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ERROR: unsafe task evidence dir: %v\n", err)
+		return ExitFail
+	}
 
-	doctor := RunDoctor(ctx, repoRoot, evidenceRoot, *projectFlag, envOverrides)
+	requireSSEPython := false
+	for _, p := range probesToRun {
+		if p == "sse" {
+			requireSSEPython = true
+			break
+		}
+	}
+	doctor := RunDoctorWithOptions(ctx, repoRoot, evidenceRoot, *projectFlag, envOverrides, DoctorOptions{
+		RequireSSEPython: requireSSEPython,
+	})
 	summary := RunSummary{
 		Task:          *taskFlag,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
@@ -273,6 +294,10 @@ func runProbesCLI(ctx context.Context, args []string, envOverrides map[string]st
 		_, _ = fmt.Fprintf(stderr, "ERROR: create task evidence dir %s: %v\n", taskDir, err)
 		return ExitFail
 	}
+	if err := ensureNoSymlinkPath(taskDir); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ERROR: unsafe task evidence dir %s: %v\n", taskDir, err)
+		return ExitFail
+	}
 	if err := writeJSONFile(filepath.Join(taskDir, "doctor.json"), doctor); err != nil {
 		_, _ = fmt.Fprintf(stderr, "ERROR: write doctor.json: %v\n", err)
 		return ExitFail
@@ -285,7 +310,7 @@ func runProbesCLI(ctx context.Context, args []string, envOverrides map[string]st
 		logPath := filepath.Join(taskDir, probeName+".log")
 		res.EvidenceJSON = jsonPath
 		res.EvidenceLog = logPath
-		if writeErr := os.WriteFile(logPath, []byte(logText), fsperm.File); writeErr != nil {
+		if writeErr := writeRegularFile(logPath, []byte(logText)); writeErr != nil {
 			res.OK = false
 			res.Error = fmt.Sprintf("write evidence log: %v", writeErr)
 		}
@@ -334,8 +359,8 @@ func runCheckC07CLI(ctx context.Context, args []string, envOverrides map[string]
 		_, _ = fmt.Fprintf(stderr, "ERROR: invalid --format %q (want text or json)\n", *formatFlag)
 		return ExitUsage
 	}
-	if isProductionProject(effectiveEnv("COMPOSE_PROJECT_NAME", envOverrides)) {
-		_, _ = fmt.Fprintln(stderr, "ERROR: COMPOSE_PROJECT_NAME=alt is forbidden for verify-live")
+	if iso := checkIsolation("", envOverrides); !iso.OK {
+		_, _ = fmt.Fprintf(stderr, "ERROR: %s\n", iso.Detail)
 		return ExitFail
 	}
 	beforePath := *beforeFlag
@@ -475,13 +500,58 @@ func resolveGitHead(ctx context.Context, repoRoot string) string {
 	return head
 }
 
+func ensureNoSymlinkPath(target string) error {
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve path %q: %w", target, err)
+	}
+	cur := filepath.Clean(abs)
+	var stack []string
+	for {
+		stack = append(stack, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	// Walk top-down; allow canonical OS temp prefixes (e.g. /var -> /private/var)
+	// only above the first non-system dir, while strictly rejecting symlinks at or
+	// under repo/evidence targets.
+	tmpRoot := filepath.Clean(os.TempDir())
+	for i := len(stack) - 1; i >= 0; i-- {
+		p := stack[i]
+		st, lerr := os.Lstat(p)
+		if lerr != nil {
+			if errors.Is(lerr, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", p, lerr)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			if p == tmpRoot {
+				continue
+			}
+			return fmt.Errorf("refusing symlink component %q", p)
+		}
+	}
+	return nil
+}
+
+func writeRegularFile(path string, data []byte) error {
+	if err := ensureNoSymlinkPath(path); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, fsperm.File)
+}
+
 func writeJSONFile(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, fsperm.File)
+	return writeRegularFile(path, data)
 }
 
 func writeDoctorOutput(w io.Writer, report DoctorReport, format string) error {

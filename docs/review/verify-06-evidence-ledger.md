@@ -164,8 +164,9 @@ package plecto:filter@0.4.0 {
   - `error_count`: `0`
   - `stdout_sha256` (`--message-format=json`): `27f18773d8dd5595848404555cd8abed25dc863ff1f43ed452de8d03d534bc39`
   - `stderr` 実測: `Finished 'dev' profile [unoptimized + debuginfo] target(s) in 0.95s`
-- `#[allow(...)]` 全量インベントリ (`inventory_sha256`: `de7d7b79febc48be58490db51a041bef9151e4edc7e1e241ae2d21bd90772552`):
-  - 属性総数: `309` 件（内訳: crate/module 単位 `#![allow(...)]` = `0` 件、item 単位 `#[allow(...)]` = `309` 件）
+- `#[allow(...)]` / `#[cfg_attr(..., allow(...))]` 全量インベントリ:
+  - 直接属性 (`#[allow(...)]`): `309` 件（内訳: crate/module 単位 `#![allow(...)]` = `0` 件、item 単位 `#[allow(...)]` = `309` 件、`inventory_sha256`: `de7d7b79febc48be58490db51a041bef9151e4edc7e1e241ae2d21bd90772552`）
+  - 条件付き属性 (`#[cfg_attr(not(test), allow(dead_code))]`): `6` 件（`src/pipeline/genre_refine/cache.rs:17,27,52`, `src/scheduler/daemon.rs:936,1030,1058`、`#![cfg_attr(..., allow(...))]` = `0` 件）— `verify-claims recap-clippy` 拡張インベントリで合計 `315` 件 (`inner=0`, `outer=315`) として計上。
   - ルール別件数（1 属性に複数ルール指定を含む全 20 種）:
     - `dead_code`: 178
     - `clippy::too_many_lines`: 32
@@ -199,7 +200,7 @@ package plecto:filter@0.4.0 {
   ```
 - 確認結果:
   - `scripts/harness/corpus/C-06`: `test_characterization.sh` を追加し、`active_checks = ["CHECK-01", "VERIFY-01"]`, `VERIFY-01 = "SEQUENCE_FINAL_TEST_FAILED"` で通過。
-  - `scripts/harness/corpus/C-15`: `test_characterization.sh` を追加し、`active_checks = ["ARCH-02", "CHECK-01", "VERIFY-01"]`, `VERIFY-01 = "SEQUENCE_FINAL_TEST_FAILED"` で通過（オフライン Echo v5 ローカルスタブで 1,000,000 bytes=200 / 1,000,001 bytes=413 の境界を実測）。
+  - `scripts/harness/corpus/C-15`: `test_characterization.sh` を追加し、`active_checks = ["ARCH-02", "CHECK-01", "VERIFY-01", "VERIFY-03"]`, `VERIFY-01 = "SEQUENCE_FINAL_TEST_FAILED"`, `VERIFY-03 = "VERIFY-03:effective_config_diff"` で通過（オフライン Echo v5 ローカルスタブで 1,000,000 bytes=200 / 1,000,001 bytes=413 の境界を実測）。
   - `scripts/harness/corpus/C-18`: 既存 `test_characterization.sh` を含め、`packet` ユニットテスト `TestVerifySequenceCorpusCasesC06C15C18` で C-06・C-15・C-18 の 3 件すべてでリグレッション検出 (`SEQUENCE_FINAL_TEST_FAILED`) およびテスト改ざん検出 (`SEQUENCE_TEST_MUTATED_IN_IMPL`) を確認。
   - `scripts/altharness/internal/packet`: `--packet` 指定時に `base_commit`, `packet_id`, `behavior_preserving` を自動読み込みし、`--bugfix` / `--behavior-preserving` との併用でも `base_commit` と `packet_id` を維持することを `TestVerifySequencePacketAutoLoadsBaseCommitAndMode` で確認。
 
@@ -218,4 +219,4 @@ package plecto:filter@0.4.0 {
 
 - `plecto` の出荷済み OCI アーティファクト (`plecto/artifacts/stale-chunk-heal`) は `.gitignore` 対象のためクリーンな CI クローンには存在せず、CI 環境では git 履歴 (`ad0850966~1` vs `HEAD`) からのソース再ビルド比較のみが実行される。
 - `recap-worker/recap-worker` の `cargo clippy --offline` はローカル Cargo キャッシュが事前展開されている環境を前提とする。
-- `alt-harness` のメインディスパッチャ (`cmd/alt-harness/main.go`) およびメタゲート (`internal/meta/catalog.go`) への `verify-claims` 配線はコーディネータ統合フェーズで反映される。
+- `alt-harness` のメインディスパッチャ (`cmd/alt-harness/main.go`) およびメタゲート (`internal/meta/catalog.go`) へ `verify-claims` の配線が完了し、`run.sh harness` でテンプレートと本台帳を継続検証している。

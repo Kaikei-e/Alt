@@ -38,8 +38,22 @@ func isProductionProject(name string) bool {
 	return strings.EqualFold(strings.TrimSpace(name), "alt")
 }
 
+// DoctorOptions controls which runtime checks RunDoctorWithOptions executes.
+type DoctorOptions struct {
+	HygieneOnly      bool
+	RequireSSEPython bool
+}
+
 // RunDoctor executes fail-closed isolation, toolchain, skill, and feature-map hygiene checks.
 func RunDoctor(ctx context.Context, repoRoot, evidenceDir, projectOverride string, envOverrides map[string]string) DoctorReport {
+	return RunDoctorWithOptions(ctx, repoRoot, evidenceDir, projectOverride, envOverrides, DoctorOptions{
+		RequireSSEPython: true,
+	})
+}
+
+// RunDoctorWithOptions executes fail-closed isolation, skill, feature-map, and
+// optional live-probe toolchain/writability diagnostics.
+func RunDoctorWithOptions(ctx context.Context, repoRoot, evidenceDir, projectOverride string, envOverrides map[string]string, opts DoctorOptions) DoctorReport {
 	report := DoctorReport{
 		OK:            true,
 		IsolationMode: "loopback-127.0.0.1",
@@ -64,16 +78,20 @@ func RunDoctor(ctx context.Context, repoRoot, evidenceDir, projectOverride strin
 		add(CheckResult{Name: "toolchain-go", OK: true, Detail: goPath})
 	}
 
-	// 3. Python runtime for live SSE probe.
-	pyCmd, pyDetail, pyErr := resolvePythonForSSE(ctx, repoRoot)
-	if pyErr != nil {
-		add(CheckResult{Name: "toolchain-python", OK: false, Detail: pyErr.Error()})
-	} else {
-		add(CheckResult{Name: "toolchain-python", OK: true, Detail: fmt.Sprintf("%s (%s)", strings.Join(pyCmd, " "), pyDetail)})
-	}
+	if !opts.HygieneOnly {
+		// 3. Python runtime for live SSE probe (fail-closed when sse probe is requested).
+		if opts.RequireSSEPython {
+			pyCmd, pyDetail, pyErr := resolvePythonForSSE(ctx, repoRoot)
+			if pyErr != nil {
+				add(CheckResult{Name: "toolchain-python", OK: false, Detail: pyErr.Error()})
+			} else {
+				add(CheckResult{Name: "toolchain-python", OK: true, Detail: fmt.Sprintf("%s (%s)", strings.Join(pyCmd, " "), pyDetail)})
+			}
+		}
 
-	// 4. Writable evidence directory.
-	add(checkEvidenceDirWritable(evidenceDir))
+		// 4. Writable evidence directory (with symlink rejection).
+		add(checkEvidenceDirWritable(evidenceDir))
+	}
 
 	// 5. Skill files and .agents/skills symlinks.
 	add(checkSkillFilesAndSymlinks(repoRoot))
@@ -120,11 +138,25 @@ func checkIsolation(projectOverride string, envOverrides map[string]string) Chec
 }
 
 func checkEvidenceDirWritable(evidenceDir string) CheckResult {
+	if err := ensureNoSymlinkPath(evidenceDir); err != nil {
+		return CheckResult{
+			Name:   "evidence-dir",
+			OK:     false,
+			Detail: fmt.Sprintf("unsafe evidence directory %s: %v", evidenceDir, err),
+		}
+	}
 	if err := os.MkdirAll(evidenceDir, fsperm.Dir); err != nil {
 		return CheckResult{
 			Name:   "evidence-dir",
 			OK:     false,
 			Detail: fmt.Sprintf("cannot create evidence directory %s: %v", evidenceDir, err),
+		}
+	}
+	if err := ensureNoSymlinkPath(evidenceDir); err != nil {
+		return CheckResult{
+			Name:   "evidence-dir",
+			OK:     false,
+			Detail: fmt.Sprintf("unsafe evidence directory %s: %v", evidenceDir, err),
 		}
 	}
 	f, err := os.CreateTemp(evidenceDir, ".doctor-write-probe-*")
@@ -342,24 +374,28 @@ from news_creator.handler.sse_stream import SSEHeartbeatConfig, create_sse_respo
 
 // resolvePythonForSSE returns a command prefix that can import the news-creator
 // SSE handler for live verification, preferring news-creator's local .venv.
+// Fails closed when no candidate can import the SSE handler (ADR-001036).
 func resolvePythonForSSE(ctx context.Context, repoRoot string) ([]string, string, error) {
 	ncDir := filepath.Join(repoRoot, "news-creator", "app")
-	candidates := []struct {
+	type candidate struct {
 		label string
 		cmd   []string
-	}{}
-	venvPy := filepath.Join(repoRoot, "news-creator", "app", ".venv", "bin", "python")
+	}
+	var candidates []candidate
+	venvPy := filepath.Join(ncDir, ".venv", "bin", "python")
 	if st, err := os.Stat(venvPy); err == nil && !st.IsDir() {
-		candidates = append(candidates, struct {
-			label string
-			cmd   []string
-		}{label: "news-creator .venv", cmd: []string{venvPy}})
+		candidates = append(candidates, candidate{label: "news-creator .venv", cmd: []string{venvPy}})
 	}
 	if py3, err := exec.LookPath("python3"); err == nil {
-		candidates = append(candidates, struct {
-			label string
-			cmd   []string
-		}{label: "python3", cmd: []string{py3}})
+		candidates = append(candidates, candidate{label: "python3", cmd: []string{py3}})
+	}
+	if uvPath, err := exec.LookPath("uv"); err == nil {
+		if st, serr := os.Stat(ncDir); serr == nil && st.IsDir() {
+			candidates = append(candidates, candidate{
+				label: "uv offline news-creator",
+				cmd:   []string{uvPath, "run", "--offline", "--directory", ncDir, "python"},
+			})
+		}
 	}
 	var tried []string
 	for _, c := range candidates {
@@ -369,11 +405,6 @@ func resolvePythonForSSE(ctx context.Context, repoRoot string) ([]string, string
 			return c.cmd, c.label + " (SSE handler importable)", nil
 		}
 		tried = append(tried, c.label)
-	}
-	if uvPath, err := exec.LookPath("uv"); err == nil {
-		if st, serr := os.Stat(ncDir); serr == nil && st.IsDir() {
-			return []string{uvPath, "run", "--offline", "--directory", ncDir, "python"}, "uv offline fallback", nil
-		}
 	}
 	if len(tried) == 0 {
 		tried = []string{"none found"}

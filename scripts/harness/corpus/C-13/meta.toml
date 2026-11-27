@@ -16,8 +16,12 @@ source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
 notes = "In alt-backend/sidecar-proxy/pkg/proxy/utils.go (1ae0da0c9), gosec G705 prompted wrapping plain-text error response bodies in html.EscapeString, corrupting error text for non-HTML HTTP clients; reverted to text/plain; charset=utf-8 with X-Content-Type-Options: nosniff."
 
 [detection]
-planned_checks = ["CHECK-01"]
-active_checks = ["CHECK-01"]
+planned_checks = ["CHECK-01", "VERIFY-03"]
+active_checks = ["CHECK-01", "VERIFY-03"]
 currently_caught = true
-current_method = "CHECK-01"
-expected_signal = "go.output_escaping_change"
+current_method = "CHECK-01+VERIFY-03"
+expected_signal = ""
+
+[detection.expected_signals]
+CHECK-01 = "go.output_escaping_change"
+VERIFY-03 = "VERIFY-03:effective_config_diff"

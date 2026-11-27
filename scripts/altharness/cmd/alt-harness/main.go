@@ -13,6 +13,7 @@ import (
 	"alt/scripts/altharness/internal/canary"
 	"alt/scripts/altharness/internal/codegen"
 	"alt/scripts/altharness/internal/corpus"
+	"alt/scripts/altharness/internal/flakyhunt"
 	"alt/scripts/altharness/internal/generated"
 	"alt/scripts/altharness/internal/guards"
 	"alt/scripts/altharness/internal/hygiene"
@@ -29,6 +30,10 @@ import (
 	"alt/scripts/altharness/internal/screener"
 	"alt/scripts/altharness/internal/selfcheck"
 	"alt/scripts/altharness/internal/suppress"
+	"alt/scripts/altharness/internal/verifyclaims"
+	"alt/scripts/altharness/internal/verifydiff"
+	"alt/scripts/altharness/internal/verifygolden"
+	"alt/scripts/altharness/internal/verifylive"
 	"alt/scripts/altharness/internal/workflow"
 )
 
@@ -121,6 +126,16 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return preflight.Run(ctx, args[1:], stdin, stdout, stderr)
 	case "pytest-rand":
 		return pytestrand.Run(ctx, args[1:], stdout, stderr)
+	case "verify-claims":
+		return verifyclaims.Run(ctx, args[1:], stdout, stderr)
+	case "verify-diff":
+		return verifydiff.Run(ctx, args[1:], stdout, stderr)
+	case "verify-golden":
+		return verifygolden.Run(ctx, args[1:], stdout, stderr)
+	case "verify-live":
+		return verifylive.Run(ctx, args[1:], stdout, stderr)
+	case "flaky-hunt":
+		return flakyhunt.Run(ctx, args[1:], stdout, stderr)
 	case "gate":
 		if len(args) != 2 {
 			fmt.Fprintln(stderr, "usage: alt-harness gate <repo|harness|both>")
@@ -147,7 +162,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return code
 	case "help", "-h", "--help":
-		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand gate")
+		fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand verify-claims verify-diff verify-golden verify-live flaky-hunt gate")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])

@@ -49,7 +49,10 @@
 ./scripts/verify/verify-live.sh doctor
 
 # 2. ルート・ナビゲーション単体テスト（オフライン実行）
-cd alt-frontend-sv && bun run test -- src/routes/page.server.test.ts src/routes/\(app\)/today/page.svelte.test.ts src/routes/\(app\)/menu/page.svelte.test.ts
+cd alt-frontend-sv && bun run test -- src/routes/page.server.test.ts src/lib/config/navigation.test.ts
+
+# 2b. Svelte ブラウザコンポーネントテスト（Playwright Chromium 環境で実行）
+cd alt-frontend-sv && bun run test:client -- src/routes/\(app\)/today/page.svelte.test.ts src/routes/\(app\)/menu/page.svelte.test.ts
 
 # 3. 隔離 Compose スタックでのブラウザ E2E（Mode B: 明示オプトイン・本番 -p alt 禁止）
 # 必ず非本番プロジェクト名 (-p alt-verify-<run_id>) と非本番ポート帯 (19xxx) を使い、
@@ -66,5 +69,5 @@ cd alt-frontend-sv && bun run test -- src/routes/page.server.test.ts src/routes/
 
 - **廃止済みルートを書かない（ADR-001026）**: Evening Pulse（`/recap/evening-pulse`）および 7-day Recap（`/recap?window=7`、`/api/v1/generate/recaps/7days`）は廃止・削除済み。古いドキュメントを鵜呑みにせず必ず `alt-frontend-sv/src/routes/` の実ファイルと照合する。現行 Recap 面は 3-day Recap (`/recap`)、Topic Cards (`/recap/cards`)、Morning Letter (`/recap/morning-letter`)、Job Status (`/recap/job-status`) の 4 面である。
 - **未リンク候補ルート（ADR-001026 §7）**: `/eval-dashboard` と `/settings/knowledge-home-admin`（`/admin/knowledge-home` への 307 リダイレクト）はナビに未リンクだが `src/routes/` に残存しているため、勝手な削除やナビ追加を行わない。
-- **Vitest 実行コマンド**: `alt-frontend-sv` では素の `bun test` ではなく **`bun run test`**（Vitest）を使う。
+- **Vitest 実行コマンド**: `alt-frontend-sv` では素の `bun test` ではなく **`bun run test`**（server / unit テスト）を使う。`*.svelte.test.ts` コンポーネントテストは `VITEST_BROWSER=true` が無いと `vitest.config.ts` により収集スキップされるため、ブラウザコンポーネント検証時は必ず **`bun run test:client`** を使う。
 - **本番ポート `:4173` / `:80` へ接続しない**: Mode B でブラウザ検証する場合は必ず隔離プロジェクト `-p alt-verify-<run_id>` と `19xxx` ポート帯を使う。

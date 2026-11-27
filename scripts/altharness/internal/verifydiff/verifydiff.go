@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"alt/scripts/altharness/internal/fsperm"
@@ -35,7 +36,6 @@ const (
 	defaultTimeoutSeconds = 180
 	maxExcerptBytes       = 4000
 	shortSHALen           = 12
-	decisionsHeader       = "ts\tphase\tdecision\twhy\tevidence\tresult\n"
 	tempScaffoldMarker    = "# VERIFY-02-" + "TEMP-OLD-IMPL"
 )
 
@@ -282,7 +282,14 @@ func resolveRunSpec(cfg runFlags) (resolvedRunSpec, int, error) {
 	if err != nil {
 		return resolvedRunSpec{}, exitFail, fmt.Errorf("could not resolve harness run dir: %w", err)
 	}
-	defaultDecisionsFile := filepath.Join(runDir, "decisions.tsv")
+	branchDecisions := filepath.Join(runDir, "decisions.tsv")
+	defaultDecisionsFile := filepath.Join(evidenceDir, "decisions.tsv")
+	if st, serr := os.Lstat(branchDecisions); serr == nil && st.Mode().IsRegular() {
+		// Append into the active branch run only when it has already been initialized
+		// via `alt-harness harness-run init` (avoids creating an uninitialized header-only
+		// branch decisions.tsv that blocks subsequent `harness-run init`).
+		defaultDecisionsFile = branchDecisions
+	}
 	decisionsPath, err := resolveSafeOutputPath(repoResolved, cfg.decisionsFile, defaultDecisionsFile)
 	if err != nil {
 		return resolvedRunSpec{}, exitUsage, fmt.Errorf("invalid --decisions-file: %w", err)
@@ -421,9 +428,9 @@ func recordEvidenceAndDecision(
 		return ev, fmt.Errorf("failed to write evidence JSON: %w", err)
 	}
 
-	resultStr := "fail"
+	resultStr := "mismatch"
 	if ev.Passed {
-		resultStr = "pass"
+		resultStr = "info"
 	}
 	shortBase := resolvedCommit
 	if len(shortBase) > shortSHALen {
@@ -431,7 +438,7 @@ func recordEvidenceAndDecision(
 	}
 	decisionText := sanitizeTSVValue(fmt.Sprintf("verify-diff %s (seed=%d, base=%s)", spec.relFile, cfg.seed, shortBase))
 	whyText := sanitizeTSVValue(fmt.Sprintf("VERIFY-02 differential equivalence check against %s", spec.baseInput))
-	if err := appendVerifyDecision(spec.decisionsPath, decisionText, whyText, evPointer, resultStr); err != nil {
+	if err := guards.AppendDecisionToFile(spec.decisionsPath, "verify-02", decisionText, whyText, evPointer, resultStr); err != nil {
 		return ev, fmt.Errorf("failed to append decisions.tsv: %w", err)
 	}
 	return ev, nil
@@ -445,6 +452,14 @@ func executeRunner(
 ) (stdoutBuf, stderrBuf []byte, exitCode int, err error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = repoRoot
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
 	env := os.Environ()
 	for k, v := range extraEnv {
 		env = append(env, k+"="+v)
@@ -495,6 +510,9 @@ func gitShowFile(ctx context.Context, repoRoot, commitSHA, relSlash string) ([]b
 }
 
 func writeEvidenceJSON(path string, ev Evidence) error {
+	if err := checkNoSymlinkAncestors(path); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), fsperm.Dir); err != nil {
 		return err
 	}
@@ -503,32 +521,6 @@ func writeEvidenceJSON(path string, ev Evidence) error {
 		return err
 	}
 	return os.WriteFile(path, append(raw, '\n'), fsperm.File)
-}
-
-func appendVerifyDecision(decisionsPath, decision, why, evidencePointer, result string) error {
-	if !guards.IsValidEvidencePointer(evidencePointer) {
-		return fmt.Errorf("evidence pointer %q is not a valid LOOP-03 pointer", evidencePointer)
-	}
-	if result != "pass" && result != "fail" {
-		return fmt.Errorf("invalid verify-02 result %q", result)
-	}
-	if err := os.MkdirAll(filepath.Dir(decisionsPath), fsperm.Dir); err != nil {
-		return err
-	}
-	if _, err := os.Stat(decisionsPath); os.IsNotExist(err) {
-		if err := os.WriteFile(decisionsPath, []byte(decisionsHeader), fsperm.File); err != nil {
-			return err
-		}
-	}
-	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
-	row := strings.Join([]string{ts, "verify-02", decision, why, evidencePointer, result}, "\t") + "\n"
-	f, err := os.OpenFile(decisionsPath, os.O_APPEND|os.O_WRONLY, fsperm.File)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = f.WriteString(row)
-	return err
 }
 
 func toRepoPointer(repoResolved, absPath string) string {

@@ -127,13 +127,14 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	var (
-		repoRoot    string
-		targetNames []string
-		format      = "text"
-		concurrency int
-		corpusCase  string
-		beforePath  string
-		afterPath   string
+		repoRoot       string
+		targetNames    []string
+		format         = "text"
+		concurrency    int
+		corpusCase     string
+		beforePath     string
+		afterPath      string
+		checkFilesOnly bool
 	)
 
 	rest := args
@@ -202,8 +203,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 				return exitUsage
 			}
 			afterPath = v
+		case "--check-files-only":
+			checkFilesOnly = true
 		case "-h", "--help":
-			_, _ = fmt.Fprintln(stdout, "usage: verify-golden [--repo-root DIR] [--target NAME] [--format text|json] [--concurrency N]")
+			_, _ = fmt.Fprintln(stdout, "usage: verify-golden [--repo-root DIR] [--target NAME] [--check-files-only] [--format text|json] [--concurrency N]")
 			_, _ = fmt.Fprintln(stdout, "       verify-golden --check-corpus-case ID --before FILE --after FILE [--format text|json]")
 			return exitOK
 		default:
@@ -236,7 +239,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	report, err := Verify(ctx, absRoot, selected, concurrency)
+	var report Report
+	if checkFilesOnly {
+		report, err = VerifyFilesOnly(ctx, absRoot, selected)
+	} else {
+		report, err = Verify(ctx, absRoot, selected, concurrency)
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return exitFail
@@ -375,6 +383,76 @@ func Verify(ctx context.Context, repoRoot string, targets []Target, concurrency 
 		}
 	}
 	return Report{OK: ok, Targets: results}, nil
+}
+
+var goldenTestDeclRE = regexp.MustCompile(`(?m)^func\s+TestEffectiveConfigGolden\s*\(`)
+
+// VerifyFilesOnly performs a fast offline structural verification of all target
+// golden JSON files and corresponding Go test declarations without invoking
+// `go test` (used in CI harness gates where service module caches are absent).
+func VerifyFilesOnly(ctx context.Context, repoRoot string, targets []Target) (Report, error) {
+	if ctx == nil {
+		return Report{}, errors.New("verifygolden: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
+	if len(targets) == 0 {
+		return Report{}, errors.New("verifygolden: no targets provided")
+	}
+	absRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return Report{}, fmt.Errorf("verifygolden: resolve repo root: %w", err)
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return Report{}, fmt.Errorf("verifygolden: repo root not accessible: %w", err)
+	}
+	results := make([]TargetResult, len(targets))
+	allOK := true
+	for i, target := range targets {
+		res := TargetResult{Target: target}
+		goldenAbs, gerr := safeRepoPath(resolvedRoot, target.GoldenRelPath)
+		if gerr != nil {
+			res.Detail = fmt.Sprintf("invalid golden path %q: %v", target.GoldenRelPath, gerr)
+			allOK = false
+			results[i] = res
+			continue
+		}
+		if verr := validateCanonicalGoldenFile(goldenAbs); verr != nil {
+			res.Detail = verr.Error()
+			allOK = false
+			results[i] = res
+			continue
+		}
+		res.GoldenChecked = true
+
+		pkgDir := filepath.Dir(filepath.Dir(target.GoldenRelPath))
+		testRel := filepath.ToSlash(filepath.Join(pkgDir, "effective_config_golden_test.go"))
+		testAbs, terr := safeRepoPath(resolvedRoot, testRel)
+		if terr != nil {
+			res.Detail = fmt.Sprintf("missing golden test file %q: %v", testRel, terr)
+			allOK = false
+			results[i] = res
+			continue
+		}
+		raw, rerr := os.ReadFile(testAbs)
+		if rerr != nil {
+			res.Detail = fmt.Sprintf("read golden test file %q: %v", testRel, rerr)
+			allOK = false
+			results[i] = res
+			continue
+		}
+		if !goldenTestDeclRE.Match(raw) {
+			res.Detail = fmt.Sprintf("golden test file %q missing func TestEffectiveConfigGolden(", testRel)
+			allOK = false
+			results[i] = res
+			continue
+		}
+		res.OK = true
+		results[i] = res
+	}
+	return Report{OK: allOK, Targets: results}, nil
 }
 
 var passTestLineRE = regexp.MustCompile(`(?m)^--- PASS:\s+TestEffectiveConfigGolden\b`)

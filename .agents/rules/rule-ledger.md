@@ -47,3 +47,8 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-32 | ロジック改変を伴う一括 autofix（`golangci-lint --fix`, `cargo clippy --fix`, `ruff --unsafe-fixes`）を実行しない | `scripts/altharness/alt-harness guard-exec`, `.claude/hooks/deny-unsafe-commands.sh`, `scripts/altharness/alt-harness packet` | C-01 / C-02 / C-03 |
 | R-33 | 検証・ビルドはフォアグラウンド同期実行とし、歴史的資産 `stopped-using-k8s/` は明示指示なしに変更しない | `scripts/altharness/alt-harness guard-exec`, `scripts/altharness/alt-harness guard-scope` | .agents/rules/task-packet.md |
 | R-34 | `alt-backend/app` の 4 バイナリ（`backend` / `harvester` / `notifier` / `datahub`）責務分離を維持する | 判断（設計・変更レビューで確認） | ADR-000954 |
+| R-35 | 長大関数分割の前後同値性を乱数差分試験で確認し、一時的な旧実装足場をリポジトリに残さない | `scripts/altharness/alt-harness verify-diff` | ADR-001037 |
+| R-36 | Echo v5 4 サービス・プロキシ・コード生成器の実効設定を JSON ゴールデンで固定し、無断変更を差分検知する | `scripts/altharness/alt-harness verify-golden` | C-11 / C-12 / C-13 / C-14 / C-15 / ADR-001037 |
+| R-37 | 本番 `-p alt` から完全隔離した実機検証スキル・Feature Map で SSE 終端・境界値・認証・転送ヘッダを実証する | `scripts/altharness/alt-harness verify-live`, `scripts/verify/verify-live.sh` | C-07 / C-14 / C-15 / ADR-001036 / ADR-001037 |
+| R-38 | 不安定テストはシャッフルシード付きで再現・特定してから修正し、回帰テストで固定する | `scripts/altharness/alt-harness flaky-hunt`, `scripts/verify/flaky-hunt.sh` | ADR-001037 |
+| R-39 | 実装報告の挙動主張ごとに再実行可能なコマンドと出力証拠の保存先を必須とし、裏付けのない包括主張を拒否する | `scripts/altharness/alt-harness verify-claims`, `scripts/agent-harness/templates/implementation-report.md.tmpl` | ADR-001037 |

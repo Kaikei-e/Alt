@@ -24,6 +24,7 @@ import (
 var forbiddenProdPorts = map[int]struct{}{
 	80:    {},
 	443:   {},
+	3000:  {},
 	4173:  {},
 	4433:  {},
 	4434:  {},
@@ -37,12 +38,17 @@ var forbiddenProdPorts = map[int]struct{}{
 	8888:  {},
 	9000:  {},
 	9001:  {},
+	9010:  {},
+	9011:  {},
+	9012:  {},
+	9102:  {},
 	9110:  {},
 	9200:  {},
 	9201:  {},
 	9202:  {},
 	9250:  {},
 	9443:  {},
+	9500:  {},
 	11434: {},
 	11436: {},
 }
@@ -98,6 +104,13 @@ func startLoopbackChild(ctx context.Context, spec childSpec) (*liveChild, error)
 	cmd := exec.CommandContext(ctx, spec.Args[0], spec.Args[1:]...)
 	cmd.Dir = spec.Dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
 
 	// Inherit parent environment without COMPOSE_PROJECT_NAME=alt so children never
 	// accidentally target the production Compose project.

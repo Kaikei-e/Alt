@@ -44,6 +44,16 @@ var blanketClaimPhrases = []string{
 	"behavior unchanged",
 }
 
+var broadScopePhrases = []string{
+	"本番サービス",
+	"全サービス",
+	"全モジュール",
+	"全体",
+	"all services",
+	"all modules",
+	"production",
+}
+
 var unScopedBlanketPhrases = []string{
 	"本番サービス実行時挙動への影響ゼロ",
 	"本番サービスへの影響ゼロ",
@@ -82,8 +92,18 @@ var runnableCommandPrefixes = []string{
 var knownEvidenceExts = []string{
 	".md", ".json", ".txt", ".log", ".wit", ".tsv", ".toml",
 	".yaml", ".yml", ".out", ".diff", ".csv", ".wasm", ".sarif",
-	".xml", ".html", ".sh", ".go", ".rs", ".py",
+	".xml", ".html", ".pdf", ".png", ".svg",
 }
+
+var nonEvidenceSourceExts = map[string]struct{}{
+	".go": {}, ".rs": {}, ".py": {}, ".sh": {},
+}
+
+var (
+	htmlAnchorIDRE = regexp.MustCompile(`(?i)\bid\s*=\s*["']([^"']+)["']`)
+	mdHeadingRE    = regexp.MustCompile(`^\s*#{1,6}\s+(.+?)\s*$`)
+	htmlTagStripRE = regexp.MustCompile(`<[^>]+>`)
+)
 
 type mdTableRow struct {
 	lineNo int
@@ -105,15 +125,46 @@ func normalizeLines(text string) []string {
 	return strings.Split(text, "\n")
 }
 
-func isFenceLine(line string) (string, bool) {
-	trimmed := strings.TrimSpace(line)
-	if strings.HasPrefix(trimmed, "```") {
-		return "```", true
+type fenceState struct {
+	ch     byte
+	length int
+}
+
+func (f fenceState) active() bool { return f.length >= 3 }
+
+func parseFenceRun(line string) (ch byte, runLen int, rest string, ok bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) < 3 || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return 0, 0, "", false
 	}
-	if strings.HasPrefix(trimmed, "~~~") {
-		return "~~~", true
+	ch = trimmed[0]
+	n := 0
+	for n < len(trimmed) && trimmed[n] == ch {
+		n++
 	}
-	return "", false
+	if n < 3 {
+		return 0, 0, "", false
+	}
+	return ch, n, strings.TrimSpace(trimmed[n:]), true
+}
+
+func toggleFence(cur fenceState, line string) (fenceState, bool) {
+	ch, runLen, rest, ok := parseFenceRun(line)
+	if !ok {
+		return cur, false
+	}
+	if !cur.active() {
+		// Opening backtick fence must not contain backticks in its info string per CommonMark.
+		if ch == '`' && strings.ContainsRune(rest, '`') {
+			return cur, false
+		}
+		return fenceState{ch: ch, length: runLen}, true
+	}
+	// Closing fence must match char, have length >= opening length, and no info string.
+	if ch == cur.ch && runLen >= cur.length && rest == "" {
+		return fenceState{}, true
+	}
+	return cur, false
 }
 
 func splitPipeRow(line string) []string {
@@ -170,33 +221,22 @@ func classifyHeader(cells []string) (claimCol, commandCol, evidenceCol int, ok b
 	return claimCol, commandCol, evidenceCol, claimCol >= 0 && evidenceCol >= 0
 }
 
-func toggleFence(current, line string) (string, bool) {
-	marker, ok := isFenceLine(line)
-	if !ok {
-		return current, false
-	}
-	switch current {
-	case "":
-		return marker, true
-	case marker:
-		return "", true
-	default:
-		return current, true
-	}
-}
-
 func parseClaimTables(lines []string) ([]claimTable, map[int]bool, []Issue) {
 	var tables []claimTable
 	inClaimRowLine := map[int]bool{}
 	var issues []Issue
 
-	fence := ""
+	var fence fenceState
+	fenceOpenLine := 0
 	for i := 0; i < len(lines); i++ {
 		if nextFence, toggled := toggleFence(fence, lines[i]); toggled {
+			if !fence.active() && nextFence.active() {
+				fenceOpenLine = i + 1
+			}
 			fence = nextFence
 			continue
 		}
-		if fence != "" {
+		if fence.active() {
 			continue
 		}
 		if !strings.Contains(lines[i], "|") || i+1 >= len(lines) {
@@ -225,7 +265,7 @@ func parseClaimTables(lines []string) ([]claimTable, map[int]bool, []Issue) {
 			if trimmed == "" || !strings.Contains(trimmed, "|") {
 				break
 			}
-			if _, isF := isFenceLine(trimmed); isF {
+			if _, _, _, isF := parseFenceRun(trimmed); isF {
 				break
 			}
 			cells := splitPipeRow(lines[j])
@@ -243,6 +283,13 @@ func parseClaimTables(lines []string) ([]claimTable, map[int]bool, []Issue) {
 		}
 		tables = append(tables, tbl)
 		i = j - 1
+	}
+	if fence.active() {
+		issues = append(issues, Issue{
+			Code:    "UNCLOSED_CODE_FENCE",
+			Path:    fmt.Sprintf("line:%d", fenceOpenLine),
+			Message: "unclosed fenced code block hides trailing report content from validation",
+		})
 	}
 	return tables, inClaimRowLine, issues
 }
@@ -276,6 +323,13 @@ func isUnscopedBlanketClaim(claim string) bool {
 	for _, phrase := range blanketClaimPhrases {
 		if trimmed == strings.ToLower(phrase) {
 			return true
+		}
+	}
+	if matchBlanketPhrase(lower) != "" {
+		for _, scope := range broadScopePhrases {
+			if strings.Contains(lower, strings.ToLower(scope)) {
+				return true
+			}
 		}
 	}
 	return false
@@ -313,7 +367,7 @@ func hasRunnableCommand(text string) bool {
 			return true
 		}
 	}
-	return looksLikeRunnableCommand(text)
+	return false
 }
 
 func looksLikePathToken(token string) bool {
@@ -371,20 +425,13 @@ func extractEvidencePaths(evidenceCell string) []string {
 		add(m[1])
 	}
 
-	// 2. Backtick spans that are single-token path references (not commands).
+	// 2. Backtick spans that are single-token path references (never runnable command spans).
 	for _, loc := range backtickSpanRE.FindAllStringSubmatchIndex(evidenceCell, -1) {
 		span := strings.TrimSpace(evidenceCell[loc[2]:loc[3]])
-		if !looksLikePathToken(span) {
+		if looksLikeRunnableCommand(span) && !strings.Contains(span, "..") {
 			continue
 		}
-		// Skip single-token commands (e.g. `./scripts/lint/run.sh`) when explicitly labeled as a command.
-		prefixStart := loc[0] - 24
-		if prefixStart < 0 {
-			prefixStart = 0
-		}
-		prefix := strings.ToLower(evidenceCell[prefixStart:loc[0]])
-		if strings.HasPrefix(span, "./") && (strings.Contains(prefix, "コマンド") || strings.Contains(prefix, "command")) &&
-			!strings.Contains(span, "..") {
+		if !looksLikePathToken(span) {
 			continue
 		}
 		add(span)
@@ -398,6 +445,53 @@ func extractEvidencePaths(evidenceCell string) []string {
 		}
 	}
 	return paths
+}
+
+func markdownAnchorExists(filePath, fragment string) bool {
+	raw, err := os.ReadFile(filePath)
+	if err != nil {
+		return false
+	}
+	want := strings.ToLower(strings.TrimSpace(fragment))
+	if want == "" {
+		return true
+	}
+	content := string(raw)
+	for _, m := range htmlAnchorIDRE.FindAllStringSubmatch(content, -1) {
+		if strings.ToLower(strings.TrimSpace(m[1])) == want {
+			return true
+		}
+	}
+	for _, line := range normalizeLines(content) {
+		m := mdHeadingRE.FindStringSubmatch(line)
+		if len(m) < 2 {
+			continue
+		}
+		heading := htmlTagStripRE.ReplaceAllString(m[1], "")
+		if slugifyHeading(heading) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func slugifyHeading(heading string) string {
+	s := strings.ToLower(strings.TrimSpace(heading))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r == ' ' || r == '\t' || r == '-':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r >= 0x80:
+			b.WriteRune(r)
+			prevDash = false
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 func validateReport(reportPath, repoRoot string) (ValidateResult, error) {
@@ -430,14 +524,14 @@ func validateReport(reportPath, repoRoot string) (ValidateResult, error) {
 	}
 
 	// Scan prose outside claim table rows and fenced code blocks for blanket claims.
-	fence := ""
+	var fence fenceState
 	for idx, line := range lines {
 		lineNo := idx + 1
 		if nextFence, toggled := toggleFence(fence, line); toggled {
 			fence = nextFence
 			continue
 		}
-		if fence != "" || claimRowLines[lineNo] {
+		if fence.active() || claimRowLines[lineNo] {
 			continue
 		}
 		if phrase := matchBlanketPhrase(line); phrase != "" {
@@ -446,6 +540,15 @@ func validateReport(reportPath, repoRoot string) (ValidateResult, error) {
 				Path:    fmt.Sprintf("line:%d", lineNo),
 				Message: fmt.Sprintf("blanket claim %q is forbidden outside per-change claim/evidence table rows", phrase),
 			})
+		}
+	}
+
+	reportResolved := ""
+	if absRep, aerr := filepath.Abs(reportPath); aerr == nil {
+		if rRep, rerr := filepath.EvalSymlinks(absRep); rerr == nil {
+			reportResolved = rRep
+		} else {
+			reportResolved = absRep
 		}
 	}
 
@@ -511,13 +614,22 @@ func validateReport(reportPath, repoRoot string) (ValidateResult, error) {
 			} else {
 				for _, rawP := range paths {
 					res.EvidencePathsChecked++
-					filePart, _, _ := strings.Cut(rawP, "#")
+					filePart, fragPart, _ := strings.Cut(rawP, "#")
 					full, unsafeReason, err := resolveSafeRepoPath(repoRoot, filePart)
 					if err != nil {
 						res.Errors = append(res.Errors, Issue{
 							Code:    "UNSAFE_EVIDENCE_PATH",
 							Path:    loc,
 							Message: fmt.Sprintf("evidence path %q rejected: %s", rawP, unsafeReason),
+						})
+						continue
+					}
+					ext := strings.ToLower(filepath.Ext(filePart))
+					if _, isSrc := nonEvidenceSourceExts[ext]; isSrc {
+						res.Errors = append(res.Errors, Issue{
+							Code:    "NON_EVIDENCE_ARTIFACT",
+							Path:    loc,
+							Message: fmt.Sprintf("source/script file %q is not an evidence output artifact", filePart),
 						})
 						continue
 					}
@@ -535,6 +647,26 @@ func validateReport(reportPath, repoRoot string) (ValidateResult, error) {
 							Code:    "EMPTY_EVIDENCE_FILE",
 							Path:    loc,
 							Message: fmt.Sprintf("referenced evidence file is 0 bytes: %q", filePart),
+						})
+						continue
+					}
+					fullResolved := full
+					if rf, rerr := filepath.EvalSymlinks(full); rerr == nil {
+						fullResolved = rf
+					}
+					if reportResolved != "" && fullResolved == reportResolved && strings.TrimSpace(fragPart) == "" {
+						res.Errors = append(res.Errors, Issue{
+							Code:    "SELF_REFERENTIAL_EVIDENCE",
+							Path:    loc,
+							Message: fmt.Sprintf("self-referential evidence path %q requires a verified #anchor to an evidence log section", rawP),
+						})
+						continue
+					}
+					if strings.TrimSpace(fragPart) != "" && ext == ".md" && !markdownAnchorExists(full, fragPart) {
+						res.Errors = append(res.Errors, Issue{
+							Code:    "MISSING_EVIDENCE_ANCHOR",
+							Path:    loc,
+							Message: fmt.Sprintf("referenced Markdown anchor #%s not found in %q", fragPart, filePart),
 						})
 						continue
 					}
@@ -665,14 +797,14 @@ func checkTemplate(repoRoot string) ValidateResult {
 		}
 	}
 
-	fence := ""
+	var fence fenceState
 	for idx, line := range lines {
 		lineNo := idx + 1
 		if nextFence, toggled := toggleFence(fence, line); toggled {
 			fence = nextFence
 			continue
 		}
-		if fence != "" || claimRowLines[lineNo] {
+		if fence.active() || claimRowLines[lineNo] {
 			continue
 		}
 		if phrase := matchBlanketPhrase(line); phrase != "" {

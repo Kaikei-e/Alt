@@ -41,7 +41,8 @@ func TestHelpListsAllSubcommands(t *testing.T) {
 		"generated", "screener", "packet", "corpus", "selfcheck",
 		"canary", "entrypoint-canary", "postmortem", "migration-gate", "adr-gate",
 		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time", "guard-adr-read",
-		"harness-run", "agy-hook", "preflight", "pytest-rand", "gate",
+		"harness-run", "agy-hook", "preflight", "pytest-rand",
+		"verify-claims", "verify-diff", "verify-golden", "verify-live", "flaky-hunt", "gate",
 	}
 	help := out.String()
 	for _, cmd := range want {
@@ -68,6 +69,11 @@ func TestWiredSubcommandsHelpAndErrors(t *testing.T) {
 		{"hygiene help", []string{"hygiene", "--help"}, 0, "hygiene", ""},
 		{"entrypoint-canary help", []string{"entrypoint-canary", "--help"}, 0, "entrypoint canary", ""},
 		{"pytest-rand help", []string{"pytest-rand", "--help"}, 0, "pytest", ""},
+		{"verify-claims help", []string{"verify-claims", "--help"}, 0, "verify-06", ""},
+		{"verify-diff help", []string{"verify-diff", "--help"}, 0, "verify-diff", ""},
+		{"verify-golden help", []string{"verify-golden", "--help"}, 0, "verify-golden", ""},
+		{"verify-live help", []string{"verify-live", "--help"}, 0, "verify-live", ""},
+		{"flaky-hunt help", []string{"flaky-hunt", "--help"}, 0, "flaky-hunt", ""},
 		{"lang missing", []string{"lang"}, 2, "", "usage: alt-harness lang"},
 		{"lang unknown", []string{"lang", "bogus"}, 2, "", "unknown language runner"},
 		{"gate bad arity", []string{"gate"}, 2, "", "usage: alt-harness gate"},

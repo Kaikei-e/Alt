@@ -330,10 +330,17 @@ func parseArgs(args []string) (config, error) {
 			if err != nil {
 				return cfg, err
 			}
+			if err := validatePkgSpec(v); err != nil {
+				return cfg, err
+			}
 			cfg.pkgs = append(cfg.pkgs, v)
 			cfg.pkgExplicit = true
 		case strings.HasPrefix(arg, "--pkg="):
-			cfg.pkgs = append(cfg.pkgs, strings.TrimPrefix(arg, "--pkg="))
+			v := strings.TrimPrefix(arg, "--pkg=")
+			if err := validatePkgSpec(v); err != nil {
+				return cfg, err
+			}
+			cfg.pkgs = append(cfg.pkgs, v)
 			cfg.pkgExplicit = true
 		case arg == "--race":
 			cfg.race = true
@@ -543,9 +550,78 @@ func validateModulePath(repoReal, rawModule string) (string, string, error) {
 	return filepath.ToSlash(cleaned), resolved, nil
 }
 
+func validatePkgSpec(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return errors.New("invalid --pkg: must not be empty")
+	}
+	if strings.ContainsRune(trimmed, '\x00') {
+		return errors.New("invalid --pkg: contains NUL byte")
+	}
+	if strings.HasPrefix(trimmed, "-") {
+		return fmt.Errorf("invalid --pkg %q: flag-like package specs starting with '-' are forbidden", raw)
+	}
+	if filepath.IsAbs(trimmed) || strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, `\`) {
+		return fmt.Errorf("invalid --pkg %q: absolute paths are forbidden", raw)
+	}
+	slash := strings.ReplaceAll(trimmed, `\`, "/")
+	for _, seg := range strings.Split(slash, "/") {
+		if seg == ".." {
+			return fmt.Errorf("invalid --pkg %q: '..' path traversal is forbidden", raw)
+		}
+	}
+	return nil
+}
+
+func checkNoSymlinkComponents(target string) error {
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	cur := filepath.Clean(abs)
+	var stack []string
+	for {
+		stack = append(stack, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	tmpRoot := filepath.Clean(os.TempDir())
+	for i := len(stack) - 1; i >= 0; i-- {
+		p := stack[i]
+		st, lerr := os.Lstat(p)
+		if lerr != nil {
+			if errors.Is(lerr, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", p, lerr)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			if p == tmpRoot {
+				continue
+			}
+			return fmt.Errorf("refusing symlink component %q", p)
+		}
+	}
+	return nil
+}
+
 func resolveEvidenceDir(repoReal, relModule, explicit string) (string, error) {
 	if explicit == "" {
-		return filepath.Join(repoReal, ".harness", "evidence", "flaky-hunt", safeModuleName(relModule)), nil
+		defPath := filepath.Join(repoReal, ".harness", "evidence", "flaky-hunt", safeModuleName(relModule))
+		if err := checkNoSymlinkComponents(defPath); err != nil {
+			return "", fmt.Errorf("unsafe default evidence directory: %w", err)
+		}
+		resolved, err := resolveNearestAncestor(defPath)
+		if err != nil {
+			return "", fmt.Errorf("invalid default evidence directory: %w", err)
+		}
+		if !isPathInside(resolved, repoReal) {
+			return "", fmt.Errorf("default evidence directory escapes repository root: %q", defPath)
+		}
+		return defPath, nil
 	}
 	if strings.ContainsRune(explicit, '\x00') {
 		return "", errors.New("invalid --evidence-dir: contains NUL byte")
@@ -557,9 +633,16 @@ func resolveEvidenceDir(repoReal, relModule, explicit string) (string, error) {
 		}
 	}
 	if filepath.IsAbs(explicit) {
-		return filepath.Clean(explicit), nil
+		cleaned := filepath.Clean(explicit)
+		if err := checkNoSymlinkComponents(cleaned); err != nil {
+			return "", fmt.Errorf("invalid --evidence-dir %q: %w", explicit, err)
+		}
+		return cleaned, nil
 	}
 	joined := filepath.Join(repoReal, filepath.FromSlash(slashPath))
+	if err := checkNoSymlinkComponents(joined); err != nil {
+		return "", fmt.Errorf("invalid --evidence-dir %q: %w", explicit, err)
+	}
 	resolved, err := resolveNearestAncestor(joined)
 	if err != nil {
 		return "", fmt.Errorf("invalid --evidence-dir %q: %w", explicit, err)

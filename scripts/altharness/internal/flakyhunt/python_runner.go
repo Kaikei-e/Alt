@@ -19,6 +19,7 @@ var (
 	pySummaryFailedRE  = regexp.MustCompile(`^FAILED\s+(\S+)`)
 	pyProgressFailedRE = regexp.MustCompile(`^(\S+::\S+)\s+FAILED\b`)
 	pyErrorLineRE      = regexp.MustCompile(`^ERROR\s+(?:collecting\s+)?(\S+)`)
+	pyPassedCountRE    = regexp.MustCompile(`\b([1-9]\d*)\s+passed\b`)
 )
 
 func runPythonHunt(ctx context.Context, cfg config, relModule, modDir, evidenceDir string, baseEnv map[string]string, rep *Report) error {
@@ -27,20 +28,23 @@ func runPythonHunt(ctx context.Context, cfg config, relModule, modDir, evidenceD
 			return err
 		}
 
-		seed, err := resolveRoundSeed(cfg.seed)
-		if err != nil {
-			return fmt.Errorf("round %d seed generation failed: %w", round, err)
-		}
-		seedStr := strconv.FormatInt(seed, 10)
-
 		roundStart := time.Now()
 		var combinedLog strings.Builder
 		roundExitCode := 0
+		roundSeed := ""
 		var roundFailures []Failure
 
 		for iter := 1; iter <= cfg.count; iter++ {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			seed, err := resolveRoundSeed(cfg.seed)
+			if err != nil {
+				return fmt.Errorf("round %d iter %d seed generation failed: %w", round, iter, err)
+			}
+			seedStr := strconv.FormatInt(seed, 10)
+			if roundSeed == "" {
+				roundSeed = seedStr
 			}
 			args := []string{
 				"--seed", seedStr,
@@ -67,6 +71,9 @@ func runPythonHunt(ctx context.Context, cfg config, relModule, modDir, evidenceD
 			stderrStr := errBuf.String()
 			if captured := extractPythonSeed(stdoutStr); captured != "" {
 				seedStr = captured
+				if iter == 1 {
+					roundSeed = captured
+				}
 			}
 
 			if rc != 0 {
@@ -92,6 +99,22 @@ func runPythonHunt(ctx context.Context, cfg config, relModule, modDir, evidenceD
 					})
 				}
 				roundFailures = append(roundFailures, extracted...)
+			} else if !pyPassedCountRE.MatchString(stdoutStr) {
+				combinedLog.WriteString(stdoutStr)
+				if stderrStr != "" {
+					combinedLog.WriteString("--- STDERR ---\n")
+					combinedLog.WriteString(stderrStr)
+				}
+				repro := buildPythonReproCommand(relModule, seedStr, cfg)
+				roundFailures = append(roundFailures, Failure{
+					Round:        round,
+					Seed:         seedStr,
+					TestName:     "<zero_tests>",
+					Package:      relModule,
+					Kind:         "zero_tests",
+					ReproCommand: repro,
+					Snippet:      "silent 0-test pass blocked (anti-FP-01): pytest reported 0 passed tests",
+				})
 			}
 		}
 
@@ -100,7 +123,7 @@ func runPythonHunt(ctx context.Context, cfg config, relModule, modDir, evidenceD
 			ExitCode:   roundExitCode,
 			Passed:     roundExitCode == 0 && len(roundFailures) == 0,
 			DurationMS: time.Since(roundStart).Milliseconds(),
-			Seed:       seedStr,
+			Seed:       roundSeed,
 		}
 
 		if !summary.Passed {

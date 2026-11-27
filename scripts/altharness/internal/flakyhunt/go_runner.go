@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -81,6 +82,14 @@ func runGoHunt(ctx context.Context, cfg config, relModule, modDir, evidenceDir s
 		cmd.Env = envSlice
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process != nil {
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil
+		}
+		cmd.WaitDelay = 2 * time.Second
 
 		exitCode := 0
 		runErr := cmd.Run()
@@ -94,6 +103,22 @@ func runGoHunt(ctx context.Context, cfg config, relModule, modDir, evidenceDir s
 		}
 
 		parsed := parseGoTestJSON(stdoutBuf.String(), stderrBuf.String(), exitCode, round, relModule, modImportPath, pkgs, cfg)
+		if exitCode == 0 && len(parsed.failures) == 0 && parsed.testsRun == 0 {
+			seed := firstSeed(parsed.packageSeeds)
+			if seed == "" && cfg.seed != "" && cfg.seed != "on" {
+				seed = cfg.seed
+			}
+			pkgName := strings.Join(pkgs, " ")
+			parsed.failures = append(parsed.failures, Failure{
+				Round:        round,
+				Seed:         seed,
+				TestName:     "<zero_tests>",
+				Package:      pkgName,
+				Kind:         "zero_tests",
+				ReproCommand: buildGoReproCommand(relModule, pkgName, seed, cfg),
+				Snippet:      "silent 0-test pass blocked (anti-FP-01): go test executed 0 tests",
+			})
+		}
 		summary := RoundSummary{
 			Round:        round,
 			ExitCode:     exitCode,
@@ -149,6 +174,7 @@ type goRoundParse struct {
 	packageSeeds map[string]string
 	failures     []Failure
 	rawLog       string
+	testsRun     int
 }
 
 type failKey struct {
@@ -223,6 +249,7 @@ func parseGoTestJSON(stdoutText, stderrText string, exitCode, round int, relModu
 		}
 	}
 
+	testsRun := 0
 	var renderedLog strings.Builder
 	scanner := bufio.NewScanner(strings.NewReader(stdoutText))
 	// Allow long Go test output lines (e.g. big diffs or stack traces).
@@ -254,13 +281,17 @@ func parseGoTestJSON(stdoutText, stderrText string, exitCode, round int, relModu
 		case "run":
 			if ev.Package != "" && ev.Test != "" {
 				lastRunningTest[ev.Package] = ev.Test
+				testsRun++
 			}
 		case "pass":
 			if ev.Package != "" {
 				if ev.Test == "" {
 					pkgPassed[ev.Package] = true
-				} else if lastRunningTest[ev.Package] == ev.Test {
-					delete(lastRunningTest, ev.Package)
+				} else {
+					testsRun++
+					if lastRunningTest[ev.Package] == ev.Test {
+						delete(lastRunningTest, ev.Package)
+					}
 				}
 			}
 		case "skip":
@@ -422,6 +453,7 @@ func parseGoTestJSON(stdoutText, stderrText string, exitCode, round int, relModu
 		packageSeeds: pkgSeeds,
 		failures:     failures,
 		rawLog:       rawLog,
+		testsRun:     testsRun,
 	}
 }
 

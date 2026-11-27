@@ -337,8 +337,11 @@ func shortHash(h string) string {
 }
 
 func extractComponentWIT(ctx context.Context, wasmToolsBin, wasmPath string, logBuf *bytes.Buffer) (string, error) {
-	fmt.Fprintf(logBuf, "$ wasm-tools component wit %s\n", wasmPath)
-	out, errOut, code, err := runExec(ctx, "", nil, 30*time.Second, wasmToolsBin, "component", "wit", wasmPath)
+	if strings.HasPrefix(strings.TrimSpace(wasmPath), "-") {
+		return "", fmt.Errorf("unsafe wasm path starting with '-': %q", wasmPath)
+	}
+	fmt.Fprintf(logBuf, "$ wasm-tools component wit -- %s\n", wasmPath)
+	out, errOut, code, err := runExec(ctx, "", nil, 30*time.Second, wasmToolsBin, "component", "wit", "--", wasmPath)
 	if err != nil {
 		return "", fmt.Errorf("exec wasm-tools: %w", err)
 	}

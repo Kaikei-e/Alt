@@ -66,7 +66,7 @@ Zero split-induced divergences exist between `1ddd55e73~1` and `HEAD` across all
 
 ## 3. LOOP-03 Decision Log Records (`decisions.tsv`)
 
-Recorded in `.harness/runs/swarm-verify02-diff-impl-25f7e8e7/decisions.tsv` (6-column format matching `scripts/altharness/internal/guards/harness.go`):
+Original Wave-1 differential verification runs recorded during implementation (note: following Carbon High review, `alt-harness verify-diff` now writes through `guards.AppendDecisionToFile` using the canonical LOOP-03/LOOP-06 closed result vocabulary `info` on pass / `mismatch` on failure, and defaults to `.harness/evidence/verify-02/decisions.tsv` when `.harness/runs/<branch>/decisions.tsv` has not yet been initialized via `alt-harness harness-run init`):
 
 ```tsv
 ts	phase	decision	why	evidence	result

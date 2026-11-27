@@ -331,42 +331,57 @@ func ensureDecisions(runDir string) (string, error) {
 }
 
 func appendDecision(runDir, phase, decision, why, evidence, result string) (string, error) {
-	phase, err := validateTSVField("phase", phase)
-	if err != nil {
-		return "", err
-	}
-	decision, err = validateTSVField("decision", decision)
-	if err != nil {
-		return "", err
-	}
-	why, err = validateTSVField("why", why)
-	if err != nil {
-		return "", err
-	}
-	evidence, err = validateTSVField("evidence", evidence)
-	if err != nil {
-		return "", err
-	}
-	if !IsValidEvidencePointer(evidence) {
-		return "", fmt.Errorf("evidence '%s' must be a concrete pointer (file path, commit:<sha>, cmd:<command>, #<seq>, ADR/PM/C id, or URL)", evidence)
-	}
-	if _, ok := validResults[result]; !ok {
-		return "", fmt.Errorf("invalid result '%s'", result)
-	}
-	path, err := ensureDecisions(runDir)
-	if err != nil {
-		return "", err
-	}
-	row := strings.Join([]string{utcNow(), phase, decision, why, evidence, result}, "\t") + "\n"
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, fsperm.File)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	if _, err := f.WriteString(row); err != nil {
+	path := filepath.Join(runDir, decisionsFilename)
+	if err := AppendDecisionToFile(path, phase, decision, why, evidence, result); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// AppendDecisionToFile validates fields against the canonical LOOP-03/LOOP-06
+// decisions.tsv schema and appends one row to decisionsPath (creating the
+// header if the file does not exist yet).
+func AppendDecisionToFile(decisionsPath, phase, decision, why, evidence, result string) error {
+	var err error
+	phase, err = validateTSVField("phase", phase)
+	if err != nil {
+		return err
+	}
+	decision, err = validateTSVField("decision", decision)
+	if err != nil {
+		return err
+	}
+	why, err = validateTSVField("why", why)
+	if err != nil {
+		return err
+	}
+	evidence, err = validateTSVField("evidence", evidence)
+	if err != nil {
+		return err
+	}
+	if !IsValidEvidencePointer(evidence) {
+		return fmt.Errorf("evidence '%s' must be a concrete pointer (file path, commit:<sha>, cmd:<command>, #<seq>, ADR/PM/C id, or URL)", evidence)
+	}
+	if _, ok := validResults[result]; !ok {
+		return fmt.Errorf("invalid result '%s'", result)
+	}
+	if err := os.MkdirAll(filepath.Dir(decisionsPath), fsperm.Dir); err != nil {
+		return err
+	}
+	if _, err := os.Stat(decisionsPath); os.IsNotExist(err) {
+		header := strings.Join(tsvColumns, "\t") + "\n"
+		if err := os.WriteFile(decisionsPath, []byte(header), fsperm.File); err != nil {
+			return err
+		}
+	}
+	row := strings.Join([]string{utcNow(), phase, decision, why, evidence, result}, "\t") + "\n"
+	f, err := os.OpenFile(decisionsPath, os.O_APPEND|os.O_WRONLY, fsperm.File)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(row)
+	return err
 }
 
 func readDecisions(runDir string) []map[string]string {

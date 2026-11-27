@@ -6,6 +6,7 @@ import (
 	"alt/scripts/altharness/internal/hygiene"
 	"alt/scripts/altharness/internal/packet"
 	"alt/scripts/altharness/internal/screener"
+	"alt/scripts/altharness/internal/verifygolden"
 	"context"
 	"fmt"
 	"io"
@@ -221,5 +222,12 @@ func runVerify01Diff(ctx context.Context, c Case, beforePath, afterPath, _ strin
 	}
 	return runInProcess(ctx, subprocessTimeout(), "VERIFY-01 task_packet verify-sequence", func(cctx context.Context, stdout, stderr io.Writer) int {
 		return packet.Run(cctx, args, stdout, stderr)
+	})
+}
+
+func runVerify03Diff(ctx context.Context, c Case, beforePath, afterPath, _ string) CheckOutcome {
+	args := []string{"--check-corpus-case", c.CaseID, "--before", beforePath, "--after", afterPath}
+	return runInProcess(ctx, subprocessTimeout(), "VERIFY-03 verifygolden", func(cctx context.Context, stdout, stderr io.Writer) int {
+		return verifygolden.Run(cctx, args, stdout, stderr)
 	})
 }

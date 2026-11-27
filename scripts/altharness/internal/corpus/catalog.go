@@ -86,6 +86,11 @@ var ImplementedChecks = setOf(
 	"CHECK-06",
 	"CHECK-07",
 	"VERIFY-01",
+	"VERIFY-02",
+	"VERIFY-03",
+	"VERIFY-04",
+	"VERIFY-05",
+	"VERIFY-06",
 	"LOOP-01",
 	"LOOP-02",
 	"LOOP-03",
@@ -95,7 +100,7 @@ var ImplementedChecks = setOf(
 )
 
 // DiffChecks compare a before/after pair instead of a single phase file.
-var DiffChecks = setOf("CHECK-01", "CHECK-05", "CHECK-06", "VERIFY-01")
+var DiffChecks = setOf("CHECK-01", "CHECK-05", "CHECK-06", "VERIFY-01", "VERIFY-03")
 
 // UnimplementedCorpusChecks is empty when the Python module exports an empty set.
 var UnimplementedCorpusChecks = map[string]struct{}{}

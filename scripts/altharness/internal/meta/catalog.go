@@ -23,6 +23,10 @@ import (
 	"alt/scripts/altharness/internal/ratchet"
 	"alt/scripts/altharness/internal/selfcheck"
 	"alt/scripts/altharness/internal/suppress"
+	"alt/scripts/altharness/internal/verifyclaims"
+	"alt/scripts/altharness/internal/verifydiff"
+	"alt/scripts/altharness/internal/verifygolden"
+	"alt/scripts/altharness/internal/verifylive"
 	"alt/scripts/altharness/internal/workflow"
 )
 
@@ -100,6 +104,11 @@ func harnessSteps(repo, base string) []Step {
 		inProc("migration_destructive_gate", "migration-gate:"+repo+":"+base, true, ledgers.RunMigration, "--root", repo, "--base", base),
 		inProc("adr_supersede_gate", "adr-gate:"+repo+":"+base, true, ledgers.RunAdr, "--dir", filepath.Join(repo, "docs", "ADR"), "--base", base),
 		inProc("task_packet_templates", "packet:check-templates:"+repo, true, packet.Run, "check-templates", "--repo-root", repo),
+		inProc("verify_claims_template", "verify-claims:check-template:"+repo, true, verifyclaims.Run, "check-template", "--repo-root", repo),
+		inProc("verify_06_evidence_ledger", "verify-claims:validate:ledger:"+repo, true, verifyclaims.Run, "validate", filepath.Join(repo, "docs", "review", "verify-06-evidence-ledger.md"), "--repo-root", repo),
+		inProc("verify_diff_clean", "verify-diff:check-clean:"+repo, true, verifydiff.Run, "check-clean", "--repo-root", repo),
+		inProc("verify_golden_files", "verify-golden:--check-files-only:"+repo, true, verifygolden.Run, "--check-files-only", "--repo-root", repo),
+		inProc("verify_live_doctor", "verify-live:doctor:--hygiene-only:"+repo, true, verifylive.Run, "doctor", "--hygiene-only", "--repo-root", repo),
 		inProc("go_canonical_sync", "sync-go:--check:"+repo, true, codegen.Run, "--check", "--repo-root", repo),
 		inProc("python_pki_sync", "pki:--check:"+repo, true, pki.Run, "--check", "--repo-root", repo),
 		inProc("suppression_ratchet", "ratchet:"+repo, true, ratchet.Run, "--repo-root", repo),
