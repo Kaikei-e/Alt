@@ -435,6 +435,14 @@ func (c *checker) checkSingleDiffFile(ctx context.Context, dc diffContext, rel s
 			Message: "DO NOT EDIT generated header was removed from tracked generated file" + suffix,
 		}, nil
 	}
+	if beforeSpec := extractTautoSpecDir(before); beforeSpec != "" && extractTautoSpecDir(after) != beforeSpec {
+		return &Violation{
+			Path:    rel,
+			Line:    1,
+			Rule:    ruleDoNotEdit,
+			Message: "Tauto generated vector header spec source was changed or rewritten (expected " + beforeSpec + ")" + suffix,
+		}, nil
+	}
 	var afterRev *string
 	if !dc.useWorktree {
 		afterRev = &dc.headRev

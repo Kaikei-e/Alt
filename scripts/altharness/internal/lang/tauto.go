@@ -172,13 +172,20 @@ func discoverTautoTotes(root string) ([]tautoTote, error) {
 	var totes []tautoTote
 	for _, entry := range entries {
 		name := entry.Name()
-		toteDir := filepath.Join(specsDir, name)
-		manifestPath := filepath.Join(toteDir, "Tauto.eure")
-		if _, statErr := os.Lstat(manifestPath); statErr != nil {
+		if name == ".tauto" {
 			continue
 		}
+		toteDir := filepath.Join(specsDir, name)
 		if err := ensureWithinRepo(root, toteDir); err != nil {
 			return nil, fmt.Errorf("tote %s: %w", name, err)
+		}
+		info, statErr := os.Stat(toteDir)
+		if statErr != nil || !info.IsDir() {
+			return nil, fmt.Errorf("unexpected non-directory entry under specs/tauto/: %s", name)
+		}
+		manifestPath := filepath.Join(toteDir, "Tauto.eure")
+		if _, mErr := os.Lstat(manifestPath); mErr != nil {
+			return nil, fmt.Errorf("tote %s missing Tauto.eure manifest: %w", name, mErr)
 		}
 		if err := ensureWithinRepo(root, manifestPath); err != nil {
 			return nil, fmt.Errorf("tote %s manifest: %w", name, err)
@@ -196,6 +203,10 @@ func discoverTautoTotes(root string) ([]tautoTote, error) {
 		}
 		if pkgName != name {
 			return nil, fmt.Errorf("tote %s package.name mismatch: Tauto.eure declares %q, expected %q", name, pkgName, name)
+		}
+
+		if err := ensureNoStrayTautFiles(root, toteDir); err != nil {
+			return nil, fmt.Errorf("tote %s: %w", name, err)
 		}
 
 		srcDir := filepath.Join(toteDir, "src")
@@ -264,14 +275,23 @@ func verifyTautoTote(ctx context.Context, root, tautoBin string, tote tautoTote,
 		return fmt.Errorf("tauto --offline check failed (exit %d)", code)
 	}
 
-	fmt.Fprintf(stdout, "==> [tauto/%s] proof-status --json\n", tote.name)
+	fmt.Fprintf(stdout, "==> [tauto/%s] proof-status --json (src)\n", tote.name)
 	srcDir := filepath.Join(tote.dir, "src")
 	psOut, psErr, psCode, psRunErr := capture(ctx, root, nil, tautoBin, "--offline", "proof-status", "--json", srcDir)
 	if psRunErr != nil || psCode != 0 {
 		return fmt.Errorf("tauto --offline proof-status --json failed (exit %d): %s", psCode, strings.TrimSpace(psOut+"\n"+psErr))
 	}
-	if err := validateProofStatusJSON(psOut); err != nil {
-		return fmt.Errorf("proof-status gate failed: %w", err)
+	if err := validateProofStatusJSON(psOut, true); err != nil {
+		return fmt.Errorf("proof-status gate failed (src): %w", err)
+	}
+
+	fmt.Fprintf(stdout, "==> [tauto/%s] proof-status --json (tote)\n", tote.name)
+	totePSOut, totePSErr, totePSCode, totePSRunErr := capture(ctx, root, nil, tautoBin, "--offline", "proof-status", "--json", tote.dir)
+	if totePSRunErr != nil || totePSCode != 0 {
+		return fmt.Errorf("tauto --offline proof-status --json (tote) failed (exit %d): %s", totePSCode, strings.TrimSpace(totePSOut+"\n"+totePSErr))
+	}
+	if err := validateProofStatusJSON(totePSOut, false); err != nil {
+		return fmt.Errorf("proof-status gate failed (tote): %w", err)
 	}
 
 	if tote.emitFile != "" {
@@ -283,7 +303,7 @@ func verifyTautoTote(ctx context.Context, root, tautoBin string, tote tautoTote,
 	return nil
 }
 
-func validateProofStatusJSON(raw string) error {
+func validateProofStatusJSON(raw string, requireZeroSkipped bool) error {
 	trimmed := strings.TrimSpace(raw)
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(trimmed), &fields); err != nil {
@@ -298,13 +318,45 @@ func validateProofStatusJSON(raw string) error {
 	if err := json.Unmarshal([]byte(trimmed), &ps); err != nil {
 		return fmt.Errorf("decode proof-status JSON: %w", err)
 	}
-	if ps.Files <= 0 || ps.OK <= 0 || ps.Failed != 0 || ps.Holes != 0 || ps.Incomplete != 0 || ps.Skipped != 0 || len(ps.Axioms) != 0 || ps.Externs != 0 || len(ps.Unread) != 0 {
+	if ps.Files <= 0 || ps.OK <= 0 || ps.Failed != 0 || ps.Holes != 0 || ps.Incomplete != 0 || (requireZeroSkipped && ps.Skipped != 0) || len(ps.Axioms) != 0 || ps.Externs != 0 || len(ps.Unread) != 0 {
 		return fmt.Errorf(
 			"proof-status invariant violated (files=%d ok=%d failed=%d holes=%d incomplete=%d skipped=%d axioms=%v externs=%d unread=%v)",
 			ps.Files, ps.OK, ps.Failed, ps.Holes, ps.Incomplete, ps.Skipped, ps.Axioms, ps.Externs, ps.Unread,
 		)
 	}
 	return nil
+}
+
+func ensureNoStrayTautFiles(root, toteDir string) error {
+	return filepath.WalkDir(toteDir, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if p == toteDir {
+			return nil
+		}
+		if err := ensureWithinRepo(root, p); err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(toteDir, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if d.Name() == ".tauto" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".taut") {
+			return nil
+		}
+		if strings.HasPrefix(rel, "src/") || strings.HasPrefix(rel, "vectors/") {
+			return nil
+		}
+		return fmt.Errorf("unexpected .taut file outside src/ and vectors/: %s", rel)
+	})
 }
 
 func verifyTautoGoldenVectors(ctx context.Context, root, tautoBin string, tote tautoTote, stdout, stderr io.Writer) error {

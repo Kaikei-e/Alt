@@ -105,6 +105,9 @@ func (t *Tracker) ProbeAndEvaluate(
 	hole Hole,
 	readFrontier func(firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error),
 ) (bool, sovereign_db.SequenceGapFrontier, error) {
+	if readFrontier == nil {
+		panic("projection_gap: readFrontier is required")
+	}
 	frontier, err := readFrontier(hole.First, hole.Last)
 	if err != nil {
 		return false, sovereign_db.SequenceGapFrontier{}, err

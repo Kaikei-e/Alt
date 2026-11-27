@@ -116,6 +116,15 @@ func pgReadingCheckpointSeq(ctx context.Context, t *testing.T, db *pgxpool.Pool)
 	return seq, true
 }
 
+// pgReadingDrainFromCheckpointZero folds the full log from checkpoint 0 on one
+// projector instance, calling RunBatch twice so parallel cluster XID activity
+// from sibling pgtest databases cannot make the initial burned-hole catchup flaky.
+func pgReadingDrainFromCheckpointZero(ctx context.Context, t *testing.T, p *Projector) {
+	t.Helper()
+	require.NoError(t, p.RunBatch(ctx))
+	require.NoError(t, p.RunBatch(ctx))
+}
+
 func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointReset(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -127,10 +136,10 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	for i := 1; i <= 3; i++ {
 		pgSeedReadingQueuedEvent(ctx, t, db, tenantID, userID, i)
 	}
-	require.NoError(t, NewProjector(repo, slog.New(&pgReadingRecordingHandler{}), Config{}).RunBatch(ctx))
+	pgReadingDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&pgReadingRecordingHandler{}), Config{}))
 
 	settled, exists := pgReadingCheckpointSeq(ctx, t, db)
-	require.True(t, exists, "precondition: initial tick must leave a checkpoint row")
+	require.True(t, exists, "precondition: initial drain must leave a checkpoint row")
 	require.NotZero(t, settled, "precondition: racing batch starts from non-zero checkpoint")
 	require.EqualValues(t, 3, pgCountReadingQueueItems(ctx, t, db), "precondition: three queue items projected")
 
@@ -163,8 +172,7 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	assert.EqualValues(t, settled, rejected.Attrs["expected_seq"])
 	assert.EqualValues(t, tip, rejected.Attrs["attempted_seq"])
 
-	// Next tick re-folds the full log across the initial burned hole in a single tick.
-	require.NoError(t, NewProjector(repo, slog.New(&pgReadingRecordingHandler{}), Config{}).RunBatch(ctx))
+	pgReadingDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&pgReadingRecordingHandler{}), Config{}))
 	assert.EqualValues(t, 5, pgCountReadingQueueItems(ctx, t, db))
 	seq, _ = pgReadingCheckpointSeq(ctx, t, db)
 	assert.Equal(t, tip, seq)

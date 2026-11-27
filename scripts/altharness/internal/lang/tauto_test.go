@@ -461,6 +461,56 @@ func TestRunTautoFailureModes(t *testing.T) {
 			t.Fatalf("code=%d stdout=%q stderr=%q", code, out.String(), errBuf.String())
 		}
 	})
+
+	t.Run("unmanifested directory under specs/tauto fails closed even with valid sibling tote", func(t *testing.T) {
+		repo := initTautoFixtureRepo(t)
+		addValidToteAndVector(t, repo, "demo-tote")
+		writeFixtureFile(t, repo, "specs/tauto/rogue-tote/src/model.taut", "pub axiom rogue(): Eq(Nat, 0, 1)\n")
+		stubDir := writeTautoStub(t, defaultPassingTautoStub)
+		t.Chdir(repo)
+		isolateTautoEnv(t, stubDir)
+
+		var out, errBuf bytes.Buffer
+		code := RunTauto(context.Background(), []string{"tauto"}, &out, &errBuf)
+		if code != 1 || !strings.Contains(errBuf.String(), "missing Tauto.eure") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, out.String(), errBuf.String())
+		}
+	})
+
+	t.Run("stray taut file outside src and vectors fails closed", func(t *testing.T) {
+		repo := initTautoFixtureRepo(t)
+		addValidToteAndVector(t, repo, "demo-tote")
+		writeFixtureFile(t, repo, "specs/tauto/demo-tote/rogue.taut", "pub axiom rogue(): Eq(Nat, 0, 1)\n")
+		stubDir := writeTautoStub(t, defaultPassingTautoStub)
+		t.Chdir(repo)
+		isolateTautoEnv(t, stubDir)
+
+		var out, errBuf bytes.Buffer
+		code := RunTauto(context.Background(), []string{"tauto"}, &out, &errBuf)
+		if code != 1 || !strings.Contains(errBuf.String(), "outside src/ and vectors/") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, out.String(), errBuf.String())
+		}
+	})
+
+	t.Run("axiom leaked in vectors fails tote-wide proof-status gate", func(t *testing.T) {
+		repo := initTautoFixtureRepo(t)
+		addValidToteAndVector(t, repo, "demo-tote")
+		stub := strings.Replace(
+			defaultPassingTautoStub,
+			"\"--offline proof-status --json \"*)\n    echo \"checking proof-status...\" >&2\n    echo '{\"files\":1,\"ok\":1,\"incomplete\":0,\"holes\":0,\"failed\":0,\"skipped\":0,\"axioms\":[],\"externs\":0,\"unread\":[]}'\n    exit 0",
+			"\"--offline proof-status --json \"*/src)\n    echo '{\"files\":1,\"ok\":1,\"incomplete\":0,\"holes\":0,\"failed\":0,\"skipped\":0,\"axioms\":[],\"externs\":0,\"unread\":[]}'\n    exit 0\n    ;;\n  \"--offline proof-status --json \"*)\n    echo '{\"files\":2,\"ok\":1,\"incomplete\":0,\"holes\":0,\"failed\":0,\"skipped\":1,\"axioms\":[\"vec_ax\"],\"externs\":0,\"unread\":[]}'\n    exit 0",
+			1,
+		)
+		stubDir := writeTautoStub(t, stub)
+		t.Chdir(repo)
+		isolateTautoEnv(t, stubDir)
+
+		var out, errBuf bytes.Buffer
+		code := RunTauto(context.Background(), []string{"tauto"}, &out, &errBuf)
+		if code != 1 || !strings.Contains(errBuf.String(), "proof-status gate failed (tote)") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, out.String(), errBuf.String())
+		}
+	})
 }
 
 func TestRunTautoHappyPath(t *testing.T) {

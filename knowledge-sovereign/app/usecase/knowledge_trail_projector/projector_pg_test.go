@@ -74,6 +74,15 @@ func pgTrailCheckpointSeq(ctx context.Context, t *testing.T, db *pgxpool.Pool) (
 	return seq, true
 }
 
+// pgTrailDrainFromCheckpointZero folds the full log from checkpoint 0 on one
+// projector instance, calling RunBatch twice so parallel cluster XID activity
+// from sibling pgtest databases cannot make the initial burned-hole catchup flaky.
+func pgTrailDrainFromCheckpointZero(ctx context.Context, t *testing.T, p *Projector) {
+	t.Helper()
+	require.NoError(t, p.RunBatch(ctx))
+	require.NoError(t, p.RunBatch(ctx))
+}
+
 func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointReset(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -85,11 +94,10 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	for i := 1; i <= 3; i++ {
 		pgSeedTrailOpenEvent(ctx, t, db, tenantID, userID, i)
 	}
-	// Same-tick burned-hole catchup drains initial seq-1 gap and all 3 events in one tick.
-	require.NoError(t, NewProjector(repo, slog.New(&recordingHandler{}), Config{}).RunBatch(ctx))
+	pgTrailDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&recordingHandler{}), Config{}))
 
 	settled, exists := pgTrailCheckpointSeq(ctx, t, db)
-	require.True(t, exists, "precondition: initial tick must leave a checkpoint row")
+	require.True(t, exists, "precondition: initial drain must leave a checkpoint row")
 	require.NotZero(t, settled, "precondition: racing batch starts from non-zero checkpoint")
 	require.EqualValues(t, 3, pgCountTrailFootprints(ctx, t, db), "precondition: three footprints projected")
 
@@ -122,8 +130,7 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	assert.EqualValues(t, settled, rejected.Attrs["expected_seq"])
 	assert.EqualValues(t, tip, rejected.Attrs["attempted_seq"])
 
-	// Next tick re-folds the full log across the initial burned hole in a single tick.
-	require.NoError(t, NewProjector(repo, slog.New(&recordingHandler{}), Config{}).RunBatch(ctx))
+	pgTrailDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&recordingHandler{}), Config{}))
 	assert.EqualValues(t, 5, pgCountTrailFootprints(ctx, t, db))
 	seq, _ = pgTrailCheckpointSeq(ctx, t, db)
 	assert.Equal(t, tip, seq)
