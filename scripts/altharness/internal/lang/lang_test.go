@@ -398,7 +398,7 @@ func TestAdrRunsWithoutPython3(t *testing.T) {
 
 func TestNoPythonHarnessCallsInLangRunners(t *testing.T) {
 	t.Parallel()
-	files := []string{"gosh.go", "python.go", "rust.go", "frontend.go", "deno.go", "proto.go", "adr.go", "hostfinal.go"}
+	files := []string{"gosh.go", "python.go", "rust.go", "frontend.go", "deno.go", "proto.go", "adr.go", "hostfinal.go", "tauto.go"}
 	forbidden := []string{"canary_audit.py", "check_ratchet.py", "check_python_versions.py", "check_worktree_hygiene.py", "task_packet.py", "adr_supersede_gate.py"}
 	for _, f := range files {
 		data, err := os.ReadFile(f)

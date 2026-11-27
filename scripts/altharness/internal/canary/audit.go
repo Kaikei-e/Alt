@@ -21,6 +21,7 @@ subcommands:
   deno-canary --project-dir DIR [--deno-bin BIN] [--work-dir DIR]
   proto-canary [--buf-bin BIN] [--work-dir DIR]
   actionlint-canary [--actionlint-bin BIN] [--work-dir DIR]
+  tauto-canary [--tauto-bin BIN] [--work-dir DIR]
   verify-ledger --repo-root DIR [--ledger FILE] [--allow-sparse]
 `
 
@@ -36,6 +37,7 @@ var auditCommandNames = []string{
 	"deno-canary",
 	"proto-canary",
 	"actionlint-canary",
+	"tauto-canary",
 	"verify-ledger",
 }
 
@@ -95,6 +97,8 @@ func RunAudit(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdProtoCanary(ctx, st, rest)
 	case "actionlint-canary":
 		return cmdActionlintCanary(ctx, st, rest)
+	case "tauto-canary":
+		return cmdTautoCanary(ctx, st, rest)
 	case "verify-ledger":
 		return cmdVerifyLedger(ctx, st, rest)
 	default:
@@ -402,6 +406,24 @@ func cmdActionlintCanary(ctx context.Context, st streams, args []string) int {
 		return exitFail
 	}
 	return runActionlintCanary(ctx, st, actionlintCanaryConfig{actionlintBin: bin, workDir: workDir})
+}
+
+func cmdTautoCanary(ctx context.Context, st streams, args []string) int {
+	flags, msg := parseFlags(args, nil, []string{"tauto-bin", "work-dir"}, nil, nil)
+	if msg != "" {
+		return usageResult(st, msg)
+	}
+	bin, err := flags.optPath("tauto-bin")
+	if err != nil {
+		st.error("error: " + err.Error())
+		return exitFail
+	}
+	workDir, err := flags.optPath("work-dir")
+	if err != nil {
+		st.error("error: " + err.Error())
+		return exitFail
+	}
+	return runTautoCanary(ctx, st, tautoCanaryConfig{tautoBin: bin, workDir: workDir})
 }
 
 func cmdVerifyLedger(ctx context.Context, st streams, args []string) int {

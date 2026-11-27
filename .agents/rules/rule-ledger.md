@@ -37,7 +37,7 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-22 | 生成コード（`Code generated ... DO NOT EDIT`）の手編集・未ピン留めジェネレータ・再生成ドリフトを禁止する | `scripts/altharness/alt-harness generated`, `scripts/altharness/alt-harness packet` | C-16 |
 | R-23 | 構造 AST スクリーナで意図せぬ振る舞い変更候補を検出し、タスクハンドオフでの明示的承認を必須とする | `scripts/altharness/alt-harness screener`, `scripts/altharness/alt-harness packet` | C-01 / C-02 / C-03 / C-06 / C-10 / C-13 / C-14 |
 | R-24 | インライン抑制数の単調減少ラチェット・期限切れ検査・PR 差分サマリを強制する | `scripts/altharness/alt-harness ratchet`, `scripts/altharness/alt-harness suppressions`, `scripts/altharness/alt-harness suppression-diff` | C-22 |
-| R-25 | 全 45 ターゲットのカバレッジ台帳と 6 言語ファミリの end-to-end エントリポイントカナリアを検証する | `scripts/altharness/alt-harness entrypoint-canary`, `scripts/lint/canary_ledger.toml`, `scripts/altharness/alt-harness canary` | C-21 |
+| R-25 | 全 46 ターゲットのカバレッジ台帳と 6 言語ファミリの end-to-end エントリポイントカナリアを検証する | `scripts/altharness/alt-harness entrypoint-canary`, `scripts/lint/canary_ledger.toml`, `scripts/altharness/alt-harness canary` | C-21 |
 | R-26 | 実装前に失敗テストを書く（TDD: RED → GREEN → REFACTOR） | `scripts/altharness/alt-harness packet`, `scripts/altharness/alt-harness corpus` | AGENTS.md / CLAUDE.md / C-18 |
 | R-27 | Go / Rust / TS 変更時は `--build` 付きでコンパイル済みサービスを再ビルドする | 判断（ビルド反映手順の確認） | AGENTS.md / CLAUDE.md |
 | R-28 | 変更前に `<service>/CLAUDE.md` を確認し、修復 PR では正規契約（`docs/plan/knowledge-trail-core-concept.md`）を再読込する | 判断（着手時の文脈ロードで確認） | ADR-000940 |
@@ -57,3 +57,4 @@ This ledger pairs every operational and engineering rule in `AGENTS.md`, `CLAUDE
 | R-42 | push 前の敵対的レビューは異系統モデル・4 分類・非自動適用・`fix` の再現証明・`safe` の `blast-radius` 実行証明と重点 7 項目網羅を強制する | `scripts/altharness/alt-harness loop-review` | C-01 / C-04 / C-06 / C-07 / C-11 / ADR-001039 |
 | R-43 | パケット定型や規則の改訂は中立ディレクトリ隔離・決定論的採点・トランスクリプト読込検証と前後 3 試行以上比較で評価し判断ログへ記録する | `scripts/altharness/alt-harness loop-eval` | C-01 / C-06 / C-07 / C-11 / C-15 / C-16 / C-18 / ADR-001039 |
 | R-44 | 区切りごとの `/correct` で 2 回以上再発した失敗クラスを抽出し、コーパス登録と `ARCH→CHECK→VERIFY→LEDGER` 上位段却下理由の記録を強制する | `scripts/altharness/alt-harness loop-correct` | ADR-001039 |
+| R-45 | Tauto 形式仕様のゼロ公理・ゼロ hole・カナリア監査および生成適合ベクタの手編集・ドリフト防止を強制する | `scripts/lint/tauto.sh`, `scripts/altharness/alt-harness canary`, `scripts/altharness/alt-harness generated` | ADR-001029 |

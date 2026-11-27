@@ -1,4 +1,4 @@
-# 45-target scanner canary coverage ledger (CHECK-04).
+# 46-target scanner canary coverage ledger (CHECK-04).
 # Verified by: scripts/altharness/alt-harness canary verify-ledger --repo-root .
 #
 # Every target enumerated by `./scripts/lint/run.sh --list` MUST appear under
@@ -563,7 +563,7 @@ status = "exempt"
 reason = "Deterministic protovis regeneration diff check against committed allowlists"
 
 # ---------------------------------------------------------------------------
-# Named repository targets (8) — scripts/lint/<name>.sh
+# Named repository targets (9) — scripts/lint/<name>.sh
 # ---------------------------------------------------------------------------
 
 [targets."adr"]
@@ -637,3 +637,21 @@ reason = "Covered by scripts/altharness/internal/generated Go test suite"
 [targets."repo".scanners.worktree-hygiene]
 status = "exempt"
 reason = "Covered by scripts/altharness/internal/hygiene Go test suite"
+
+[targets."tauto"]
+kind = "named"
+[targets."tauto".scanners.tauto-check]
+status = "canary"
+canary = "tauto-canary"
+[targets."tauto".scanners.tauto-proof-status]
+status = "canary"
+canary = "tauto-canary"
+[targets."tauto".scanners.tauto-lint]
+status = "canary"
+canary = "tauto-canary"
+[targets."tauto".scanners.tauto-fmt]
+status = "exempt"
+reason = "Deterministic Tauto source formatter invoked on sorted .taut files alongside tauto-canary"
+[targets."tauto".scanners.tauto-vectors-drift]
+status = "exempt"
+reason = "Deterministic golden vector regeneration diff check comparing tauto --offline run output against committed testdata/*_vectors.txt"

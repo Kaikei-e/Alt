@@ -372,8 +372,18 @@ func TestRealLedgerParses(t *testing.T) {
 	if errText != "" {
 		t.Fatal(errText)
 	}
-	if len(targets) < 45 {
-		t.Fatalf("ledger targets = %d, want at least 45", len(targets))
+	if len(targets) < 46 {
+		t.Fatalf("ledger targets = %d, want at least 46", len(targets))
+	}
+	tautoTarget, ok := targets["tauto"]
+	if !ok || tautoTarget.Kind != "named" {
+		t.Fatalf("tauto target = %+v", tautoTarget)
+	}
+	for _, scanner := range []string{"tauto-check", "tauto-proof-status", "tauto-lint"} {
+		entry, ok := tautoTarget.Scanners[scanner]
+		if !ok || entry.Status != "canary" || entry.Canary != "tauto-canary" {
+			t.Fatalf("tauto scanner %s = %+v", scanner, entry)
+		}
 	}
 	proto, ok := targets["proto"]
 	if !ok || proto.Kind != "proto" {
@@ -734,6 +744,143 @@ exit 1
 		code, _, stderr = runAudit(t, "proto-canary", "--buf-bin", silent)
 		if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
 			t.Fatalf("proto silent: code=%d stderr=%s", code, stderr)
+		}
+	})
+
+	t.Run("Group F2 tauto-canary stub", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		makeStub := func(name, body string) string {
+			p := filepath.Join(dir, name)
+			if err := fsperm.WriteExecutable(p, []byte("#!/bin/sh\n"+body)); err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}
+		good := makeStub("tauto-good", `
+case "$*" in
+  *"--offline check"*"false-tote"*)
+    echo "FAILED bogus: type mismatch" >&2
+    exit 1
+    ;;
+  *"--offline check"*"hole-tote"*)
+    echo "INCOMPLETE with_hole (?h)"
+    exit 3
+    ;;
+  *"lint --json"*"hole-tote"*)
+    echo '[{"file":"src/main.taut","line":2,"col":3,"message":"a hole ?h","kind":"lint"}]'
+    exit 1
+    ;;
+  *"--offline proof-status --json"*"axiom-tote"*)
+    echo "checking axiom-tote/src/main.taut" >&2
+    echo '{"files":1,"ok":1,"incomplete":0,"holes":0,"failed":0,"skipped":0,"axioms":["trust_me"],"externs":0,"unread":[]}'
+    exit 1
+    ;;
+esac
+echo "unexpected args: $*" >&2
+exit 99
+`)
+		code, stdout, stderr := runAudit(t, "tauto-canary", "--tauto-bin", good)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (tauto)") {
+			t.Fatalf("tauto good (axiom rc=1): code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+
+		goodRC0 := makeStub("tauto-good-rc0", `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 3 ;;
+  *"lint --json"*"hole-tote"*) echo '[{"message":"a hole ?h"}]'; exit 1 ;;
+  *"--offline proof-status --json"*"axiom-tote"*)
+    echo '{"files":1,"ok":1,"axioms":["trust_me"]}'
+    exit 0
+    ;;
+esac
+exit 99
+`)
+		code, stdout, stderr = runAudit(t, "tauto-canary", "--tauto-bin", goodRC0)
+		if code != exitOK || !strings.Contains(stdout, "canary audit passed (tauto)") {
+			t.Fatalf("tauto good (axiom rc=0): code=%d stdout=%s stderr=%s", code, stdout, stderr)
+		}
+
+		cases := []struct {
+			name string
+			body string
+		}{
+			{
+				name: "false theorem silent pass",
+				body: `exit 0`,
+			},
+			{
+				name: "hole check wrong exit code",
+				body: `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 0 ;;
+esac
+exit 0`,
+			},
+			{
+				name: "hole lint empty json",
+				body: `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 3 ;;
+  *"lint --json"*"hole-tote"*) echo '[]'; exit 1 ;;
+esac
+exit 0`,
+			},
+			{
+				name: "hole lint exit zero",
+				body: `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 3 ;;
+  *"lint --json"*"hole-tote"*) echo '[{"message":"hole"}]'; exit 0 ;;
+esac
+exit 0`,
+			},
+			{
+				name: "axiom omitted in proof-status",
+				body: `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 3 ;;
+  *"lint --json"*"hole-tote"*) echo '[{"message":"hole"}]'; exit 1 ;;
+  *"--offline proof-status --json"*"axiom-tote"*) echo '{"files":1,"ok":1,"axioms":[]}'; exit 0 ;;
+esac
+exit 0`,
+			},
+			{
+				name: "axiom wrong name in proof-status",
+				body: `
+case "$*" in
+  *"--offline check"*"false-tote"*) exit 1 ;;
+  *"--offline check"*"hole-tote"*) exit 3 ;;
+  *"lint --json"*"hole-tote"*) echo '[{"message":"hole"}]'; exit 1 ;;
+  *"--offline proof-status --json"*"axiom-tote"*) echo '{"files":1,"ok":1,"axioms":["other_ax"]}'; exit 0 ;;
+esac
+exit 0`,
+			},
+		}
+		for _, tc := range cases {
+			stub := makeStub("tauto-"+strings.ReplaceAll(tc.name, " ", "-"), tc.body)
+			code, _, stderr := runAudit(t, "tauto-canary", "--tauto-bin", stub)
+			if code != exitFail || !strings.Contains(stderr, "CANARY AUDIT FAILED") {
+				t.Fatalf("%s: code=%d stderr=%s", tc.name, code, stderr)
+			}
+		}
+
+		// Real binary integration check when tauto is available (prefers ~/.local/bin/tauto).
+		if home, err := os.UserHomeDir(); err == nil && isFile(filepath.Join(home, ".local", "bin", "tauto")) {
+			code, stdout, stderr := runAudit(t, "tauto-canary")
+			if code != exitOK || !strings.Contains(stdout, "canary audit passed (tauto)") {
+				t.Fatalf("real tauto-canary: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+			}
+		} else if realTauto := look("tauto"); realTauto != "" {
+			code, stdout, stderr := runAudit(t, "tauto-canary", "--tauto-bin", realTauto)
+			if code != exitOK || !strings.Contains(stdout, "canary audit passed (tauto)") {
+				t.Fatalf("real tauto-canary: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+			}
 		}
 	})
 

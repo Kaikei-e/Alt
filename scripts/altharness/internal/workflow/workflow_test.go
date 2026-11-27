@@ -180,6 +180,9 @@ func TestDirectLintAndAllowed(t *testing.T) {
 		"promtool check rules observability/prometheus/rules/*.yml",
 		"amtool check-config observability/alertmanager/alertmanager.yml",
 		"lkal check --json deploy/desired-env.lkal",
+		"tauto --offline check --summary specs/tauto/demo",
+		"tauto lint --json specs/tauto/demo",
+		"tauto fmt --check specs/tauto/demo/src/main.taut",
 		"python3 scripts/compose-port-audit.py --overlays",
 		"python3 scripts/compose-netns-cascade-audit.py",
 		"python3 scripts/compose-feature-gate.py --gate-report",
@@ -238,6 +241,11 @@ func TestDirectLintAndAllowed(t *testing.T) {
       - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
       - run: go install "github.com/Kaikei-e/DocDag/cmd/docdag@v0.6.0"
       - run: make install-lkal install-kisage
+      - run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          if [ ! -x "$HOME/.local/bin/tauto" ]; then
+            make install-tauto
+          fi
       - run: pip install --quiet ruff bandit pyrefly
       - run: uv tool install ruff
       - run: go test ./...

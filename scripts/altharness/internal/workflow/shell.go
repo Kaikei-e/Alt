@@ -20,7 +20,7 @@ var shellLeadPrefixes = map[string]struct{}{
 var directLintTools = map[string]struct{}{
 	"golangci-lint": {}, "gofmt": {}, "gosec": {}, "govulncheck": {}, "ruff": {},
 	"bandit": {}, "pyrefly": {}, "biome": {}, "svelte-check": {}, "actionlint": {},
-	"docdag": {}, "promtool": {}, "amtool": {}, "lkal": {},
+	"docdag": {}, "promtool": {}, "amtool": {}, "lkal": {}, "tauto": {},
 }
 
 var wrappedStaticScripts = map[string]struct{}{
