@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from recap_subworker.learning_machine.scripts import pseudo_label
 
 MIN_CHARS_TEST = 50
+EXPECTED_ACCEPT_TOP_PERCENT = 10.0
 SHORT_TEXT = "短いテキスト"
 JA_DOMINANT_TEXT = "あ" * 60 + "abc"
 EN_DOMINANT_TEXT = "hello world " * 6
@@ -91,3 +93,29 @@ def test_setup_cuda_library_path_probes_expected_order(
     assert pseudo_label.os.environ["LD_LIBRARY_PATH"] == ":".join(
         [*expected_prefix, f"{sys_lib_a}:/existing/path"]
     )
+
+
+def test_parse_args_accept_top_percent_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["pseudo_label.py", "--accept_top_percent", "10"])
+
+    args = pseudo_label._parse_args()
+
+    assert args.accept_top_percent == EXPECTED_ACCEPT_TOP_PERCENT
+    assert args.model_dir == "recap_subworker/learning_machine/artifacts/teacher/v0_ja"
+    assert args.output_path == "recap_subworker/learning_machine/data/silver_teacher_v0_ja.jsonl"
+
+
+def test_parse_args_help_displays_escaped_percent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["pseudo_label.py", "--help"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        pseudo_label._parse_args()
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "Accept top P% of samples" in captured.out

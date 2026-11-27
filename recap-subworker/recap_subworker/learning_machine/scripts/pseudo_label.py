@@ -218,7 +218,7 @@ def _parse_args() -> argparse.Namespace:
         "--accept_top_percent",
         type=float,
         default=None,
-        help="Accept top P% of samples by confidence (alternative to threshold)",
+        help="Accept top P%% of samples by confidence (alternative to threshold)",
     )
     parser.add_argument(
         "--min_margin",
