@@ -5,7 +5,6 @@ Tests the RT/BE scheduling, reserved slots, aging mechanism, and LIFO mode.
 
 import asyncio
 import contextlib
-import heapq
 import logging
 import math
 import time
@@ -13,10 +12,7 @@ import time
 import pytest
 
 from news_creator.domain.errors import PreemptedException, QueueFullError
-from news_creator.gateway.hybrid_priority_semaphore import (
-    HybridPrioritySemaphore,
-    QueuedRequest,
-)
+from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
 
 
 @pytest.fixture
@@ -2301,7 +2297,8 @@ class TestAgingSweepThrottling:
         # wall-clock overdue window.
         num_releases = 24
         for _ in range(num_releases):
-            semaphore.release(was_high_priority=True)
+            _, sid = await semaphore.acquire(high_priority=True)
+            semaphore.release(was_high_priority=True, slot_id=sid)
 
         assert call_count < num_releases, (
             f"_apply_aging() should not run on every release in a burst, "
@@ -2316,26 +2313,26 @@ class TestAgingSweepThrottling:
         number of full _apply_aging() sweeps must stay bounded by the
         configured interval -- not one sweep per release (which would make
         each release() call O(N) in BE queue depth)."""
-        time_module = time
-
         sweep_interval = 8
         semaphore = hybrid_semaphore_module(
             total_slots=2,
             rt_reserved_slots=1,
             aging_sweep_interval_releases=sweep_interval,
+            preemption_enabled=False,
         )
 
-        loop = asyncio.get_running_loop()
-        for _ in range(150):
-            heapq.heappush(
-                semaphore._be_queue,
-                QueuedRequest(
-                    priority_score=1.0,
-                    enqueue_time=time_module.monotonic(),
-                    future=loop.create_future(),
-                    is_high_priority=False,
-                ),
-            )
+        # Hold both initial slots so all 150 BE waiters queue up first.
+        _, rt_sid = await semaphore.acquire(high_priority=True)
+        _, be_sid = await semaphore.acquire(high_priority=False)
+
+        async def be_worker() -> None:
+            _, sid = await semaphore.acquire(high_priority=False)
+            semaphore.release(was_high_priority=False, slot_id=sid)
+
+        num_waiters = 150
+        tasks = [asyncio.create_task(be_worker()) for _ in range(num_waiters)]
+        await asyncio.sleep(0)
+        assert len(semaphore._be_queue) == num_waiters
 
         call_count = 0
         original_apply_aging = semaphore._apply_aging
@@ -2347,10 +2344,12 @@ class TestAgingSweepThrottling:
 
         semaphore._apply_aging = spy_apply_aging
 
-        num_releases = 100
-        for _ in range(num_releases):
-            semaphore.release(was_high_priority=True)
+        # Release both initial slots to trigger a fast burst of 152 releases.
+        semaphore.release(was_high_priority=True, slot_id=rt_sid)
+        semaphore.release(was_high_priority=False, slot_id=be_sid)
+        await asyncio.gather(*tasks)
 
+        num_releases = num_waiters + 2
         max_expected_sweeps = math.ceil(num_releases / sweep_interval) + 1
         assert call_count <= max_expected_sweeps, (
             f"Expected at most {max_expected_sweeps} aging sweeps for "

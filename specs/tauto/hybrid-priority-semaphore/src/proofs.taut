@@ -1,0 +1,1664 @@
+import std::base { Nat }
+import std::nat { Nat }
+import "model.taut" {
+  Config,
+  Event,
+  Outcome,
+  Pool,
+  Priority,
+  State,
+  StepResult,
+  cfg_be_slots,
+  cfg_rt_reserved,
+  cfg_total_slots,
+  dispatch_freed_be,
+  dispatch_freed_be_force,
+  dispatch_freed_rt,
+  dispatch_freed_rt_force,
+  enqueue_or_reject,
+  enqueue_or_reject_if,
+  init_state,
+  queue_is_full,
+  run_from_init,
+  run_trace,
+  st_be_avail,
+  st_held_be,
+  st_held_rt,
+  st_in_transit_be,
+  st_in_transit_rt,
+  st_rt_avail,
+  st_total_avail,
+  st_total_held,
+  st_total_in_transit,
+  step,
+  step_acquire,
+  step_cancel_in_transit,
+  step_cancel_queued,
+  step_complete_transfer,
+  step_promote_be_to_rt,
+  step_release,
+  step_result_state,
+  step_state
+}
+
+// ============================================================================
+// Pure Nat arithmetic helpers (zero axioms, zero holes)
+// ============================================================================
+
+pub theorem add_succ_mid(a: Nat, b: Nat, c: Nat): a + Succ(b) + c = a + b + Succ(c) {
+  Nat::add_succ_left(a + b, c)
+}
+
+pub theorem add_succ_left_mid(a: Nat, b: Nat, c: Nat): Succ(a) + b + c = a + Succ(b) + c {
+  Eq::congr(⟦□ + c⟧, Nat::add_succ_left(a, b))
+}
+
+pub theorem add_succ_left_right(a: Nat, b: Nat, c: Nat): Succ(a) + b + c = a + b + Succ(c) {
+  Eq::trans(add_succ_left_mid(a, b, c), add_succ_mid(a, b, c))
+}
+
+pub theorem le_add_right(a: Nat, b: Nat): Nat::le(a, a + b) = true {
+  match b {
+    Zero => Nat::le_refl(a)
+    Succ(k) => Nat::le_trans(a, a + k, Succ(a + k), le_add_right(a, k), Nat::le_succ(a + k))
+  }
+}
+
+pub theorem le_add_left(a: Nat, b: Nat): Nat::le(b, a + b) = true {
+  Eq::trans(Eq::congr(⟦Nat::le(b, □)⟧, Nat::add_comm(a, b)), le_add_right(b, a))
+}
+
+pub theorem le_add_mono(
+  a1: Nat,
+  b1: Nat,
+  a2: Nat,
+  b2: Nat,
+  h1: Nat::le(a1, b1) = true,
+  h2: Nat::le(a2, b2) = true
+): Nat::le(a1 + a2, b1 + b2) = true {
+  match a2 {
+    Zero => match b2 {
+      Zero => h1
+      Succ(k) => Nat::le_trans(a1, b1, b1 + Succ(k), h1, le_add_right(b1, Succ(k)))
+    }
+    Succ(a2p) => match b2 {
+      Zero => False::elim(false_ne_true(Eq::trans(Eq::sym(Nat::lt_zero_false(a2p)), h2)))
+      Succ(b2p) => le_add_mono(a1, b1, a2p, b2p, h1, h2)
+    }
+  }
+}
+
+pub theorem le_of_eq(
+  a: Nat,
+  b: Nat,
+  c: Nat,
+  h_le: Nat::le(a, b) = true,
+  h_eq: b = c
+): Nat::le(a, c) = true {
+  Eq::trans(Eq::congr(⟦Nat::le(a, □)⟧, Eq::sym(h_eq)), h_le)
+}
+
+pub theorem min_of_le(a: Nat, b: Nat, h: Nat::le(a, b) = true): Nat::min(a, b) = a {
+  match a {
+    Zero => match b {
+      Zero => Refl
+      Succ(_) => Refl
+    }
+    Succ(a2) => match b {
+      Zero => False::elim(false_ne_true(Eq::trans(Eq::sym(Nat::lt_zero_false(a2)), h)))
+      Succ(b2) => ⊢ Nat::min(Succ(a2), Succ(b2)) = Succ(a2) from match Nat::lt(a2, b2) eqn e {
+        true => Eq::congr(
+          (c: Bool) => ⊢ Nat from match c { false => Succ(b2), true => Succ(a2) },
+          e
+        )
+        false => Eq::trans(
+          Eq::congr((c: Bool) => ⊢ Nat from match c { false => Succ(b2), true => Succ(a2) }, e),
+          Eq::congr(
+            Succ,
+            Eq::trans(
+              Eq::congr((c: Bool) => ⊢ Nat from match c { false => b2, true => a2 }, Eq::sym(e)),
+              min_of_le(a2, b2, h)
+            )
+          )
+        )
+      }
+    }
+  }
+}
+
+pub theorem eq_zero_of_add_zero_left(a: Nat, b: Nat, h: a + b = Zero): a = Zero {
+  match b {
+    Zero => h
+    Succ(k) => False::elim(Nat::succ_ne_zero(a + k, h))
+  }
+}
+
+pub theorem eq_zero_of_add_zero_right(a: Nat, b: Nat, h: a + b = Zero): b = Zero {
+  match b {
+    Zero => Refl
+    Succ(k) => False::elim(Nat::succ_ne_zero(a + k, h))
+  }
+}
+
+pub theorem triple_sum_zero(
+  a: Nat,
+  b: Nat,
+  c: Nat,
+  h: a + b + c = Zero
+): a = Zero ∧ (b = Zero ∧ c = Zero) {
+  let hc: c = Zero := eq_zero_of_add_zero_right(a + b, c, h)
+  let hab: a + b = Zero := eq_zero_of_add_zero_left(a + b, c, h)
+  AndIntro(eq_zero_of_add_zero_left(a, b, hab), AndIntro(eq_zero_of_add_zero_right(a, b, hab), hc))
+}
+
+pub theorem total_sum_rearrange(
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat
+): (ra + ba) + (hr + hb) + (tr + tb) = (ra + hr + tr) + (ba + hb + tb) {
+  Eq::trans(
+    Eq::congr(⟦□ + (tr + tb)⟧, Nat::add_shuffle(ra, ba, hr, hb)),
+    Nat::add_shuffle(ra + hr, ba + hb, tr, tb)
+  )
+}
+
+// ============================================================================
+// Invariant definitions
+// ============================================================================
+
+pub def RtConserved(cfg: Config, s: State): Prop :=
+st_rt_avail(s) + st_held_rt(s) + st_in_transit_rt(s) = cfg_rt_reserved(cfg)
+
+pub def BeConserved(cfg: Config, s: State): Prop :=
+st_be_avail(s) + st_held_be(s) + st_in_transit_be(s) = cfg_be_slots(cfg)
+
+pub def SlotInvariant(cfg: Config, s: State): Prop :=
+RtConserved(cfg, s) ∧ BeConserved(cfg, s)
+
+pub def TotalConserved(cfg: Config, s: State): Prop :=
+st_total_avail(s) + st_total_held(s) + st_total_in_transit(s) = cfg_total_slots(cfg)
+
+// ============================================================================
+// Group 1: Per-pool and total slot conservation across ALL transitions
+// ============================================================================
+
+pub theorem init_rt_conserved(cfg: Config): RtConserved(cfg, init_state(cfg)) {
+  match cfg {
+    SemConfig(rt, be, depth, ratio) => Refl
+  }
+}
+
+pub theorem init_be_conserved(cfg: Config): BeConserved(cfg, init_state(cfg)) {
+  match cfg {
+    SemConfig(rt, be, depth, ratio) => Refl
+  }
+}
+
+pub theorem init_slot_invariant(cfg: Config): SlotInvariant(cfg, init_state(cfg)) {
+  AndIntro(init_rt_conserved(cfg), init_be_conserved(cfg))
+}
+
+pub theorem enqueue_or_reject_if_rt_conserved(
+  cfg: Config,
+  is_full: Bool,
+  s: State,
+  prio: Priority,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(enqueue_or_reject_if(is_full, s, prio))) {
+  match is_full {
+    true => h
+    false => match s {
+      SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio { Rt => h, Be => h }
+    }
+  }
+}
+
+pub theorem enqueue_or_reject_rt_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(enqueue_or_reject(cfg, s, prio))) {
+  enqueue_or_reject_if_rt_conserved(cfg, queue_is_full(cfg, s), s, prio, h)
+}
+
+pub theorem enqueue_or_reject_if_be_conserved(
+  cfg: Config,
+  is_full: Bool,
+  s: State,
+  prio: Priority,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(enqueue_or_reject_if(is_full, s, prio))) {
+  match is_full {
+    true => h
+    false => match s {
+      SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio { Rt => h, Be => h }
+    }
+  }
+}
+
+pub theorem enqueue_or_reject_be_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(enqueue_or_reject(cfg, s, prio))) {
+  enqueue_or_reject_if_be_conserved(cfg, queue_is_full(cfg, s), s, prio, h)
+}
+
+pub theorem step_acquire_rt_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_acquire(cfg, s, prio))) {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match s {
+      SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio {
+        Rt => match ra {
+          Succ(r2) => Eq::trans(Eq::sym(add_succ_left_mid(r2, hr, tr)), h)
+          Zero => match rt_res {
+            Zero => match ba {
+              Succ(b2) => h
+              Zero => enqueue_or_reject_rt_conserved(
+                SemConfig(Zero, be_sl, max_d, ratio),
+                SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr),
+                Rt,
+                h
+              )
+            }
+            Succ(k) => enqueue_or_reject_rt_conserved(
+              SemConfig(Succ(k), be_sl, max_d, ratio),
+              SemState(Zero, hr, tr, ba, hb, tb, rq, bq, cr),
+              Rt,
+              h
+            )
+          }
+        }
+        Be => match ba {
+          Succ(b2) => h
+          Zero => match be_sl {
+            Zero => match ra {
+              Succ(r2) => Eq::trans(Eq::sym(add_succ_left_mid(r2, hr, tr)), h)
+              Zero => enqueue_or_reject_rt_conserved(
+                SemConfig(rt_res, Zero, max_d, ratio),
+                SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr),
+                Be,
+                h
+              )
+            }
+            Succ(k) => enqueue_or_reject_rt_conserved(
+              SemConfig(rt_res, Succ(k), max_d, ratio),
+              SemState(ra, hr, tr, Zero, hb, tb, rq, bq, cr),
+              Be,
+              h
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+pub theorem step_acquire_be_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_acquire(cfg, s, prio))) {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match s {
+      SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio {
+        Rt => match ra {
+          Succ(r2) => h
+          Zero => match rt_res {
+            Zero => match ba {
+              Succ(b2) => Eq::trans(Eq::sym(add_succ_left_mid(b2, hb, tb)), h)
+              Zero => enqueue_or_reject_be_conserved(
+                SemConfig(Zero, be_sl, max_d, ratio),
+                SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr),
+                Rt,
+                h
+              )
+            }
+            Succ(k) => enqueue_or_reject_be_conserved(
+              SemConfig(Succ(k), be_sl, max_d, ratio),
+              SemState(Zero, hr, tr, ba, hb, tb, rq, bq, cr),
+              Rt,
+              h
+            )
+          }
+        }
+        Be => match ba {
+          Succ(b2) => Eq::trans(Eq::sym(add_succ_left_mid(b2, hb, tb)), h)
+          Zero => match be_sl {
+            Zero => match ra {
+              Succ(r2) => h
+              Zero => enqueue_or_reject_be_conserved(
+                SemConfig(rt_res, Zero, max_d, ratio),
+                SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr),
+                Be,
+                h
+              )
+            }
+            Succ(k) => enqueue_or_reject_be_conserved(
+              SemConfig(rt_res, Succ(k), max_d, ratio),
+              SemState(ra, hr, tr, Zero, hb, tb, rq, bq, cr),
+              Be,
+              h
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_force_rt_conserved(
+  cfg: Config,
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat,
+  h_tr: ra + hr + Succ(tr) = cfg_rt_reserved(cfg)
+): RtConserved(
+  cfg,
+  step_result_state(dispatch_freed_rt_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) {
+  match force_be {
+    true => h_tr
+    false => match rq {
+      Succ(rq2) => h_tr
+      Zero => h_tr
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_rt_conserved(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat,
+  h: ra + Succ(hr) + tr = cfg_rt_reserved(cfg)
+): RtConserved(
+  cfg,
+  step_result_state(dispatch_freed_rt(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) {
+  let h_tr: ra + hr + Succ(tr) = cfg_rt_reserved(cfg) := Eq::trans(
+    Eq::sym(add_succ_mid(ra, hr, tr)),
+    h
+  )
+  let h_ra: Succ(ra) + hr + tr = cfg_rt_reserved(cfg) := Eq::trans(add_succ_left_mid(ra, hr, tr), h)
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_rt_force_rt_conserved(
+            SemConfig(rt_res, be_sl, max_d, Succ(rm)),
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr,
+            h_tr
+          )
+          Zero => match rq {
+            Succ(rq2) => h_tr
+            Zero => h_ra
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => h_tr
+          Zero => match bq {
+            Succ(bq2) => h_tr
+            Zero => h_ra
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => h_tr
+        Zero => match bq {
+          Succ(bq2) => h_tr
+          Zero => h_ra
+        }
+      }
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_force_be_conserved(
+  cfg: Config,
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat,
+  h: ba + hb + tb = cfg_be_slots(cfg)
+): BeConserved(
+  cfg,
+  step_result_state(dispatch_freed_rt_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) {
+  match force_be {
+    true => h
+    false => match rq {
+      Succ(rq2) => h
+      Zero => h
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_be_conserved(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat,
+  h: ba + hb + tb = cfg_be_slots(cfg)
+): BeConserved(
+  cfg,
+  step_result_state(dispatch_freed_rt(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_rt_force_be_conserved(
+            SemConfig(rt_res, be_sl, max_d, Succ(rm)),
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr,
+            h
+          )
+          Zero => match rq {
+            Succ(rq2) => h
+            Zero => h
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => h
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => h
+        Zero => match bq {
+          Succ(bq2) => h
+          Zero => h
+        }
+      }
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_force_rt_conserved(
+  cfg: Config,
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat,
+  h: ra + hr + tr = cfg_rt_reserved(cfg)
+): RtConserved(
+  cfg,
+  step_result_state(dispatch_freed_be_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) {
+  match force_be {
+    true => h
+    false => match rq {
+      Succ(rq2) => h
+      Zero => h
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_rt_conserved(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat,
+  h: ra + hr + tr = cfg_rt_reserved(cfg)
+): RtConserved(
+  cfg,
+  step_result_state(dispatch_freed_be(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_be_force_rt_conserved(
+            SemConfig(rt_res, be_sl, max_d, Succ(rm)),
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr,
+            h
+          )
+          Zero => match rq {
+            Succ(rq2) => h
+            Zero => h
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => h
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => h
+        Zero => match bq {
+          Succ(bq2) => h
+          Zero => h
+        }
+      }
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_force_be_conserved(
+  cfg: Config,
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat,
+  h_tb: ba + hb + Succ(tb) = cfg_be_slots(cfg)
+): BeConserved(
+  cfg,
+  step_result_state(dispatch_freed_be_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) {
+  match force_be {
+    true => h_tb
+    false => match rq {
+      Succ(rq2) => h_tb
+      Zero => h_tb
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_be_conserved(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat,
+  h: ba + Succ(hb) + tb = cfg_be_slots(cfg)
+): BeConserved(
+  cfg,
+  step_result_state(dispatch_freed_be(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) {
+  let h_tb: ba + hb + Succ(tb) = cfg_be_slots(cfg) := Eq::trans(
+    Eq::sym(add_succ_mid(ba, hb, tb)),
+    h
+  )
+  let h_ba: Succ(ba) + hb + tb = cfg_be_slots(cfg) := Eq::trans(add_succ_left_mid(ba, hb, tb), h)
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_be_force_be_conserved(
+            SemConfig(rt_res, be_sl, max_d, Succ(rm)),
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr,
+            h_tb
+          )
+          Zero => match rq {
+            Succ(rq2) => h_tb
+            Zero => h_ba
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => h_tb
+          Zero => match bq {
+            Succ(bq2) => h_tb
+            Zero => h_ba
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => h_tb
+        Zero => match bq {
+          Succ(bq2) => h_tb
+          Zero => h_ba
+        }
+      }
+    }
+  }
+}
+
+pub theorem step_release_rt_conserved(
+  cfg: Config,
+  s: State,
+  caller_prio: Priority,
+  home_pool: Pool,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_release(cfg, s, caller_prio, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match hr {
+        Zero => h
+        Succ(hr2) => dispatch_freed_rt_rt_conserved(
+          cfg,
+          caller_prio,
+          ra,
+          hr2,
+          tr,
+          ba,
+          hb,
+          tb,
+          rq,
+          bq,
+          cr,
+          h
+        )
+      }
+      PoolBe => match hb {
+        Zero => h
+        Succ(hb2) => dispatch_freed_be_rt_conserved(
+          cfg,
+          caller_prio,
+          ra,
+          hr,
+          tr,
+          ba,
+          hb2,
+          tb,
+          rq,
+          bq,
+          cr,
+          h
+        )
+      }
+    }
+  }
+}
+
+pub theorem step_release_be_conserved(
+  cfg: Config,
+  s: State,
+  caller_prio: Priority,
+  home_pool: Pool,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_release(cfg, s, caller_prio, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match hr {
+        Zero => h
+        Succ(hr2) => dispatch_freed_rt_be_conserved(
+          cfg,
+          caller_prio,
+          ra,
+          hr2,
+          tr,
+          ba,
+          hb,
+          tb,
+          rq,
+          bq,
+          cr,
+          h
+        )
+      }
+      PoolBe => match hb {
+        Zero => h
+        Succ(hb2) => dispatch_freed_be_be_conserved(
+          cfg,
+          caller_prio,
+          ra,
+          hr,
+          tr,
+          ba,
+          hb2,
+          tb,
+          rq,
+          bq,
+          cr,
+          h
+        )
+      }
+    }
+  }
+}
+
+pub theorem step_complete_transfer_rt_conserved(
+  cfg: Config,
+  s: State,
+  home_pool: Pool,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_complete_transfer(s, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match tr {
+        Zero => h
+        Succ(tr2) => Eq::trans(add_succ_mid(ra, hr, tr2), h)
+      }
+      PoolBe => match tb {
+        Zero => h
+        Succ(tb2) => h
+      }
+    }
+  }
+}
+
+pub theorem step_complete_transfer_be_conserved(
+  cfg: Config,
+  s: State,
+  home_pool: Pool,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_complete_transfer(s, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match tr {
+        Zero => h
+        Succ(tr2) => h
+      }
+      PoolBe => match tb {
+        Zero => h
+        Succ(tb2) => Eq::trans(add_succ_mid(ba, hb, tb2), h)
+      }
+    }
+  }
+}
+
+pub theorem step_cancel_queued_rt_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_cancel_queued(s, prio))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio {
+      Rt => match rq {
+        Zero => h
+        Succ(rq2) => h
+      }
+      Be => match bq {
+        Zero => h
+        Succ(bq2) => h
+      }
+    }
+  }
+}
+
+pub theorem step_cancel_queued_be_conserved(
+  cfg: Config,
+  s: State,
+  prio: Priority,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_cancel_queued(s, prio))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match prio {
+      Rt => match rq {
+        Zero => h
+        Succ(rq2) => h
+      }
+      Be => match bq {
+        Zero => h
+        Succ(bq2) => h
+      }
+    }
+  }
+}
+
+pub theorem step_cancel_in_transit_rt_conserved(
+  cfg: Config,
+  s: State,
+  home_pool: Pool,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_cancel_in_transit(s, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match tr {
+        Zero => h
+        Succ(tr2) => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => Eq::trans(add_succ_left_right(ra, hr, tr2), h)
+          }
+        }
+      }
+      PoolBe => match tb {
+        Zero => h
+        Succ(tb2) => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => h
+          }
+        }
+      }
+    }
+  }
+}
+
+pub theorem step_cancel_in_transit_be_conserved(
+  cfg: Config,
+  s: State,
+  home_pool: Pool,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_cancel_in_transit(s, home_pool))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match home_pool {
+      PoolRt => match tr {
+        Zero => h
+        Succ(tr2) => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => h
+          }
+        }
+      }
+      PoolBe => match tb {
+        Zero => h
+        Succ(tb2) => match rq {
+          Succ(rq2) => h
+          Zero => match bq {
+            Succ(bq2) => h
+            Zero => Eq::trans(add_succ_left_right(ba, hb, tb2), h)
+          }
+        }
+      }
+    }
+  }
+}
+
+pub theorem step_promote_rt_conserved(
+  cfg: Config,
+  s: State,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_result_state(step_promote_be_to_rt(s))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match bq {
+      Zero => h
+      Succ(bq2) => h
+    }
+  }
+}
+
+pub theorem step_promote_be_conserved(
+  cfg: Config,
+  s: State,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_result_state(step_promote_be_to_rt(s))) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match bq {
+      Zero => h
+      Succ(bq2) => h
+    }
+  }
+}
+
+pub theorem step_rt_conserved(
+  cfg: Config,
+  s: State,
+  ev: Event,
+  h: RtConserved(cfg, s)
+): RtConserved(cfg, step_state(cfg, s, ev)) {
+  match ev {
+    Acquire(prio) => step_acquire_rt_conserved(cfg, s, prio, h)
+    Release(caller_prio, home_pool) => step_release_rt_conserved(cfg, s, caller_prio, home_pool, h)
+    CompleteTransfer(home_pool) => step_complete_transfer_rt_conserved(cfg, s, home_pool, h)
+    CancelQueued(prio) => step_cancel_queued_rt_conserved(cfg, s, prio, h)
+    CancelInTransit(home_pool) => step_cancel_in_transit_rt_conserved(cfg, s, home_pool, h)
+    PromoteBeToRt => step_promote_rt_conserved(cfg, s, h)
+  }
+}
+
+pub theorem step_be_conserved(
+  cfg: Config,
+  s: State,
+  ev: Event,
+  h: BeConserved(cfg, s)
+): BeConserved(cfg, step_state(cfg, s, ev)) {
+  match ev {
+    Acquire(prio) => step_acquire_be_conserved(cfg, s, prio, h)
+    Release(caller_prio, home_pool) => step_release_be_conserved(cfg, s, caller_prio, home_pool, h)
+    CompleteTransfer(home_pool) => step_complete_transfer_be_conserved(cfg, s, home_pool, h)
+    CancelQueued(prio) => step_cancel_queued_be_conserved(cfg, s, prio, h)
+    CancelInTransit(home_pool) => step_cancel_in_transit_be_conserved(cfg, s, home_pool, h)
+    PromoteBeToRt => step_promote_be_conserved(cfg, s, h)
+  }
+}
+
+pub theorem step_preserves_invariant(
+  cfg: Config,
+  s: State,
+  ev: Event,
+  h: SlotInvariant(cfg, s)
+): SlotInvariant(cfg, step_state(cfg, s, ev)) {
+  AndIntro(
+    step_rt_conserved(cfg, s, ev, And::left(h)),
+    step_be_conserved(cfg, s, ev, And::right(h))
+  )
+}
+
+pub theorem run_preserves_invariant(
+  cfg: Config,
+  events: List(Event),
+  s: State,
+  h: SlotInvariant(cfg, s)
+): SlotInvariant(cfg, run_trace(cfg, s, events)) {
+  match events {
+    Nil => h
+    Cons(ev, rest) => run_preserves_invariant(
+      cfg,
+      rest,
+      step_state(cfg, s, ev),
+      step_preserves_invariant(cfg, s, ev, h)
+    )
+  }
+}
+
+pub theorem run_from_init_invariant(
+  cfg: Config,
+  events: List(Event)
+): SlotInvariant(cfg, run_from_init(cfg, events)) {
+  run_preserves_invariant(cfg, events, init_state(cfg), init_slot_invariant(cfg))
+}
+
+pub theorem total_conserved_of_invariant(
+  cfg: Config,
+  s: State,
+  h: SlotInvariant(cfg, s)
+): TotalConserved(cfg, s) {
+  let h_rt: RtConserved(cfg, s) := And::left(h)
+  let h_be: BeConserved(cfg, s) := And::right(h)
+  Eq::trans(
+    total_sum_rearrange(
+      st_rt_avail(s),
+      st_held_rt(s),
+      st_in_transit_rt(s),
+      st_be_avail(s),
+      st_held_be(s),
+      st_in_transit_be(s)
+    ),
+    Eq::trans(
+      Eq::congr(⟦□ + (st_be_avail(s) + st_held_be(s) + st_in_transit_be(s))⟧, h_rt),
+      Eq::congr(⟦cfg_rt_reserved(cfg) + □⟧, h_be)
+    )
+  )
+}
+
+pub theorem run_from_init_total_conserved(
+  cfg: Config,
+  events: List(Event)
+): TotalConserved(cfg, run_from_init(cfg, events)) {
+  total_conserved_of_invariant(
+    cfg,
+    run_from_init(cfg, events),
+    run_from_init_invariant(cfg, events)
+  )
+}
+
+// ============================================================================
+// Group 2: Pool upper-bound preservation WITHOUT min(..., cap)
+// ============================================================================
+
+pub theorem succ_le_of_add_succ_mid(
+  a: Nat,
+  h: Nat,
+  t: Nat,
+  cap: Nat,
+  eq: a + Succ(h) + t = cap
+): Nat::le(Succ(a), cap) = true {
+  let eq2: Succ(a) + (h + t) = cap := Eq::trans(
+    Eq::sym(Nat::add_assoc(Succ(a), h, t)),
+    Eq::trans(add_succ_left_mid(a, h, t), eq)
+  )
+  le_of_eq(Succ(a), Succ(a) + (h + t), cap, le_add_right(Succ(a), h + t), eq2)
+}
+
+pub theorem succ_le_of_add_succ_right(
+  a: Nat,
+  h: Nat,
+  t: Nat,
+  cap: Nat,
+  eq: a + h + Succ(t) = cap
+): Nat::le(Succ(a), cap) = true {
+  let eq2: Succ(a) + (h + t) = cap := Eq::trans(
+    Eq::sym(Nat::add_assoc(Succ(a), h, t)),
+    Eq::trans(add_succ_left_right(a, h, t), eq)
+  )
+  le_of_eq(Succ(a), Succ(a) + (h + t), cap, le_add_right(Succ(a), h + t), eq2)
+}
+
+pub theorem rt_return_to_pool_within_cap(
+  cfg: Config,
+  s: State,
+  hr2: Nat,
+  h_inv: RtConserved(cfg, s),
+  h_held: st_held_rt(s) = Succ(hr2)
+): Nat::le(Succ(st_rt_avail(s)), cfg_rt_reserved(cfg)) = true {
+  let h_eq: st_rt_avail(s) + Succ(hr2) + st_in_transit_rt(s) = cfg_rt_reserved(cfg) := Eq::trans(
+    Eq::congr(⟦st_rt_avail(s) + □ + st_in_transit_rt(s)⟧, Eq::sym(h_held)),
+    h_inv
+  )
+  succ_le_of_add_succ_mid(st_rt_avail(s), hr2, st_in_transit_rt(s), cfg_rt_reserved(cfg), h_eq)
+}
+
+pub theorem be_return_to_pool_within_cap(
+  cfg: Config,
+  s: State,
+  hb2: Nat,
+  h_inv: BeConserved(cfg, s),
+  h_held: st_held_be(s) = Succ(hb2)
+): Nat::le(Succ(st_be_avail(s)), cfg_be_slots(cfg)) = true {
+  let h_eq: st_be_avail(s) + Succ(hb2) + st_in_transit_be(s) = cfg_be_slots(cfg) := Eq::trans(
+    Eq::congr(⟦st_be_avail(s) + □ + st_in_transit_be(s)⟧, Eq::sym(h_held)),
+    h_inv
+  )
+  succ_le_of_add_succ_mid(st_be_avail(s), hb2, st_in_transit_be(s), cfg_be_slots(cfg), h_eq)
+}
+
+pub theorem rt_recovery_to_pool_within_cap(
+  cfg: Config,
+  s: State,
+  tr2: Nat,
+  h_inv: RtConserved(cfg, s),
+  h_tr: st_in_transit_rt(s) = Succ(tr2)
+): Nat::le(Succ(st_rt_avail(s)), cfg_rt_reserved(cfg)) = true {
+  let h_eq: st_rt_avail(s) + st_held_rt(s) + Succ(tr2) = cfg_rt_reserved(cfg) := Eq::trans(
+    Eq::congr(⟦st_rt_avail(s) + st_held_rt(s) + □⟧, Eq::sym(h_tr)),
+    h_inv
+  )
+  succ_le_of_add_succ_right(st_rt_avail(s), st_held_rt(s), tr2, cfg_rt_reserved(cfg), h_eq)
+}
+
+pub theorem be_recovery_to_pool_within_cap(
+  cfg: Config,
+  s: State,
+  tb2: Nat,
+  h_inv: BeConserved(cfg, s),
+  h_tb: st_in_transit_be(s) = Succ(tb2)
+): Nat::le(Succ(st_be_avail(s)), cfg_be_slots(cfg)) = true {
+  let h_eq: st_be_avail(s) + st_held_be(s) + Succ(tb2) = cfg_be_slots(cfg) := Eq::trans(
+    Eq::congr(⟦st_be_avail(s) + st_held_be(s) + □⟧, Eq::sym(h_tb)),
+    h_inv
+  )
+  succ_le_of_add_succ_right(st_be_avail(s), st_held_be(s), tb2, cfg_be_slots(cfg), h_eq)
+}
+
+pub theorem rt_return_min_is_redundant(
+  cfg: Config,
+  s: State,
+  hr2: Nat,
+  h_inv: RtConserved(cfg, s),
+  h_held: st_held_rt(s) = Succ(hr2)
+): Nat::min(Succ(st_rt_avail(s)), cfg_rt_reserved(cfg)) = Succ(st_rt_avail(s)) {
+  min_of_le(
+    Succ(st_rt_avail(s)),
+    cfg_rt_reserved(cfg),
+    rt_return_to_pool_within_cap(cfg, s, hr2, h_inv, h_held)
+  )
+}
+
+pub theorem be_return_min_is_redundant(
+  cfg: Config,
+  s: State,
+  hb2: Nat,
+  h_inv: BeConserved(cfg, s),
+  h_held: st_held_be(s) = Succ(hb2)
+): Nat::min(Succ(st_be_avail(s)), cfg_be_slots(cfg)) = Succ(st_be_avail(s)) {
+  min_of_le(
+    Succ(st_be_avail(s)),
+    cfg_be_slots(cfg),
+    be_return_to_pool_within_cap(cfg, s, hb2, h_inv, h_held)
+  )
+}
+
+pub theorem rt_avail_bounded(
+  cfg: Config,
+  s: State,
+  h: RtConserved(cfg, s)
+): Nat::le(st_rt_avail(s), cfg_rt_reserved(cfg)) = true {
+  let eq2: st_rt_avail(s) + (
+    st_held_rt(s) + st_in_transit_rt(s)
+  ) = cfg_rt_reserved(cfg) := Eq::trans(
+    Eq::sym(Nat::add_assoc(st_rt_avail(s), st_held_rt(s), st_in_transit_rt(s))),
+    h
+  )
+  le_of_eq(
+    st_rt_avail(s),
+    st_rt_avail(s) + (st_held_rt(s) + st_in_transit_rt(s)),
+    cfg_rt_reserved(cfg),
+    le_add_right(st_rt_avail(s), st_held_rt(s) + st_in_transit_rt(s)),
+    eq2
+  )
+}
+
+pub theorem be_avail_bounded(
+  cfg: Config,
+  s: State,
+  h: BeConserved(cfg, s)
+): Nat::le(st_be_avail(s), cfg_be_slots(cfg)) = true {
+  let eq2: st_be_avail(s) + (
+    st_held_be(s) + st_in_transit_be(s)
+  ) = cfg_be_slots(cfg) := Eq::trans(
+    Eq::sym(Nat::add_assoc(st_be_avail(s), st_held_be(s), st_in_transit_be(s))),
+    h
+  )
+  le_of_eq(
+    st_be_avail(s),
+    st_be_avail(s) + (st_held_be(s) + st_in_transit_be(s)),
+    cfg_be_slots(cfg),
+    le_add_right(st_be_avail(s), st_held_be(s) + st_in_transit_be(s)),
+    eq2
+  )
+}
+
+pub theorem run_from_init_pool_bounds(
+  cfg: Config,
+  events: List(Event)
+): Nat::le(
+  st_rt_avail(run_from_init(cfg, events)),
+  cfg_rt_reserved(cfg)
+) = true ∧ Nat::le(st_be_avail(run_from_init(cfg, events)), cfg_be_slots(cfg)) = true {
+  let h := run_from_init_invariant(cfg, events)
+  AndIntro(
+    rt_avail_bounded(cfg, run_from_init(cfg, events), And::left(h)),
+    be_avail_bounded(cfg, run_from_init(cfg, events), And::right(h))
+  )
+}
+
+// ============================================================================
+// Group 3: Concurrency upper bound, mutual exclusion, and zero cross-pool creation
+// ============================================================================
+
+pub theorem held_rt_bounded(
+  cfg: Config,
+  s: State,
+  h: RtConserved(cfg, s)
+): Nat::le(st_held_rt(s), cfg_rt_reserved(cfg)) = true {
+  let h1: Nat::le(
+    st_held_rt(s),
+    st_rt_avail(s) + st_held_rt(s)
+  ) = true := le_add_left(st_rt_avail(s), st_held_rt(s))
+  let h2: Nat::le(
+    st_rt_avail(s) + st_held_rt(s),
+    st_rt_avail(s) + st_held_rt(s) + st_in_transit_rt(s)
+  ) = true := le_add_right(st_rt_avail(s) + st_held_rt(s), st_in_transit_rt(s))
+  le_of_eq(
+    st_held_rt(s),
+    st_rt_avail(s) + st_held_rt(s) + st_in_transit_rt(s),
+    cfg_rt_reserved(cfg),
+    Nat::le_trans(
+      st_held_rt(s),
+      st_rt_avail(s) + st_held_rt(s),
+      st_rt_avail(s) + st_held_rt(s) + st_in_transit_rt(s),
+      h1,
+      h2
+    ),
+    h
+  )
+}
+
+pub theorem held_be_bounded(
+  cfg: Config,
+  s: State,
+  h: BeConserved(cfg, s)
+): Nat::le(st_held_be(s), cfg_be_slots(cfg)) = true {
+  let h1: Nat::le(
+    st_held_be(s),
+    st_be_avail(s) + st_held_be(s)
+  ) = true := le_add_left(st_be_avail(s), st_held_be(s))
+  let h2: Nat::le(
+    st_be_avail(s) + st_held_be(s),
+    st_be_avail(s) + st_held_be(s) + st_in_transit_be(s)
+  ) = true := le_add_right(st_be_avail(s) + st_held_be(s), st_in_transit_be(s))
+  le_of_eq(
+    st_held_be(s),
+    st_be_avail(s) + st_held_be(s) + st_in_transit_be(s),
+    cfg_be_slots(cfg),
+    Nat::le_trans(
+      st_held_be(s),
+      st_be_avail(s) + st_held_be(s),
+      st_be_avail(s) + st_held_be(s) + st_in_transit_be(s),
+      h1,
+      h2
+    ),
+    h
+  )
+}
+
+pub theorem concurrency_upper_bound(
+  cfg: Config,
+  s: State,
+  h: SlotInvariant(cfg, s)
+): Nat::le(st_total_held(s), cfg_total_slots(cfg)) = true {
+  le_add_mono(
+    st_held_rt(s),
+    cfg_rt_reserved(cfg),
+    st_held_be(s),
+    cfg_be_slots(cfg),
+    held_rt_bounded(cfg, s, And::left(h)),
+    held_be_bounded(cfg, s, And::right(h))
+  )
+}
+
+pub theorem run_from_init_concurrency_bound(
+  cfg: Config,
+  events: List(Event)
+): Nat::le(st_total_held(run_from_init(cfg, events)), cfg_total_slots(cfg)) = true {
+  concurrency_upper_bound(cfg, run_from_init(cfg, events), run_from_init_invariant(cfg, events))
+}
+
+pub theorem mutual_exclusion_single_slot(
+  cfg: Config,
+  events: List(Event),
+  h_one: cfg_total_slots(cfg) = 1
+): Nat::le(st_total_held(run_from_init(cfg, events)), 1) = true {
+  le_of_eq(
+    st_total_held(run_from_init(cfg, events)),
+    cfg_total_slots(cfg),
+    1,
+    run_from_init_concurrency_bound(cfg, events),
+    h_one
+  )
+}
+
+pub theorem mutual_exclusion_single_rt(
+  max_depth: Nat,
+  ratio: Nat,
+  events: List(Event)
+): Nat::le(st_total_held(run_from_init(SemConfig(1, 0, max_depth, ratio), events)), 1) = true {
+  mutual_exclusion_single_slot(SemConfig(1, 0, max_depth, ratio), events, Refl)
+}
+
+pub theorem mutual_exclusion_single_be(
+  max_depth: Nat,
+  ratio: Nat,
+  events: List(Event)
+): Nat::le(st_total_held(run_from_init(SemConfig(0, 1, max_depth, ratio), events)), 1) = true {
+  mutual_exclusion_single_slot(SemConfig(0, 1, max_depth, ratio), events, Refl)
+}
+
+pub theorem no_phantom_be_slots_when_be_zero(
+  cfg: Config,
+  events: List(Event),
+  h_zero: cfg_be_slots(cfg) = Zero
+): st_be_avail(
+  run_from_init(cfg, events)
+) = Zero ∧ (
+  st_held_be(run_from_init(cfg, events)) = Zero ∧ st_in_transit_be(run_from_init(cfg, events)) = Zero
+) {
+  let s := run_from_init(cfg, events)
+  let h_be: BeConserved(cfg, s) := And::right(run_from_init_invariant(cfg, events))
+  triple_sum_zero(st_be_avail(s), st_held_be(s), st_in_transit_be(s), Eq::trans(h_be, h_zero))
+}
+
+pub theorem no_phantom_rt_slots_when_rt_zero(
+  cfg: Config,
+  events: List(Event),
+  h_zero: cfg_rt_reserved(cfg) = Zero
+): st_rt_avail(
+  run_from_init(cfg, events)
+) = Zero ∧ (
+  st_held_rt(run_from_init(cfg, events)) = Zero ∧ st_in_transit_rt(run_from_init(cfg, events)) = Zero
+) {
+  let s := run_from_init(cfg, events)
+  let h_rt: RtConserved(cfg, s) := And::left(run_from_init_invariant(cfg, events))
+  triple_sum_zero(st_rt_avail(s), st_held_rt(s), st_in_transit_rt(s), Eq::trans(h_rt, h_zero))
+}
+
+// ============================================================================
+// Group 4: Strict rejection of unknown / double release
+// ============================================================================
+
+pub theorem invalid_release_rt_rejected(
+  cfg: Config,
+  s: State,
+  caller_prio: Priority,
+  h_zero: st_held_rt(s) = Zero
+): step(cfg, s, Release(caller_prio, PoolRt)) = StepOut(s, RejectedInvalidRelease) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match hr {
+      Zero => Refl
+      Succ(hr2) => False::elim(Nat::succ_ne_zero(hr2, h_zero))
+    }
+  }
+}
+
+pub theorem invalid_release_be_rejected(
+  cfg: Config,
+  s: State,
+  caller_prio: Priority,
+  h_zero: st_held_be(s) = Zero
+): step(cfg, s, Release(caller_prio, PoolBe)) = StepOut(s, RejectedInvalidRelease) {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match hb {
+      Zero => Refl
+      Succ(hb2) => False::elim(Nat::succ_ne_zero(hb2, h_zero))
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_force_preserves_held_rt(
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat
+): st_held_rt(
+  step_result_state(dispatch_freed_rt_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) = hr {
+  match force_be {
+    true => Refl
+    false => match rq {
+      Succ(rq2) => Refl
+      Zero => Refl
+    }
+  }
+}
+
+pub theorem dispatch_freed_rt_preserves_held_rt(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat
+): st_held_rt(
+  step_result_state(dispatch_freed_rt(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) = hr {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_rt_force_preserves_held_rt(
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr
+          )
+          Zero => match rq {
+            Succ(rq2) => Refl
+            Zero => Refl
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => Refl
+          Zero => match bq {
+            Succ(bq2) => Refl
+            Zero => Refl
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => Refl
+        Zero => match bq {
+          Succ(bq2) => Refl
+          Zero => Refl
+        }
+      }
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_force_preserves_held_be(
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat
+): st_held_be(
+  step_result_state(dispatch_freed_be_force(force_be, ra, hr, tr, ba, hb, tb, rq, bq2, cr))
+) = hb {
+  match force_be {
+    true => Refl
+    false => match rq {
+      Succ(rq2) => Refl
+      Zero => Refl
+    }
+  }
+}
+
+pub theorem dispatch_freed_be_preserves_held_be(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat
+): st_held_be(
+  step_result_state(dispatch_freed_be(cfg, caller_prio, ra, hr, tr, ba, hb, tb, rq, bq, cr))
+) = hb {
+  match cfg {
+    SemConfig(rt_res, be_sl, max_d, ratio) => match ratio {
+      Succ(rm) => match caller_prio {
+        Rt => match bq {
+          Succ(bq2) => dispatch_freed_be_force_preserves_held_be(
+            Nat::le(Succ(rm), Succ(cr)),
+            ra,
+            hr,
+            tr,
+            ba,
+            hb,
+            tb,
+            rq,
+            bq2,
+            cr
+          )
+          Zero => match rq {
+            Succ(rq2) => Refl
+            Zero => Refl
+          }
+        }
+        Be => match rq {
+          Succ(rq2) => Refl
+          Zero => match bq {
+            Succ(bq2) => Refl
+            Zero => Refl
+          }
+        }
+      }
+      Zero => match rq {
+        Succ(rq2) => Refl
+        Zero => match bq {
+          Succ(bq2) => Refl
+          Zero => Refl
+        }
+      }
+    }
+  }
+}
+
+pub theorem double_release_rt_rejected(
+  cfg: Config,
+  s: State,
+  p1: Priority,
+  p2: Priority,
+  h_one: st_held_rt(s) = 1
+): step(
+  cfg,
+  step_state(cfg, s, Release(p1, PoolRt)),
+  Release(p2, PoolRt)
+) = StepOut(step_state(cfg, s, Release(p1, PoolRt)), RejectedInvalidRelease) {
+  let s1 := step_state(cfg, s, Release(p1, PoolRt))
+  let h_z: st_held_rt(s1) = Zero := match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match hr {
+      Zero => False::elim(Nat::succ_ne_zero(Zero, Eq::sym(h_one)))
+      Succ(hr2) => Eq::trans(
+        dispatch_freed_rt_preserves_held_rt(cfg, p1, ra, hr2, tr, ba, hb, tb, rq, bq, cr),
+        match hr2 {
+          Zero => Refl
+          Succ(k) => False::elim(
+            Nat::succ_ne_zero(k, Eq::congr(Nat::pred, h_one))
+          )
+        }
+      )
+    }
+  }
+  invalid_release_rt_rejected(cfg, s1, p2, h_z)
+}
+
+pub theorem double_release_be_rejected(
+  cfg: Config,
+  s: State,
+  p1: Priority,
+  p2: Priority,
+  h_one: st_held_be(s) = 1
+): step(
+  cfg,
+  step_state(cfg, s, Release(p1, PoolBe)),
+  Release(p2, PoolBe)
+) = StepOut(step_state(cfg, s, Release(p1, PoolBe)), RejectedInvalidRelease) {
+  let s1 := step_state(cfg, s, Release(p1, PoolBe))
+  let h_z: st_held_be(s1) = Zero := match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => match hb {
+      Zero => False::elim(Nat::succ_ne_zero(Zero, Eq::sym(h_one)))
+      Succ(hb2) => Eq::trans(
+        dispatch_freed_be_preserves_held_be(cfg, p1, ra, hr, tr, ba, hb2, tb, rq, bq, cr),
+        match hb2 {
+          Zero => Refl
+          Succ(k) => False::elim(
+            Nat::succ_ne_zero(k, Eq::congr(Nat::pred, h_one))
+          )
+        }
+      )
+    }
+  }
+  invalid_release_be_rejected(cfg, s1, p2, h_z)
+}
+
+pub theorem be_release_rejected_when_be_slots_zero(
+  cfg: Config,
+  events: List(Event),
+  caller_prio: Priority,
+  h_zero: cfg_be_slots(cfg) = Zero
+): step(
+  cfg,
+  run_from_init(cfg, events),
+  Release(caller_prio, PoolBe)
+) = StepOut(run_from_init(cfg, events), RejectedInvalidRelease) {
+  let s := run_from_init(cfg, events)
+  let h_held_zero: st_held_be(s) = Zero := And::left(
+    And::right(no_phantom_be_slots_when_be_zero(cfg, events, h_zero))
+  )
+  invalid_release_be_rejected(cfg, s, caller_prio, h_held_zero)
+}
+
+pub theorem rt_release_rejected_when_rt_reserved_zero(
+  cfg: Config,
+  events: List(Event),
+  caller_prio: Priority,
+  h_zero: cfg_rt_reserved(cfg) = Zero
+): step(
+  cfg,
+  run_from_init(cfg, events),
+  Release(caller_prio, PoolRt)
+) = StepOut(run_from_init(cfg, events), RejectedInvalidRelease) {
+  let s := run_from_init(cfg, events)
+  let h_held_zero: st_held_rt(s) = Zero := And::left(
+    And::right(no_phantom_rt_slots_when_rt_zero(cfg, events, h_zero))
+  )
+  invalid_release_rt_rejected(cfg, s, caller_prio, h_held_zero)
+}

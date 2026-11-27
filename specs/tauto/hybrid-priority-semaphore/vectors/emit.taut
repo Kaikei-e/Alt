@@ -1,0 +1,204 @@
+import std::builtin::os { print, stdout }
+import std::text { Text }
+import "../src/model.taut" {
+  Config,
+  Event,
+  Outcome,
+  Pool,
+  Priority,
+  State,
+  StepResult,
+  cfg_be_slots,
+  cfg_guaranteed_be_ratio,
+  cfg_max_queue_depth,
+  cfg_rt_reserved,
+  init_state,
+  st_be_avail,
+  st_be_queued,
+  st_consecutive_rt_releases,
+  st_held_be,
+  st_held_rt,
+  st_in_transit_be,
+  st_in_transit_rt,
+  st_rt_avail,
+  st_rt_queued,
+  step
+}
+import "../src/replays.taut" {
+  cfg_all_be_queue_depth,
+  cfg_guaranteed_be,
+  cfg_hybrid_queue_depth,
+  cfg_invalid_release,
+  cfg_invalid_release_mutex,
+  cfg_multi_in_transit,
+  cfg_pm_2026_012,
+  cfg_pm_2026_014,
+  cfg_pm_2026_015,
+  cfg_pm_2026_015_forward,
+  cfg_promote_and_cancel,
+  trace_all_be_queue_depth,
+  trace_guaranteed_be,
+  trace_hybrid_queue_depth,
+  trace_invalid_release,
+  trace_invalid_release_mutex,
+  trace_multi_in_transit,
+  trace_pm_2026_012,
+  trace_pm_2026_014,
+  trace_pm_2026_015_forward,
+  trace_pm_2026_015_pool,
+  trace_promote_and_cancel
+}
+
+fn fmt_prio(p: Priority): Text {
+  match p { Rt => "Rt", Be => "Be" }
+}
+
+fn fmt_pool(p: Pool): Text {
+  match p { PoolRt => "PoolRt", PoolBe => "PoolBe" }
+}
+
+fn fmt_event(ev: Event): Text {
+  match ev {
+    Acquire(p) => Text::concat_all(["Acquire(", fmt_prio(p), ")"])
+    Release(p, pool) => Text::concat_all(["Release(", fmt_prio(p), ",", fmt_pool(pool), ")"])
+    CompleteTransfer(pool) => Text::concat_all(["CompleteTransfer(", fmt_pool(pool), ")"])
+    CancelQueued(p) => Text::concat_all(["CancelQueued(", fmt_prio(p), ")"])
+    CancelInTransit(pool) => Text::concat_all(["CancelInTransit(", fmt_pool(pool), ")"])
+    PromoteBeToRt => "PromoteBeToRt"
+  }
+}
+
+fn fmt_outcome(out: Outcome): Text {
+  match out {
+    AcquiredImmediate(pool) => Text::concat_all(["AcquiredImmediate(", fmt_pool(pool), ")"])
+    AcquiredFallback(pool) => Text::concat_all(["AcquiredFallback(", fmt_pool(pool), ")"])
+    Enqueued(p) => Text::concat_all(["Enqueued(", fmt_prio(p), ")"])
+    RejectedQueueFull => "RejectedQueueFull"
+    ReleasedToWaiter(p, pool) => Text::concat_all(
+      ["ReleasedToWaiter(", fmt_prio(p), ",", fmt_pool(pool), ")"]
+    )
+    ReleasedToBeGuaranteed(pool) => Text::concat_all(
+      ["ReleasedToBeGuaranteed(", fmt_pool(pool), ")"]
+    )
+    ReleasedToPool(pool) => Text::concat_all(["ReleasedToPool(", fmt_pool(pool), ")"])
+    RejectedInvalidRelease => "RejectedInvalidRelease"
+    TransferCompleted(pool) => Text::concat_all(["TransferCompleted(", fmt_pool(pool), ")"])
+    RejectedNoInTransit => "RejectedNoInTransit"
+    CancelledQueued(p) => Text::concat_all(["CancelledQueued(", fmt_prio(p), ")"])
+    RecoveredToWaiter(p, pool) => Text::concat_all(
+      ["RecoveredToWaiter(", fmt_prio(p), ",", fmt_pool(pool), ")"]
+    )
+    RecoveredToPool(pool) => Text::concat_all(["RecoveredToPool(", fmt_pool(pool), ")"])
+    PromotedBeToRt => "PromotedBeToRt"
+    NoOp => "NoOp"
+  }
+}
+
+fn fmt_state(s: State): Text {
+  Text::concat_all(
+    [
+      Text::of_nat(st_rt_avail(s)),
+      "|",
+      Text::of_nat(st_held_rt(s)),
+      "|",
+      Text::of_nat(st_in_transit_rt(s)),
+      "|",
+      Text::of_nat(st_be_avail(s)),
+      "|",
+      Text::of_nat(st_held_be(s)),
+      "|",
+      Text::of_nat(st_in_transit_be(s)),
+      "|",
+      Text::of_nat(st_rt_queued(s)),
+      "|",
+      Text::of_nat(st_be_queued(s)),
+      "|",
+      Text::of_nat(st_consecutive_rt_releases(s))
+    ]
+  )
+}
+
+fn fmt_scenario_header(name: Text, cfg: Config): Text {
+  Text::concat_all(
+    [
+      "SCENARIO|",
+      name,
+      "|",
+      Text::of_nat(cfg_rt_reserved(cfg)),
+      "|",
+      Text::of_nat(cfg_be_slots(cfg)),
+      "|",
+      Text::of_nat(cfg_max_queue_depth(cfg)),
+      "|",
+      Text::of_nat(cfg_guaranteed_be_ratio(cfg)),
+      "\n"
+    ]
+  )
+}
+
+fn emit_steps(name: Text, cfg: Config, s: State, idx: Nat, events: List(Event)): Unit ! {stdout} {
+  match events {
+    Nil => #()
+    Cons(ev, rest) => match step(cfg, s, ev) {
+      StepOut(next_s, out) => {
+        print(
+          Text::concat_all(
+            [
+              "STEP|",
+              name,
+              "|",
+              Text::of_nat(idx),
+              "|",
+              fmt_event(ev),
+              "|",
+              fmt_outcome(out),
+              "|",
+              fmt_state(next_s),
+              "\n"
+            ]
+          )
+        )
+        emit_steps(name, cfg, next_s, Succ(idx), rest)
+      }
+    }
+  }
+}
+
+fn emit_scenario(name: Text, cfg: Config, events: List(Event)): Unit ! {stdout} {
+  print(fmt_scenario_header(name, cfg))
+  emit_steps(name, cfg, init_state(cfg), Zero, events)
+}
+
+perform main(() => {
+  emit_scenario("SCENARIO_PM_2026_012", cfg_pm_2026_012(), trace_pm_2026_012())
+  emit_scenario("SCENARIO_PM_2026_014", cfg_pm_2026_014(), trace_pm_2026_014())
+  emit_scenario("SCENARIO_PM_2026_015_POOL", cfg_pm_2026_015(), trace_pm_2026_015_pool())
+  emit_scenario(
+    "SCENARIO_PM_2026_015_FORWARD",
+    cfg_pm_2026_015_forward(),
+    trace_pm_2026_015_forward()
+  )
+  emit_scenario("SCENARIO_MULTI_IN_TRANSIT", cfg_multi_in_transit(), trace_multi_in_transit())
+  emit_scenario("SCENARIO_INVALID_RELEASE", cfg_invalid_release(), trace_invalid_release())
+  emit_scenario(
+    "SCENARIO_INVALID_RELEASE_MUTEX",
+    cfg_invalid_release_mutex(),
+    trace_invalid_release_mutex()
+  )
+  emit_scenario("SCENARIO_GUARANTEED_BE_RATIO", cfg_guaranteed_be(), trace_guaranteed_be())
+  emit_scenario(
+    "SCENARIO_ALL_BE_QUEUE_DEPTH",
+    cfg_all_be_queue_depth(),
+    trace_all_be_queue_depth()
+  )
+  emit_scenario(
+    "SCENARIO_HYBRID_QUEUE_DEPTH",
+    cfg_hybrid_queue_depth(),
+    trace_hybrid_queue_depth()
+  )
+  emit_scenario(
+    "SCENARIO_PROMOTE_AND_CANCEL",
+    cfg_promote_and_cancel(),
+    trace_promote_and_cancel()
+  )
+})
