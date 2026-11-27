@@ -608,3 +608,178 @@ func TestMigrator_Restore_RejectsEscapingFilename(t *testing.T) {
 		})
 	}
 }
+
+func TestMigrator_Restore_RejectsSymlinkedBackupFiles(t *testing.T) {
+	type restoreCase struct {
+		name      string
+		volName   string
+		volType   BackupType
+		typeStr   string
+		filename  string
+		dirLink   bool
+		verifyOpt bool
+	}
+
+	cases := []restoreCase{
+		{
+			name:      "postgresql leaf symlink verify=false",
+			volName:   "db_data_17",
+			volType:   BackupTypePostgreSQL,
+			typeStr:   "postgresql",
+			filename:  "volumes/db_data_17.dump",
+			dirLink:   false,
+			verifyOpt: false,
+		},
+		{
+			name:      "postgresql leaf symlink verify=true",
+			volName:   "db_data_17",
+			volType:   BackupTypePostgreSQL,
+			typeStr:   "postgresql",
+			filename:  "volumes/db_data_17.dump",
+			dirLink:   false,
+			verifyOpt: true,
+		},
+		{
+			name:      "tar leaf symlink verify=false",
+			volName:   "meili_data",
+			volType:   BackupTypeTar,
+			typeStr:   "tar",
+			filename:  "volumes/meili_data.tar.gz",
+			dirLink:   false,
+			verifyOpt: false,
+		},
+		{
+			name:      "tar leaf symlink verify=true",
+			volName:   "meili_data",
+			volType:   BackupTypeTar,
+			typeStr:   "tar",
+			filename:  "volumes/meili_data.tar.gz",
+			dirLink:   false,
+			verifyOpt: true,
+		},
+		{
+			name:      "postgresql directory symlink verify=false",
+			volName:   "db_data_17",
+			volType:   BackupTypePostgreSQL,
+			typeStr:   "postgresql",
+			filename:  "volumes/db_data_17.dump",
+			dirLink:   true,
+			verifyOpt: false,
+		},
+		{
+			name:      "tar directory symlink verify=false",
+			volName:   "meili_data",
+			volType:   BackupTypeTar,
+			typeStr:   "tar",
+			filename:  "volumes/meili_data.tar.gz",
+			dirLink:   true,
+			verifyOpt: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			outsideDir := t.TempDir()
+			leafName := filepath.Base(tc.filename)
+			outsideFile := filepath.Join(outsideDir, leafName)
+			content := []byte("outside-host-file")
+			require.NoError(t, os.WriteFile(outsideFile, content, fsperm.SecretFile))
+			checksum, err := FileChecksum(outsideFile)
+			require.NoError(t, err)
+
+			backupDir := t.TempDir()
+			if tc.dirLink {
+				require.NoError(t, os.Symlink(outsideDir, filepath.Join(backupDir, "volumes")))
+			} else {
+				volumesDir := filepath.Join(backupDir, "volumes")
+				require.NoError(t, os.MkdirAll(volumesDir, fsperm.SecretDir))
+				require.NoError(t, os.Symlink(outsideFile, filepath.Join(volumesDir, leafName)))
+			}
+
+			m := NewManifest("test")
+			m.AddVolume(VolumeBackup{
+				Name:       tc.volName,
+				Type:       tc.volType,
+				TypeString: tc.typeStr,
+				Filename:   tc.filename,
+				Size:       int64(len(content)),
+				Checksum:   checksum,
+			})
+			m.Finalize()
+			require.NoError(t, m.Save(filepath.Join(backupDir, ManifestFilename)))
+
+			tarEngine := &fakeBackupEngine{}
+			pgEngine := &fakeBackupEngine{}
+			migrator := &Migrator{
+				registry:     NewVolumeRegistry(),
+				volumeBackup: tarEngine,
+				pgBackup:     pgEngine,
+				composeDir:   filepath.Join(t.TempDir(), "compose"),
+				projectName:  "alt",
+				logger:       slog.Default(),
+				dryRun:       true,
+			}
+
+			err = migrator.Restore(context.Background(), RestoreOptions{
+				BackupDir: backupDir,
+				Force:     true,
+				Verify:    tc.verifyOpt,
+				Volumes:   []string{tc.volName},
+			})
+			require.Error(t, err)
+			require.Zero(t, tarEngine.calls.Load(), "tar restore engine must not be invoked on symlinked backup file")
+			require.Zero(t, pgEngine.calls.Load(), "pg restore engine must not be invoked on symlinked backup file")
+		})
+	}
+}
+
+func TestBackupDirManifestLoading_RejectsSymlinkedManifest(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideManifestPath := filepath.Join(outsideDir, ManifestFilename)
+	m := NewManifest("test")
+	m.Finalize()
+	require.NoError(t, m.Save(outsideManifestPath))
+
+	parentDir := t.TempDir()
+	backupDir := filepath.Join(parentDir, "20261128_000000")
+	require.NoError(t, os.MkdirAll(backupDir, fsperm.SecretDir))
+	require.NoError(t, os.Symlink(outsideManifestPath, filepath.Join(backupDir, ManifestFilename)))
+
+	t.Run("VerifyBackup rejects symlinked manifest.json", func(t *testing.T) {
+		_, err := VerifyBackup(backupDir)
+		require.Error(t, err)
+	})
+
+	t.Run("GetBackupSummary rejects symlinked manifest.json", func(t *testing.T) {
+		_, err := GetBackupSummary(backupDir)
+		require.Error(t, err)
+	})
+
+	t.Run("Migrator.Restore rejects symlinked manifest.json", func(t *testing.T) {
+		tarEngine := &fakeBackupEngine{}
+		pgEngine := &fakeBackupEngine{}
+		migrator := &Migrator{
+			registry:     NewVolumeRegistry(),
+			volumeBackup: tarEngine,
+			pgBackup:     pgEngine,
+			composeDir:   filepath.Join(t.TempDir(), "compose"),
+			projectName:  "alt",
+			logger:       slog.Default(),
+			dryRun:       true,
+		}
+		err := migrator.Restore(context.Background(), RestoreOptions{
+			BackupDir: backupDir,
+			Force:     true,
+			Verify:    false,
+		})
+		require.Error(t, err)
+		require.Zero(t, tarEngine.calls.Load())
+		require.Zero(t, pgEngine.calls.Load())
+	})
+
+	t.Run("ListBackups skips backup with symlinked manifest.json", func(t *testing.T) {
+		backups, err := ListBackups(parentDir)
+		require.NoError(t, err)
+		require.Empty(t, backups)
+	})
+}

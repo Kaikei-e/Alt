@@ -267,6 +267,215 @@ func TestManifest_Verify_RejectsEscapingFilename(t *testing.T) {
 	}
 }
 
+func TestManifest_Verify_RejectsSymlinkLeafOutsideBackupDir(t *testing.T) {
+	outsideDir := t.TempDir()
+	secretFile := filepath.Join(outsideDir, "secret.dump")
+	content := []byte("outside-secret-payload")
+	if err := os.WriteFile(secretFile, content, fsperm.SecretFile); err != nil {
+		t.Fatalf("writing outside file: %v", err)
+	}
+	checksum, err := FileChecksum(secretFile)
+	if err != nil {
+		t.Fatalf("computing checksum: %v", err)
+	}
+
+	backupDir := t.TempDir()
+	volumesDir := filepath.Join(backupDir, "volumes")
+	if err := os.MkdirAll(volumesDir, fsperm.SecretDir); err != nil {
+		t.Fatalf("creating volumes dir: %v", err)
+	}
+	if err := os.Symlink(secretFile, filepath.Join(volumesDir, "db.dump")); err != nil {
+		t.Fatalf("creating leaf symlink: %v", err)
+	}
+
+	m := NewManifest("1.0.0")
+	m.AddVolume(VolumeBackup{
+		Name:     "db_data_17",
+		Type:     BackupTypePostgreSQL,
+		Filename: "volumes/db.dump",
+		Size:     int64(len(content)),
+		Checksum: checksum,
+	})
+	m.Finalize()
+
+	if err := m.Verify(backupDir); err == nil {
+		t.Fatal("expected Verify to reject leaf symlink escaping backupDir")
+	}
+}
+
+func TestManifest_Verify_RejectsSymlinkDirectoryOutsideBackupDir(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "db.dump")
+	content := []byte("outside-dir-payload")
+	if err := os.WriteFile(outsideFile, content, fsperm.SecretFile); err != nil {
+		t.Fatalf("writing outside file: %v", err)
+	}
+	checksum, err := FileChecksum(outsideFile)
+	if err != nil {
+		t.Fatalf("computing checksum: %v", err)
+	}
+
+	backupDir := t.TempDir()
+	if err := os.Symlink(outsideDir, filepath.Join(backupDir, "volumes")); err != nil {
+		t.Fatalf("creating directory symlink: %v", err)
+	}
+
+	m := NewManifest("1.0.0")
+	m.AddVolume(VolumeBackup{
+		Name:     "db_data_17",
+		Type:     BackupTypePostgreSQL,
+		Filename: "volumes/db.dump",
+		Size:     int64(len(content)),
+		Checksum: checksum,
+	})
+	m.Finalize()
+
+	if err := m.Verify(backupDir); err == nil {
+		t.Fatal("expected Verify to reject directory symlink escaping backupDir")
+	}
+}
+
+func TestManifest_Verify_RejectsInternalSymlinkAndNonRegularFile(t *testing.T) {
+	t.Run("internal leaf symlink", func(t *testing.T) {
+		backupDir := t.TempDir()
+		volumesDir := filepath.Join(backupDir, "volumes")
+		if err := os.MkdirAll(volumesDir, fsperm.SecretDir); err != nil {
+			t.Fatalf("creating volumes dir: %v", err)
+		}
+		realFile := filepath.Join(volumesDir, "real.dump")
+		content := []byte("internal-payload")
+		if err := os.WriteFile(realFile, content, fsperm.SecretFile); err != nil {
+			t.Fatalf("writing real file: %v", err)
+		}
+		checksum, err := FileChecksum(realFile)
+		if err != nil {
+			t.Fatalf("computing checksum: %v", err)
+		}
+		if err := os.Symlink("real.dump", filepath.Join(volumesDir, "link.dump")); err != nil {
+			t.Fatalf("creating internal symlink: %v", err)
+		}
+
+		m := NewManifest("1.0.0")
+		m.AddVolume(VolumeBackup{
+			Name:     "db_data_17",
+			Type:     BackupTypePostgreSQL,
+			Filename: "volumes/link.dump",
+			Size:     int64(len(content)),
+			Checksum: checksum,
+		})
+		m.Finalize()
+
+		if err := m.Verify(backupDir); err == nil {
+			t.Fatal("expected Verify to reject internal leaf symlink")
+		}
+	})
+
+	t.Run("internal directory symlink", func(t *testing.T) {
+		backupDir := t.TempDir()
+		realDir := filepath.Join(backupDir, "real_volumes")
+		if err := os.MkdirAll(realDir, fsperm.SecretDir); err != nil {
+			t.Fatalf("creating real dir: %v", err)
+		}
+		realFile := filepath.Join(realDir, "db.dump")
+		content := []byte("internal-dir-payload")
+		if err := os.WriteFile(realFile, content, fsperm.SecretFile); err != nil {
+			t.Fatalf("writing real file: %v", err)
+		}
+		checksum, err := FileChecksum(realFile)
+		if err != nil {
+			t.Fatalf("computing checksum: %v", err)
+		}
+		if err := os.Symlink("real_volumes", filepath.Join(backupDir, "volumes")); err != nil {
+			t.Fatalf("creating internal dir symlink: %v", err)
+		}
+
+		m := NewManifest("1.0.0")
+		m.AddVolume(VolumeBackup{
+			Name:     "db_data_17",
+			Type:     BackupTypePostgreSQL,
+			Filename: "volumes/db.dump",
+			Size:     int64(len(content)),
+			Checksum: checksum,
+		})
+		m.Finalize()
+
+		if err := m.Verify(backupDir); err == nil {
+			t.Fatal("expected Verify to reject internal directory symlink")
+		}
+	})
+
+	t.Run("directory instead of regular file", func(t *testing.T) {
+		backupDir := t.TempDir()
+		notAFile := filepath.Join(backupDir, "volumes", "db.dump")
+		if err := os.MkdirAll(notAFile, fsperm.SecretDir); err != nil {
+			t.Fatalf("creating directory at file path: %v", err)
+		}
+		info, err := os.Stat(notAFile)
+		if err != nil {
+			t.Fatalf("stat directory: %v", err)
+		}
+
+		m := NewManifest("1.0.0")
+		m.AddVolume(VolumeBackup{
+			Name:     "db_data_17",
+			Type:     BackupTypePostgreSQL,
+			Filename: "volumes/db.dump",
+			Size:     info.Size(),
+			Checksum: "sha256:ignored",
+		})
+		m.Finalize()
+
+		if err := m.Verify(backupDir); err == nil {
+			t.Fatal("expected Verify to reject non-regular file (directory)")
+		}
+	})
+}
+
+func TestResolveUnderBase_SymlinkContainmentAndBaseDirAlias(t *testing.T) {
+	realBase := filepath.Join(t.TempDir(), "real_backup")
+	volumesDir := filepath.Join(realBase, "volumes")
+	if err := os.MkdirAll(volumesDir, fsperm.SecretDir); err != nil {
+		t.Fatalf("creating volumes dir: %v", err)
+	}
+	goodFile := filepath.Join(volumesDir, "db.dump")
+	if err := os.WriteFile(goodFile, []byte("ok"), fsperm.SecretFile); err != nil {
+		t.Fatalf("writing good file: %v", err)
+	}
+
+	// Simulate a symlinked host parent directory (e.g. /var -> /private/var).
+	aliasBase := filepath.Join(t.TempDir(), "alias_backup")
+	if err := os.Symlink(realBase, aliasBase); err != nil {
+		t.Fatalf("creating base dir symlink: %v", err)
+	}
+
+	got, err := resolveUnderBase(aliasBase, "volumes/db.dump")
+	if err != nil {
+		t.Fatalf("expected valid regular file under symlinked baseDir to pass, got: %v", err)
+	}
+	want, err := filepath.EvalSymlinks(goodFile)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(goodFile): %v", err)
+	}
+	if got != want {
+		t.Errorf("resolveUnderBase() = %q, want %q", got, want)
+	}
+
+	outsideFile := filepath.Join(t.TempDir(), "outside.dump")
+	if err := os.WriteFile(outsideFile, []byte("secret"), fsperm.SecretFile); err != nil {
+		t.Fatalf("writing outside file: %v", err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(volumesDir, "escape.dump")); err != nil {
+		t.Fatalf("creating escape symlink: %v", err)
+	}
+	if _, err := resolveUnderBase(aliasBase, "volumes/escape.dump"); err == nil {
+		t.Fatal("expected resolveUnderBase to reject symlink escaping baseDir")
+	}
+
+	if _, err := resolveUnderBase(aliasBase, "volumes"); err == nil {
+		t.Fatal("expected resolveUnderBase to reject directory target")
+	}
+}
+
 func TestBackupDir(t *testing.T) {
 	baseDir := "/backups"
 	dir := BackupDir(baseDir)

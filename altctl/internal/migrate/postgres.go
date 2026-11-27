@@ -163,7 +163,7 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 	// #nosec G204 -- constant binary "docker" with separate pg_restore argv elements from registry spec; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
-	// #nosec G304 -- inputPath is validated under backupDir by resolveUnderBase
+	// #nosec G304 -- inputPath is canonicalized and verified under backupDir without symlinks by resolveUnderBase
 	inFile, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("opening input file: %w", err)
