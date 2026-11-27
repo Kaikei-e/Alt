@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"alt/scripts/altharness/internal/hygiene"
 	"alt/scripts/altharness/internal/packet"
+	"alt/scripts/altharness/internal/pytestrand"
 )
 
 // RunHostFinal is scripts/verify/host-final-check.sh.
@@ -77,6 +80,24 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 			return 2
 		}
 	}
+	goDirs := make([]string, 0, len(opt.goTestDirs))
+	for _, rawDir := range opt.goTestDirs {
+		resolved, err := resolveRepoSubdir(root, rawDir, "--go-test-dir")
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		goDirs = append(goDirs, resolved)
+	}
+	pyDirs := make([]string, 0, len(opt.pyTestDirs))
+	for _, rawDir := range opt.pyTestDirs {
+		resolved, err := resolveRepoSubdir(root, rawDir, "--py-test-dir")
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		pyDirs = append(pyDirs, resolved)
+	}
 	policy := ""
 	if opt.packet != "" {
 		if _, err := os.Stat(opt.packet); err != nil {
@@ -125,14 +146,52 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	} else {
 		fmt.Fprintln(stdout, "==> [host-final-check] 3/5 repo lint (skipped via --skip-repo-lint)")
 	}
-	if opt.testCmd != "" {
-		fmt.Fprintln(stdout, "==> [host-final-check] 4/5 host test command")
-		if code, err := run(ctx, stdout, stderr, root, nil, "bash", "-c", opt.testCmd); err != nil || code != 0 {
-			if err != nil {
-				fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: bash")
-				return 1
+	hasRandTests := len(goDirs) > 0 || len(pyDirs) > 0
+	if opt.testCmd != "" || hasRandTests {
+		_, _ = fmt.Fprintln(stdout, "==> [host-final-check] 4/5 host test command")
+		if opt.testCmd != "" {
+			if code, err := run(ctx, stdout, stderr, root, nil, "bash", "-c", opt.testCmd); err != nil || code != 0 {
+				if err != nil {
+					_, _ = fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: bash")
+					return 1
+				}
+				return code
 			}
-			return code
+		}
+		if hasRandTests {
+			seed := opt.randomSeed
+			if !opt.hasRandomSeed {
+				seed = time.Now().UnixNano()
+				if seed <= 0 {
+					seed = 1
+				}
+			}
+			seedStr := strconv.FormatInt(seed, 10)
+			_, _ = fmt.Fprintf(stdout, "random_seed=%s\n", seedStr)
+			for _, dir := range goDirs {
+				rel := dir
+				if r, err := filepath.Rel(root, dir); err == nil {
+					rel = filepath.ToSlash(r)
+				}
+				_, _ = fmt.Fprintf(stdout, "--> go test -shuffle=%s -race -count=1 ./... (dir=%s, random_seed=%s)\n", seedStr, rel, seedStr)
+				if code, err := run(ctx, stdout, stderr, dir, nil, "go", "test", "-shuffle="+seedStr, "-race", "-count=1", "./..."); err != nil || code != 0 {
+					if err != nil {
+						_, _ = fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: go")
+						return 1
+					}
+					return code
+				}
+			}
+			for _, dir := range pyDirs {
+				rel := dir
+				if r, err := filepath.Rel(root, dir); err == nil {
+					rel = filepath.ToSlash(r)
+				}
+				_, _ = fmt.Fprintf(stdout, "--> pytest-rand --seed %s %s (random_seed=%s)\n", seedStr, rel, seedStr)
+				if code := pytestrand.Run(ctx, []string{"--seed", seedStr, dir}, stdout, stderr); code != 0 {
+					return code
+				}
+			}
 		}
 	} else {
 		fmt.Fprintln(stdout, "==> [host-final-check] 4/5 host test command (not specified)")
@@ -181,6 +240,9 @@ Options:
   --target <target>     Lint target for ./scripts/lint/run.sh <target> (repeatable)
   --repo-root <dir>     Repository root directory (default: auto-detected)
   --test-cmd <cmd>      Optional host test command to execute synchronously
+  --go-test-dir <dir>   Run 'go test -shuffle=<seed> -race -count=1 ./...' in <dir> (repeatable)
+  --py-test-dir <dir>   Run randomized pytest via pytest-rand in <dir> (repeatable)
+  --random-seed <int64> Deterministic positive seed for --go-test-dir / --py-test-dir
   --handoff <path>      Optional TaskHandoff file to verify via LOOP-01 verify-handoff
   --packet <path>       TaskPacket file (required when --handoff is specified)
   --base-commit <rev>   Base git commit passed to verify-handoff
@@ -192,17 +254,21 @@ Options:
 `
 
 type hostOpts struct {
-	targets    []string
-	repo       string
-	testCmd    string
-	handoff    string
-	packet     string
-	baseCommit string
-	runsDir    string
-	noRerun    bool
-	skipRepo   bool
-	allowDirty bool
-	help       bool
+	targets       []string
+	repo          string
+	testCmd       string
+	goTestDirs    []string
+	pyTestDirs    []string
+	randomSeed    int64
+	hasRandomSeed bool
+	handoff       string
+	packet        string
+	baseCommit    string
+	runsDir       string
+	noRerun       bool
+	skipRepo      bool
+	allowDirty    bool
+	help          bool
 }
 
 func parseHostArgs(args []string) (hostOpts, string) {
@@ -214,71 +280,166 @@ func parseHostArgs(args []string) (hostOpts, string) {
 		*i++
 		return args[*i], ""
 	}
+	parseSeed := func(raw string) string {
+		v, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || v <= 0 {
+			return fmt.Sprintf("error: invalid --random-seed '%s': must be a positive integer\n", raw)
+		}
+		opt.randomSeed = v
+		opt.hasRandomSeed = true
+		return ""
+	}
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--target":
+		arg := args[i]
+		switch {
+		case arg == "--target":
 			val, errText := take(&i, "--target")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.targets = append(opt.targets, val)
-		case "--repo-root":
+		case arg == "--repo-root":
 			val, errText := take(&i, "--repo-root")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.repo = val
-		case "--test-cmd":
+		case arg == "--test-cmd":
 			val, errText := take(&i, "--test-cmd")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.testCmd = val
-		case "--handoff":
+		case arg == "--go-test-dir":
+			val, errText := take(&i, "--go-test-dir")
+			if errText != "" {
+				return opt, errText
+			}
+			opt.goTestDirs = append(opt.goTestDirs, val)
+		case strings.HasPrefix(arg, "--go-test-dir="):
+			opt.goTestDirs = append(opt.goTestDirs, strings.TrimPrefix(arg, "--go-test-dir="))
+		case arg == "--py-test-dir":
+			val, errText := take(&i, "--py-test-dir")
+			if errText != "" {
+				return opt, errText
+			}
+			opt.pyTestDirs = append(opt.pyTestDirs, val)
+		case strings.HasPrefix(arg, "--py-test-dir="):
+			opt.pyTestDirs = append(opt.pyTestDirs, strings.TrimPrefix(arg, "--py-test-dir="))
+		case arg == "--random-seed":
+			val, errText := take(&i, "--random-seed")
+			if errText != "" {
+				return opt, errText
+			}
+			if errText := parseSeed(val); errText != "" {
+				return opt, errText
+			}
+		case strings.HasPrefix(arg, "--random-seed="):
+			if errText := parseSeed(strings.TrimPrefix(arg, "--random-seed=")); errText != "" {
+				return opt, errText
+			}
+		case arg == "--handoff":
 			val, errText := take(&i, "--handoff")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.handoff = val
-		case "--packet":
+		case arg == "--packet":
 			val, errText := take(&i, "--packet")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.packet = val
-		case "--base-commit":
+		case arg == "--base-commit":
 			val, errText := take(&i, "--base-commit")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.baseCommit = val
-		case "--runs-dir":
+		case arg == "--runs-dir":
 			val, errText := take(&i, "--runs-dir")
 			if errText != "" {
 				return opt, errText
 			}
 			opt.runsDir = val
-		case "--no-rerun":
+		case arg == "--no-rerun":
 			opt.noRerun = true
-		case "--skip-repo-lint":
+		case arg == "--skip-repo-lint":
 			opt.skipRepo = true
-		case "--allow-dirty":
+		case arg == "--allow-dirty":
 			opt.allowDirty = true
-		case "-h", "--help":
+		case arg == "-h" || arg == "--help":
 			opt.help = true
 			return opt, ""
 		default:
-			if strings.HasPrefix(args[i], "-") {
-				return opt, fmt.Sprintf("error: unknown option: %s\n", args[i])
+			if strings.HasPrefix(arg, "-") {
+				return opt, fmt.Sprintf("error: unknown option: %s\n", arg)
 			}
-			opt.targets = append(opt.targets, args[i])
+			opt.targets = append(opt.targets, arg)
 		}
 	}
 	return opt, ""
 }
 
+func resolveRepoSubdir(root, raw, flagName string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "-") || strings.ContainsRune(trimmed, '\x00') {
+		return "", fmt.Errorf("invalid %s '%s': must be a directory inside repository root", flagName, raw)
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(trimmed), "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("invalid %s '%s': parent traversal '..' is not allowed", flagName, raw)
+		}
+	}
+	rootResolved := root
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		rootResolved = r
+	} else if abs, err := filepath.Abs(root); err == nil {
+		rootResolved = abs
+	}
+	rootResolved = filepath.Clean(rootResolved)
+
+	candidate := trimmed
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(rootResolved, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+
+	if !pathWithinDir(candidate, rootResolved) {
+		rootAbs, _ := filepath.Abs(root)
+		if !pathWithinDir(candidate, filepath.Clean(rootAbs)) {
+			return "", fmt.Errorf("invalid %s '%s': path escapes repository root %s", flagName, raw, root)
+		}
+	}
+	info, err := os.Stat(candidate)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("invalid %s '%s': directory not found", flagName, raw)
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", fmt.Errorf("invalid %s '%s': %w", flagName, raw, err)
+	}
+	resolved = filepath.Clean(resolved)
+	if !pathWithinDir(resolved, rootResolved) {
+		return "", fmt.Errorf("invalid %s '%s': resolved path escapes repository root %s", flagName, raw, root)
+	}
+	return resolved, nil
+}
+
+func pathWithinDir(target, base string) bool {
+	target = filepath.Clean(target)
+	base = filepath.Clean(base)
+	if target == base {
+		return true
+	}
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 var (
-	nohupRe = regexp.MustCompile("(?:^|[\\s`('\"])nohup\\s+")
 	autofix = []struct {
 		label string
 		re    *regexp.Regexp
@@ -292,54 +453,7 @@ var (
 )
 
 func hasBackgroundAmpersand(command string) bool {
-	if nohupRe.MatchString(command) {
-		return true
-	}
-	var quote byte
-	escaped := false
-	for i := 0; i < len(command); i++ {
-		ch := command[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if quote == '"' && ch == '\\' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			continue
-		}
-		if ch == '#' && (i == 0 || command[i-1] == ' ' || command[i-1] == '\t') {
-			break
-		}
-		if ch == '&' {
-			var prev byte
-			if i > 0 {
-				prev = command[i-1]
-			}
-			var next byte
-			if i+1 < len(command) {
-				next = command[i+1]
-			}
-			if prev == '>' || prev == '<' {
-				continue
-			}
-			if next == '&' || next == '>' {
-				i++
-				continue
-			}
-			return true
-		}
-	}
-	return false
+	return packet.HasBackgroundAmpersand(command)
 }
 
 func matchForbiddenAutofix(text string) string {

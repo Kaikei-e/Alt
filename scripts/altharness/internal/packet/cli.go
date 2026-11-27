@@ -7,8 +7,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
+
+const defaultTemplateBaseCommit = "1111111111111111111111111111111111111111"
+
+var templateBaseCommitRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
 // Run executes the task-packet CLI. args excludes argv[0].
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -61,9 +67,9 @@ subcommands:
   validate-packet <path> [--format text|json]
   validate-handoff <handoff> [--packet PATH] [--screener-report PATH | --base-commit REV] [--repo-root DIR] [--format text|json]
   list-generated-forbidden-paths [--repo-root DIR] [--format text|json]
-  render-template --kind packet|handoff [--packet-id ID] [--target TARGET] [--format markdown|json]
+  render-template --kind packet|handoff [--packet-id ID] [--target TARGET] [--base-commit SHA] [--format markdown|json]
   check-templates [--repo-root DIR]
-  measure <packet> [--repo-root DIR] [--format text|json]
+  measure <packet> [--turn-limit-s N] [--log-run] [--runs-dir DIR] [--repo-root DIR] [--format text|json]
   verify-handoff <handoff> --packet PATH [--base-commit REV] [--repo-root DIR] [--runs-dir DIR] [--no-rerun] [--format text|json]
   verify-sequence [--base-commit REV] --test-command CMD [--packet PATH] [--behavior-preserving | --bugfix] [--repo-root DIR] [--format text|json]
 `)
@@ -160,7 +166,7 @@ func emitResult(stdout, stderr io.Writer, kind, target string, packetID any, iss
 			fmt.Fprintf(stderr, "error: %s\n", err.Error())
 			return exitUsage
 		}
-		stdout.Write(raw)
+		_, _ = stdout.Write(raw)
 		if valid {
 			return exitOK
 		}
@@ -360,7 +366,7 @@ func cmdValidateHandoff(ctx context.Context, args []string, stdout, stderr io.Wr
 }
 
 func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	p, perr := parseCLI(args, nil)
+	p, perr := parseCLI(args, map[string]bool{"log-run": true})
 	if perr == "help" {
 		writeHelp(stdout)
 		return exitOK
@@ -369,7 +375,7 @@ func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, perr)
 		return exitUsage
 	}
-	if msg := unknownFlags(p, "repo-root", "format"); msg != "" {
+	if msg := unknownFlags(p, "repo-root", "format", "turn-limit-s", "log-run", "runs-dir"); msg != "" {
 		fmt.Fprintln(stderr, msg)
 		return exitUsage
 	}
@@ -380,6 +386,18 @@ func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	}
 	if format == "" {
 		format = "text"
+	}
+	var turnLimit *int64
+	var budgetOverride *int64
+	if rawTL, ok := p.values["turn-limit-s"]; ok {
+		tl, err := strconv.ParseInt(strings.TrimSpace(rawTL), 10, 64)
+		if err != nil || tl <= 0 {
+			_, _ = fmt.Fprintf(stderr, "error: invalid --turn-limit-s %q: must be a positive integer\n", rawTL)
+			return exitUsage
+		}
+		b := budgetFromTurnLimit(tl)
+		turnLimit = &tl
+		budgetOverride = &b
 	}
 	if len(p.positionals) != 1 {
 		fmt.Fprintln(stderr, "error: the following arguments are required: packet_path")
@@ -424,6 +442,9 @@ func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		return emitResult(stdout, stderr, "measure", packetPath, doc.Data["packet_id"], pre, format)
 	}
 	budget := resolveCommandBudget(policy)
+	if budgetOverride != nil {
+		budget = *budgetOverride
+	}
 	code, duration, _, _, runErr := runBash(ctx, verifyCmd, root, timeDur(budget+measureTimeoutSlackS))
 	if runErr != nil {
 		fmt.Fprintf(stderr, "error: measure failed: %s\n", runErr.Error())
@@ -443,9 +464,23 @@ func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		"at_commit":      head,
 		"command_sha256": commandSHA256(verifyCmd),
 	}
-	if err := writeMeasuredToPacket(packetPath, doc, measured); err != nil {
+	if err := writeMeasuredToPacket(packetPath, doc, measured, budgetOverride); err != nil {
 		fmt.Fprintf(stderr, "error: measure failed: %s\n", err.Error())
 		return exitUsage
+	}
+	if p.bools["log-run"] {
+		runs := filepath.Join(root, ".harness", "runs")
+		if v, ok := p.values["runs-dir"]; ok {
+			if isSymlink(v) {
+				_, _ = fmt.Fprintf(stderr, "error: measure log-run failed: --runs-dir must not be a symlink: %s\n", v)
+				return exitUsage
+			}
+			runs = v
+		}
+		if err := appendMeasureDecision(root, runs, packetPath, doc.Data["packet_id"], duration, budget, turnLimit, code); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: measure log-run failed: %s\n", err.Error())
+			return exitUsage
+		}
 	}
 	var issues []Issue
 	if duration > float64(budget) {
@@ -454,7 +489,53 @@ func cmdMeasure(ctx context.Context, args []string, stdout, stderr io.Writer) in
 			Message: fmt.Sprintf("verification_command took %vs, exceeding max_command_budget_s=%ds", duration, budget),
 		})
 	}
-	return emitResult(stdout, stderr, "measure", packetPath, doc.Data["packet_id"], issues, format)
+	return emitMeasureResult(stdout, stderr, packetPath, doc.Data["packet_id"], issues, format, duration, code, budget, turnLimit)
+}
+
+func emitMeasureResult(stdout, stderr io.Writer, target string, packetID any, issues []Issue, format string, duration float64, exitCode int, budget int64, turnLimit *int64) int {
+	valid := len(issues) == 0
+	if format == "json" {
+		errs := make([]any, 0, len(issues))
+		for _, item := range issues {
+			errs = append(errs, map[string]any{"code": item.Code, "path": item.Path, "message": item.Message})
+		}
+		payload := map[string]any{
+			"valid":                valid,
+			"kind":                 "measure",
+			"path":                 target,
+			"packet_id":            packetID,
+			"errors":               errs,
+			"duration_s":           duration,
+			"exit_code":            exitCode,
+			"max_command_budget_s": budget,
+		}
+		if turnLimit != nil {
+			payload["turn_limit_s"] = *turnLimit
+		}
+		raw, err := writeJSON(payload)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %s\n", err.Error())
+			return exitUsage
+		}
+		_, _ = stdout.Write(raw)
+		if valid {
+			return exitOK
+		}
+		return exitInvalid
+	}
+	if valid {
+		if turnLimit != nil {
+			_, _ = fmt.Fprintf(stdout, "OK: measure %s (packet_id=%s, turn_limit_s=%d, max_command_budget_s=%d)\n", target, formatPacketID(packetID), *turnLimit, budget)
+		} else {
+			_, _ = fmt.Fprintf(stdout, "OK: measure %s (packet_id=%s)\n", target, formatPacketID(packetID))
+		}
+		return exitOK
+	}
+	for _, item := range issues {
+		_, _ = fmt.Fprintf(stderr, "ERROR [%s] %s: %s\n", item.Code, item.Path, item.Message)
+	}
+	_, _ = fmt.Fprintf(stderr, "INVALID: %d error(s) in %s\n", len(issues), target)
+	return exitInvalid
 }
 
 func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -524,6 +605,10 @@ func cmdVerifyHandoff(ctx context.Context, args []string, stdout, stderr io.Writ
 	}
 	runs := filepath.Join(root, ".harness", "runs")
 	if v, ok := p.values["runs-dir"]; ok {
+		if isSymlink(v) {
+			_, _ = fmt.Fprintf(stderr, "error: --runs-dir must not be a symlink: %s\n", v)
+			return exitUsage
+		}
 		runs = resolveExisting(v)
 	}
 	preIssues, err := preValidateVerifyHandoff(handoffDoc, packetDoc, schema, root, runs, !p.bools["no-rerun"])
@@ -785,13 +870,13 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, perr)
 		return exitUsage
 	}
-	if msg := unknownFlags(p, "kind", "packet-id", "target", "format"); msg != "" {
-		fmt.Fprintln(stderr, msg)
+	if msg := unknownFlags(p, "kind", "packet-id", "target", "base-commit", "format"); msg != "" {
+		_, _ = fmt.Fprintln(stderr, msg)
 		return exitUsage
 	}
 	format, msg := takeFormat(p, "markdown", "json")
 	if msg != "" {
-		fmt.Fprintln(stderr, msg)
+		_, _ = fmt.Fprintln(stderr, msg)
 		return exitUsage
 	}
 	if format == "" {
@@ -799,11 +884,11 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 	}
 	kind, ok := p.values["kind"]
 	if !ok {
-		fmt.Fprintln(stderr, "error: the following arguments are required: --kind")
+		_, _ = fmt.Fprintln(stderr, "error: the following arguments are required: --kind")
 		return exitUsage
 	}
 	if kind != "packet" && kind != "handoff" {
-		fmt.Fprintf(stderr, "error: argument --kind: invalid choice: %q (choose from packet, handoff)\n", kind)
+		_, _ = fmt.Fprintf(stderr, "error: argument --kind: invalid choice: %q (choose from packet, handoff)\n", kind)
 		return exitUsage
 	}
 	packetID := defaultPacketID
@@ -811,17 +896,26 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 		packetID = v
 	}
 	if !packetIDRe.MatchString(packetID) {
-		fmt.Fprintf(stderr, "error: invalid --packet-id %q (must match %s)\n", packetID, packetIDRe.String())
+		_, _ = fmt.Fprintf(stderr, "error: invalid --packet-id %q (must match %s)\n", packetID, packetIDRe.String())
 		return exitUsage
 	}
 	target := ""
 	if v, ok := p.values["target"]; ok {
 		norm := normalizeTarget(v)
 		if norm == "" || !validTarget(norm) {
-			fmt.Fprintf(stderr, "error: invalid --target %q\n", v)
+			_, _ = fmt.Fprintf(stderr, "error: invalid --target %q\n", v)
 			return exitUsage
 		}
 		target = norm
+	}
+	baseCommit := defaultTemplateBaseCommit
+	if v, ok := p.values["base-commit"]; ok {
+		trimmed := strings.TrimSpace(v)
+		if !templateBaseCommitRe.MatchString(trimmed) {
+			_, _ = fmt.Fprintf(stderr, "error: invalid --base-commit %q (must match %s)\n", v, templateBaseCommitRe.String())
+			return exitUsage
+		}
+		baseCommit = trimmed
 	}
 	tmpl := packetTemplatePath()
 	if kind == "handoff" {
@@ -829,7 +923,7 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 	}
 	b, err := os.ReadFile(tmpl)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: template not found: %s\n", tmpl)
+		_, _ = fmt.Fprintf(stderr, "error: template not found: %s\n", tmpl)
 		return exitUsage
 	}
 	rendered := strings.ReplaceAll(string(b), defaultPacketID, packetID)
@@ -838,6 +932,7 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 		rendered = strings.ReplaceAll(rendered, defaultTemplateVerifyCmd, "./scripts/lint/run.sh "+target)
 	}
 	if kind == "packet" {
+		rendered = strings.ReplaceAll(rendered, `base_commit: "`+defaultTemplateBaseCommit+`"`, `base_commit: "`+baseCommit+`"`)
 		lines := splitLines(rendered)
 		fm, body, err := extractFrontmatter(lines)
 		if err == nil && fm != nil {
@@ -851,10 +946,11 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 	if format == "json" {
 		doc, err := parseDocumentText(rendered, false)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", err.Error())
+			_, _ = fmt.Fprintf(stderr, "error: %s\n", err.Error())
 			return exitUsage
 		}
 		if kind == "packet" {
+			doc.Data["base_commit"] = baseCommit
 			if policy, ok := asMap(doc.Data["execution_policy"]); ok {
 				delete(policy, "measured")
 			}
@@ -863,10 +959,10 @@ func cmdRenderTemplate(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return reportErr(stderr, err)
 		}
-		stdout.Write(raw)
+		_, _ = stdout.Write(raw)
 		return exitOK
 	}
-	fmt.Fprint(stdout, rendered)
+	_, _ = fmt.Fprint(stdout, rendered)
 	return exitOK
 }
 

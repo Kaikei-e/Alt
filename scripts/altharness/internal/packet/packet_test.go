@@ -4,6 +4,8 @@ import (
 	"alt/scripts/altharness/internal/fsperm"
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +13,29 @@ import (
 	"testing"
 	"time"
 )
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	root, err := os.OpenRoot(filepath.Dir(abs))
+	if err != nil {
+		t.Fatalf("open root %s: %v", filepath.Dir(abs), err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(abs))
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
+}
 
 func TestCheckTemplates(t *testing.T) {
 	ctx := context.Background()
@@ -33,6 +58,7 @@ func TestUnmeasuredPacketRejected(t *testing.T) {
 	body := `{
   "packet_version": "1.0",
   "packet_id": "UNMEAS-1",
+  "base_commit": "0123456",
   "scope": {
     "target": "scripts",
     "allowed_paths": ["scripts/agent-harness/**"],
@@ -105,6 +131,7 @@ func TestBulkAutofixRejected(t *testing.T) {
 const unmeasuredPacket = `{
   "packet_version": "1.0",
   "packet_id": "UNMEAS-1",
+  "base_commit": "0123456",
   "scope": {
     "target": "scripts",
     "allowed_paths": ["scripts/agent-harness/**"],
@@ -967,6 +994,7 @@ func TestVerifySequencePacketAutoLoadsBaseCommitAndMode(t *testing.T) {
 
 		pktMissing := basePacketMap()
 		pktMissing["packet_id"] = "V01-NO-BASE"
+		delete(pktMissing, "base_commit")
 		missingPath := writeJSONFile(t, tmp, "missing_base.json", pktMissing)
 		rc, _, errB := runPacketCLI("verify-sequence", "--packet", missingPath, "--test-command", "true", "--repo-root", repo)
 		if rc != exitInvalid || !strings.Contains(errB, "MISSING_BASE_COMMIT") {
@@ -1070,5 +1098,395 @@ func TestVerifySequenceCorpusCasesC06C15C18(t *testing.T) {
 				t.Fatalf("%s expected SEQUENCE_TEST_MUTATED_IN_IMPL, rc=%d out=%q err=%q", tc.id, rc, out, errB)
 			}
 		})
+	}
+}
+
+func TestVerifyHandoffLoop01RejectsFabricatedAndDriftedHandoffs(t *testing.T) {
+	t.Parallel()
+
+	setupFixture := func(t *testing.T, runShExit int) (string, string, string, string) {
+		t.Helper()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		runGitCmd(t, repo, "checkout", "-q", "-b", "feat/loop01-fixture")
+		writeStubRunSh(t, repo, runShExit, "")
+		if err := os.MkdirAll(filepath.Join(repo, "pkg"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        return int(x)\n    except ValueError:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "extra.py"), []byte("def extra():\n    return 1\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "base")
+		base := gitHead(t, repo)
+
+		pkt := basePacketMap()
+		pkt["packet_id"] = "LOOP01-FIXTURE"
+		pkt["task_kind"] = "refactor"
+		pkt["base_commit"] = base
+		pkt["scope"].(map[string]any)["allowed_paths"] = []any{"pkg/**"}
+		pktPath := writeJSONFile(t, tmp, "packet.json", pkt)
+		runsDir := filepath.Join(tmp, "runs")
+		return tmp, repo, pktPath, runsDir
+	}
+
+	t.Run("(a) undeclared modified file rejected", func(t *testing.T) {
+		t.Parallel()
+		tmp, repo, pktPath, runsDir := setupFixture(t, 0)
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        val = int(x)\n        return val\n    except ValueError:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "extra.py"), []byte("def extra():\n    return 2\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		ho := baseHandoffMap()
+		ho["packet_id"] = "LOOP01-FIXTURE"
+		ho["modified_files"] = []any{map[string]any{"path": "pkg/svc.py", "added_lines": 2, "deleted_lines": 1}}
+		ho["modified_functions_count"] = 2
+		hoPath := writeJSONFile(t, tmp, "ho_undeclared.json", ho)
+
+		rc, out, errB := runPacketCLI("verify-handoff", hoPath, "--packet", pktPath, "--repo-root", repo, "--runs-dir", runsDir, "--no-rerun")
+		if rc != exitInvalid || !strings.Contains(errB, "UNDECLARED_MODIFIED_FILE") {
+			t.Fatalf("expected UNDECLARED_MODIFIED_FILE, rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("(b) phantom modified file rejected", func(t *testing.T) {
+		t.Parallel()
+		tmp, repo, pktPath, runsDir := setupFixture(t, 0)
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        val = int(x)\n        return val\n    except ValueError:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		ho := baseHandoffMap()
+		ho["packet_id"] = "LOOP01-FIXTURE"
+		ho["modified_files"] = []any{
+			map[string]any{"path": "pkg/svc.py", "added_lines": 2, "deleted_lines": 1},
+			map[string]any{"path": "pkg/ghost.py", "added_lines": 5, "deleted_lines": 0},
+		}
+		ho["modified_functions_count"] = 1
+		hoPath := writeJSONFile(t, tmp, "ho_phantom.json", ho)
+
+		rc, out, errB := runPacketCLI("verify-handoff", hoPath, "--packet", pktPath, "--repo-root", repo, "--runs-dir", runsDir, "--no-rerun")
+		if rc != exitInvalid || !strings.Contains(errB, "PHANTOM_MODIFIED_FILE") {
+			t.Fatalf("expected PHANTOM_MODIFIED_FILE, rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("(c) fabricated exit_code 0 rejected when host rerun fails", func(t *testing.T) {
+		t.Parallel()
+		tmp, repo, pktPath, runsDir := setupFixture(t, 1)
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        val = int(x)\n        return val\n    except ValueError:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		ho := baseHandoffMap()
+		ho["packet_id"] = "LOOP01-FIXTURE"
+		ho["modified_files"] = []any{map[string]any{"path": "pkg/svc.py", "added_lines": 2, "deleted_lines": 1}}
+		ho["modified_functions_count"] = 1
+		ho["verification"] = map[string]any{"command": "./scripts/lint/run.sh scripts", "exit_code": 0}
+		hoPath := writeJSONFile(t, tmp, "ho_fabricated.json", ho)
+
+		rc, out, errB := runPacketCLI("verify-handoff", hoPath, "--packet", pktPath, "--repo-root", repo, "--runs-dir", runsDir)
+		if rc != exitInvalid || !strings.Contains(errB, "VERIFICATION_EXIT_CODE_MISMATCH") || !strings.Contains(errB, "VERIFICATION_RERUN_FAILED") {
+			t.Fatalf("expected VERIFICATION_EXIT_CODE_MISMATCH and VERIFICATION_RERUN_FAILED, rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("(d) mismatched modified_functions_count rejected", func(t *testing.T) {
+		t.Parallel()
+		tmp, repo, pktPath, runsDir := setupFixture(t, 0)
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        val = int(x)\n        return val\n    except ValueError:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		ho := baseHandoffMap()
+		ho["packet_id"] = "LOOP01-FIXTURE"
+		ho["modified_files"] = []any{map[string]any{"path": "pkg/svc.py", "added_lines": 2, "deleted_lines": 1}}
+		ho["modified_functions_count"] = 3
+		hoPath := writeJSONFile(t, tmp, "ho_fn_mismatch.json", ho)
+
+		rc, out, errB := runPacketCLI("verify-handoff", hoPath, "--packet", pktPath, "--repo-root", repo, "--runs-dir", runsDir, "--no-rerun")
+		if rc != exitInvalid || !strings.Contains(errB, "MODIFIED_FUNCTIONS_MISMATCH") {
+			t.Fatalf("expected MODIFIED_FUNCTIONS_MISMATCH, rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+
+	t.Run("(e) unaddressed CHECK-01 behavior candidate rejected", func(t *testing.T) {
+		t.Parallel()
+		tmp, repo, pktPath, runsDir := setupFixture(t, 0)
+		// Broaden except ValueError -> except Exception so CHECK-01 screener emits a behavior candidate.
+		if err := os.WriteFile(filepath.Join(repo, "pkg", "svc.py"), []byte("def handle(x):\n    try:\n        return int(x)\n    except Exception:\n        return 0\n"), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		ho := baseHandoffMap()
+		ho["packet_id"] = "LOOP01-FIXTURE"
+		ho["modified_files"] = []any{map[string]any{"path": "pkg/svc.py", "added_lines": 1, "deleted_lines": 1}}
+		ho["modified_functions_count"] = 1
+		hoPath := writeJSONFile(t, tmp, "ho_unaddressed_cand.json", ho)
+
+		rc, out, errB := runPacketCLI("verify-handoff", hoPath, "--packet", pktPath, "--repo-root", repo, "--runs-dir", runsDir, "--no-rerun")
+		if rc != exitInvalid || !strings.Contains(errB, "UNANSWERED_BEHAVIOR_CANDIDATE") {
+			t.Fatalf("expected UNANSWERED_BEHAVIOR_CANDIDATE, rc=%d out=%q err=%q", rc, out, errB)
+		}
+	})
+}
+
+func TestMeasureTurnLimitBudgetAndLogRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("rejects non-positive and non-integer --turn-limit-s with exit 2", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		writeStubRunSh(t, repo, 0, "")
+		pktPath := writeJSONFile(t, tmp, "pkt.json", basePacketMap())
+		for _, bad := range []string{"0", "-10", "abc", "12.5"} {
+			rc, _, errB := runPacketCLI("measure", pktPath, "--repo-root", repo, "--turn-limit-s", bad)
+			if rc != exitUsage {
+				t.Fatalf("--turn-limit-s %q: rc=%d want %d err=%q", bad, rc, exitUsage, errB)
+			}
+		}
+	})
+
+	t.Run("computes 1/5 budget, clamps 1..600, updates JSON and Markdown packets, and logs run", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		runGitCmd(t, repo, "checkout", "-q", "-b", "feat/measure-loop02")
+		writeStubRunSh(t, repo, 0, "")
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "stub")
+
+		// 1. JSON packet with --turn-limit-s 300 -> budget 60, JSON output records turn_limit_s & max_command_budget_s.
+		pktMap := basePacketMap()
+		delete(pktMap["execution_policy"].(map[string]any), "measured")
+		pktJSON := writeJSONFile(t, tmp, "pkt.json", pktMap)
+		runsDir := filepath.Join(tmp, "runs")
+
+		rc, out, errB := runPacketCLI("measure", pktJSON, "--repo-root", repo, "--turn-limit-s", "300", "--log-run", "--runs-dir", runsDir, "--format", "json")
+		if rc != exitOK {
+			t.Fatalf("measure json rc=%d out=%q err=%q", rc, out, errB)
+		}
+		var res map[string]any
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("invalid json output: %v (%s)", err, out)
+		}
+		if res["valid"] != true || res["turn_limit_s"] != float64(300) || res["max_command_budget_s"] != float64(60) {
+			t.Fatalf("unexpected measure json result: %#v", res)
+		}
+		doc, err := loadDocument(pktJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ep, _ := asMap(doc.Data["execution_policy"])
+		if got, ok := asInt(ep["max_command_budget_s"]); !ok || got != 60 {
+			t.Fatalf("packet max_command_budget_s=%v want 60", ep["max_command_budget_s"])
+		}
+		if rc, _, errB := runPacketCLI("validate-packet", pktJSON); rc != exitOK {
+			t.Fatalf("validate-packet after turn-limit measure failed: rc=%d err=%q", rc, errB)
+		}
+		decisionsRaw := readTestFile(t, filepath.Join(runsDir, "feat-measure-loop02", "decisions.tsv"))
+		if !strings.Contains(string(decisionsRaw), "\tmeasure\t") || !strings.Contains(string(decisionsRaw), "turn_limit_s=300") {
+			t.Fatalf("unexpected decisions.tsv from --log-run:\n%s", string(decisionsRaw))
+		}
+
+		// 2. Markdown block-style YAML (with existing budget replaced, and without existing budget inserted) + clamping.
+		mdWithBudget := filepath.Join(tmp, "with_budget.md")
+		if err := os.WriteFile(mdWithBudget, []byte(validPacketMD("")), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		rc, out, errB = runPacketCLI("measure", mdWithBudget, "--repo-root", repo, "--turn-limit-s", "5000")
+		if rc != exitOK || !strings.Contains(out, "turn_limit_s=5000") || !strings.Contains(out, "max_command_budget_s=600") {
+			t.Fatalf("measure md clamp-high rc=%d out=%q err=%q", rc, out, errB)
+		}
+		mdDoc, err := loadDocument(mdWithBudget)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mdEP, _ := asMap(mdDoc.Data["execution_policy"])
+		if got, ok := asInt(mdEP["max_command_budget_s"]); !ok || got != 600 {
+			t.Fatalf("clamped high max_command_budget_s=%v want 600", mdEP["max_command_budget_s"])
+		}
+		if rc, _, errB := runPacketCLI("validate-packet", mdWithBudget); rc != exitOK {
+			t.Fatalf("validate-packet mdWithBudget rc=%d err=%q", rc, errB)
+		}
+
+		// Markdown without max_command_budget_s key -> inserted cleanly and clamped low (3/5 -> 1).
+		mdNoBudget := filepath.Join(tmp, "no_budget.md")
+		noBudgetBody := strings.Replace(validPacketMD(""), "  max_command_budget_s: 180\n", "", 1)
+		if err := os.WriteFile(mdNoBudget, []byte(noBudgetBody), fsperm.File); err != nil {
+			t.Fatal(err)
+		}
+		rc, out, errB = runPacketCLI("measure", mdNoBudget, "--repo-root", repo, "--turn-limit-s", "3")
+		if rc != exitOK || !strings.Contains(out, "max_command_budget_s=1") {
+			t.Fatalf("measure md clamp-low rc=%d out=%q err=%q", rc, out, errB)
+		}
+		mdNoDoc, err := loadDocument(mdNoBudget)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mdNoEP, _ := asMap(mdNoDoc.Data["execution_policy"])
+		if got, ok := asInt(mdNoEP["max_command_budget_s"]); !ok || got != 1 {
+			t.Fatalf("clamped low max_command_budget_s=%v want 1", mdNoEP["max_command_budget_s"])
+		}
+		if rc, _, errB := runPacketCLI("validate-packet", mdNoBudget); rc != exitOK {
+			t.Fatalf("validate-packet mdNoBudget rc=%d err=%q", rc, errB)
+		}
+	})
+
+	t.Run("over-budget command rejected using --turn-limit-s derived budget", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		repo := initGitRepo(t)
+		writeStubRunSh(t, repo, 0, "1.2")
+		runGitCmd(t, repo, "add", ".")
+		runGitCmd(t, repo, "commit", "-q", "-m", "slow stub")
+
+		pktMap := basePacketMap()
+		delete(pktMap["execution_policy"].(map[string]any), "measured")
+		pktPath := writeJSONFile(t, tmp, "slow.json", pktMap)
+
+		rc, out, errB := runPacketCLI("measure", pktPath, "--repo-root", repo, "--turn-limit-s", "5")
+		if rc != exitInvalid || !strings.Contains(errB, "VERIFICATION_BUDGET_EXCEEDED") {
+			t.Fatalf("expected VERIFICATION_BUDGET_EXCEEDED for 1.2s > 1s budget, rc=%d out=%q err=%q", rc, out, errB)
+		}
+		// Subsequent validate-packet must also fail closed with VERIFICATION_BUDGET_EXCEEDED.
+		if rc, _, errB := runPacketCLI("validate-packet", pktPath); rc != exitInvalid || !strings.Contains(errB, "VERIFICATION_BUDGET_EXCEEDED") {
+			t.Fatalf("validate-packet expected VERIFICATION_BUDGET_EXCEEDED, rc=%d err=%q", rc, errB)
+		}
+	})
+}
+
+func TestTaskPacketRequiresBaseCommitAndRenderTemplateEmitsIt(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+
+	// Missing base_commit MUST be rejected by validate-packet (SPEC-07).
+	pkt := basePacketMap()
+	delete(pkt, "base_commit")
+	missingPath := writeJSONFile(t, tmp, "no_base_commit.json", pkt)
+	rc, out, errB := runPacketCLI("validate-packet", missingPath, "--format", "json")
+	if rc != exitInvalid || !strings.Contains(out, "base_commit") {
+		t.Fatalf("expected validate-packet to reject missing base_commit, rc=%d out=%q err=%q", rc, out, errB)
+	}
+
+	// render-template --kind packet emits default base_commit in both markdown and json.
+	rc, mdOut, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-1")
+	if rc != exitOK || !strings.Contains(mdOut, `base_commit: "1111111111111111111111111111111111111111"`) {
+		t.Fatalf("render-template md rc=%d out=%q err=%q", rc, mdOut, errB)
+	}
+	rc, jsonOut, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-1", "--format", "json")
+	if rc != exitOK {
+		t.Fatalf("render-template json rc=%d err=%q", rc, errB)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(jsonOut), &parsed); err != nil {
+		t.Fatalf("invalid json: %v (%s)", err, jsonOut)
+	}
+	if parsed["base_commit"] != "1111111111111111111111111111111111111111" {
+		t.Fatalf("render-template json base_commit=%v want default 40-char 1s", parsed["base_commit"])
+	}
+
+	// Custom --base-commit overrides default in both markdown and json; invalid SHA exits 2.
+	rc, customJSON, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-2", "--base-commit", "deadbeef1234", "--format", "json")
+	if rc != exitOK || !strings.Contains(customJSON, `"base_commit": "deadbeef1234"`) {
+		t.Fatalf("render-template custom --base-commit rc=%d out=%q err=%q", rc, customJSON, errB)
+	}
+	if rc, _, _ := runPacketCLI("render-template", "--kind", "packet", "--base-commit", "not-a-sha!"); rc != exitUsage {
+		t.Fatalf("invalid --base-commit rc=%d want 2", rc)
+	}
+}
+
+func TestBackgroundAmpersandEscapeAndSubshellBypass(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		cmd  string
+		want bool
+	}{
+		{`echo \" ; echo BG &`, true},
+		{`echo \' ; echo BG &`, true},
+		{`echo "$(sleep 1 &)"`, true},
+		{"echo \"`sleep 1 &`\"", true},
+		{`echo \\&`, true},
+		{"# comment\nsleep 1 &", true},
+		{`echo "a & b"`, false},
+		{`echo 'a & b'`, false},
+		{`echo a \& b`, false},
+		{`echo '$(sleep 1 &)'`, false},
+		{`echo "$(echo "a & b")"`, false},
+		{"./scripts/lint/run.sh scripts && echo ok", false},
+		{"./scripts/lint/run.sh scripts 2>&1", false},
+	}
+	for _, tc := range cases {
+		if got := HasBackgroundAmpersand(tc.cmd); got != tc.want {
+			t.Errorf("HasBackgroundAmpersand(%q) = %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+}
+
+func TestMeasureLogRunAutoInitSymlinkAndSpaceEvidence(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	repo := initGitRepo(t)
+	runGitCmd(t, repo, "checkout", "-q", "-b", "feat/sec01-measure")
+	writeStubRunSh(t, repo, 0, "")
+	runGitCmd(t, repo, "add", ".")
+	runGitCmd(t, repo, "commit", "-q", "-m", "stub")
+
+	// 1. Packet path with spaces outside repo writes valid Row 1 init + valid pointer evidence (no unencoded spaces).
+	spaceDir := filepath.Join(tmp, "dir with spaces")
+	if err := os.MkdirAll(spaceDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	pktMap := basePacketMap()
+	delete(pktMap["execution_policy"].(map[string]any), "measured")
+	pktPath := writeJSONFile(t, spaceDir, "pkt with space.json", pktMap)
+	runsDir := filepath.Join(tmp, "runs")
+
+	rc, out, errB := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", runsDir)
+	if rc != exitOK {
+		t.Fatalf("measure --log-run rc=%d out=%q err=%q", rc, out, errB)
+	}
+	decPath := filepath.Join(runsDir, "feat-sec01-measure", "decisions.tsv")
+	raw := readTestFile(t, decPath)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + Row 1 init + measure row (3 lines), got %d:\n%s", len(lines), string(raw))
+	}
+	row1 := strings.Split(lines[1], "\t")
+	if len(row1) != 6 || row1[1] != "init" || !strings.Contains(row1[2], "policy=") || !strings.Contains(row1[2], "completion=") {
+		t.Fatalf("unexpected Row 1 init: %q", lines[1])
+	}
+	row2 := strings.Split(lines[2], "\t")
+	if len(row2) != 6 || row2[1] != "measure" || strings.Contains(row2[4], " ") || !strings.HasPrefix(row2[4], "file://") {
+		t.Fatalf("expected encoded file:// evidence pointer without spaces, got %q (line=%q)", row2[4], lines[2])
+	}
+
+	// 2. Symlinked --runs-dir MUST be rejected.
+	outside := t.TempDir()
+	symRuns := filepath.Join(tmp, "sym-runs")
+	if err := os.Symlink(outside, symRuns); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", symRuns); rc == exitOK {
+		t.Fatal("measure --log-run accepted symlinked --runs-dir")
+	}
+
+	// 3. Dangling symlink decisions.tsv MUST be rejected without creating target.
+	runsDangling := filepath.Join(tmp, "runs-dangling")
+	branchDir := filepath.Join(runsDangling, "feat-sec01-measure")
+	if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(outside, "victim-measure.tsv")
+	if err := os.Symlink(victim, filepath.Join(branchDir, "decisions.tsv")); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", runsDangling); rc == exitOK {
+		t.Fatal("measure --log-run followed dangling decisions.tsv symlink")
+	}
+	if _, err := os.Stat(victim); !os.IsNotExist(err) {
+		t.Fatal("measure --log-run created victim file through dangling symlink!")
 	}
 }

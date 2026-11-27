@@ -7,12 +7,36 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	root, err := os.OpenRoot(filepath.Dir(abs))
+	if err != nil {
+		t.Fatalf("open root %s: %v", filepath.Dir(abs), err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(abs))
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
+}
 
 func TestExecWrappersBlockAndBenignAllows(t *testing.T) {
 	blocks := []struct {
@@ -953,6 +977,7 @@ func sampleValidPacket(id string) string {
 		`packet_version: "1.0"` + "\n" +
 		`packet_id: "` + id + `"` + "\n" +
 		`title: "Test packet"` + "\n" +
+		`base_commit: "1111111111111111111111111111111111111111"` + "\n" +
 		"scope:\n" +
 		`  target: "scripts"` + "\n" +
 		"  allowed_paths:\n" +
@@ -1040,5 +1065,586 @@ func TestProtectedBlocksDanglingSymlinkToEnv(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := RunProtected(context.Background(), nil, strings.NewReader(payload), &out, &errBuf); code != 2 {
 		t.Fatalf("RunProtected dangling symlink code=%d want 2 (stderr=%s)", code, errBuf.String())
+	}
+}
+
+func TestHarnessRunValidateDecisionsTSV(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("valid init and log passes in text and json", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		var out, errB bytes.Buffer
+		if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "fix-existing", "--goal", "Fix lint", "--completion", "run.sh exits 0"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("init rc=%d err=%s", rc, errB.String())
+		}
+		out.Reset()
+		errB.Reset()
+		if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "verify", "--decision", "lint green", "--why", "passed check", "--evidence", "cmd:./scripts/lint/run.sh scripts", "--result", "adopted"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("log rc=%d err=%s", rc, errB.String())
+		}
+
+		out.Reset()
+		errB.Reset()
+		if rc := RunHarness(ctx, []string{"validate", "--repo-root", repo}, nil, &out, &errB); rc != 0 || !strings.Contains(out.String(), "OK:") {
+			t.Fatalf("validate text rc=%d out=%q err=%q", rc, out.String(), errB.String())
+		}
+
+		out.Reset()
+		errB.Reset()
+		if rc := RunHarness(ctx, []string{"validate", "--repo-root", repo, "--format", "json"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("validate json rc=%d out=%q err=%q", rc, out.String(), errB.String())
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+			t.Fatalf("invalid json: %v (%s)", err, out.String())
+		}
+		if parsed["valid"] != true || parsed["rows"] != float64(2) {
+			t.Fatalf("unexpected validate json: %#v", parsed)
+		}
+	})
+
+	t.Run("missing file and bad flags return exit 2", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		cases := [][]string{
+			{"validate", "--repo-root", repo},
+			{"validate", "--decisions-file", filepath.Join(t.TempDir(), "missing.tsv")},
+			{"validate", "--repo-root", repo, "--format", "yaml"},
+			{"validate", "--repo-root", repo, "--unknown"},
+		}
+		for _, args := range cases {
+			var out, errB bytes.Buffer
+			if rc := RunHarness(ctx, args, nil, &out, &errB); rc != 2 {
+				t.Fatalf("args=%v rc=%d want 2 out=%q err=%q", args, rc, out.String(), errB.String())
+			}
+		}
+	})
+
+	t.Run("structural and semantic violations return exit 1", func(t *testing.T) {
+		t.Parallel()
+		validHeader := "ts\tphase\tdecision\twhy\tevidence\tresult\n"
+		validInit := "2026-11-28T00:00:00Z\tinit\tpolicy=block-new; goal=Test; completion=all green\tLOOP-03 init\t.harness/runs/b/decisions.tsv\tinfo\n"
+
+		cases := []struct {
+			name     string
+			content  string
+			wantCode string
+		}{
+			{"wrong header", "ts\tphase\tdecision\n" + validInit, "INVALID_HEADER"},
+			{"header only no init row", validHeader, "MISSING_INIT_ROW"},
+			{"row 1 wrong phase", validHeader + "2026-11-28T00:00:00Z\treview\tpolicy=block-new; completion=ok\treason\tADR-001039\tinfo\n", "MISSING_INIT_PHASE"},
+			{"row 1 missing policy", validHeader + "2026-11-28T00:00:00Z\tinit\tgoal=Test; completion=ok\treason\tADR-001039\tinfo\n", "INVALID_INIT_POLICY"},
+			{"row 1 invalid policy", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=allow-all; completion=ok\treason\tADR-001039\tinfo\n", "INVALID_INIT_POLICY"},
+			{"row 1 missing completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=Test\treason\tADR-001039\tinfo\n", "MISSING_INIT_COMPLETION"},
+			{"row 1 empty completion", validHeader + "2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; completion=   \treason\tADR-001039\tinfo\n", "MISSING_INIT_COMPLETION"},
+			{"wrong column count", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001039\n", "INVALID_COLUMN_COUNT"},
+			{"invalid timestamp", validHeader + validInit + "not-a-timestamp\tverify\tok\treason\tADR-001039\tinfo\n", "INVALID_TIMESTAMP"},
+			{"empty why", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\t   \tADR-001039\tinfo\n", "EMPTY_FIELD"},
+			{"non-pointer evidence", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tlooks good\tinfo\n", "INVALID_EVIDENCE"},
+			{"invalid result", validHeader + validInit + "2026-11-28T00:01:00Z\tverify\tok\treason\tADR-001039\tshipped\n", "INVALID_RESULT"},
+		}
+		for _, tc := range cases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				f := filepath.Join(t.TempDir(), "decisions.tsv")
+				if err := os.WriteFile(f, []byte(tc.content), fsperm.File); err != nil {
+					t.Fatal(err)
+				}
+				var out, errB bytes.Buffer
+				rc := RunHarness(ctx, []string{"validate", "--decisions-file", f, "--format", "json"}, nil, &out, &errB)
+				if rc != 1 {
+					t.Fatalf("rc=%d want 1 out=%q err=%q", rc, out.String(), errB.String())
+				}
+				if !strings.Contains(out.String(), tc.wantCode) {
+					t.Fatalf("expected %s in json output:\n%s", tc.wantCode, out.String())
+				}
+			})
+		}
+	})
+}
+
+func TestAppendDecisionFormulaInjectionHygiene(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "decisions.tsv")
+
+	if err := AppendDecisionToFile(path, "init", "policy=fix-existing; completion=done", "init row", "ADR-001039", "info"); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		decIn, decWant string
+		whyIn, whyWant string
+	}{
+		{"=SUM(A1:A2)", "'=SUM(A1:A2)", "+cmd|'/C calc'!A0", "'+cmd|'/C calc'!A0"},
+		{"@import(foo)", "'@import(foo)", "=1+1", "'=1+1"},
+		{"-2 scale down", "'-2 scale down", "- normal hyphen prose", "- normal hyphen prose"},
+		{"-=1+1", "'-=1+1", "-(1+1)", "'-(1+1)"},
+		{"-+cmd", "'-+cmd", "-@SUM(A1)", "'-@SUM(A1)"},
+	}
+	for _, tc := range cases {
+		if err := AppendDecisionToFile(path, "review", tc.decIn, tc.whyIn, "commit:abcdef1", "info"); err != nil {
+			t.Fatalf("append (%q, %q): %v", tc.decIn, tc.whyIn, err)
+		}
+	}
+	raw := readTestFile(t, path)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2+len(cases) {
+		t.Fatalf("expected %d lines, got %d:\n%s", 2+len(cases), len(lines), string(raw))
+	}
+	for i, tc := range cases {
+		parts := strings.Split(lines[2+i], "\t")
+		if parts[2] != tc.decWant {
+			t.Fatalf("row %d decision=%q want %q", i, parts[2], tc.decWant)
+		}
+		if parts[3] != tc.whyWant {
+			t.Fatalf("row %d why=%q want %q", i, parts[3], tc.whyWant)
+		}
+	}
+	var out, errB bytes.Buffer
+	if rc := RunHarness(context.Background(), []string{"validate", "--decisions-file", path}, nil, &out, &errB); rc != 0 {
+		t.Fatalf("validate sanitized decisions.tsv rc=%d out=%q err=%q", rc, out.String(), errB.String())
+	}
+}
+
+func TestHarnessRunParallelismPersistenceAndTracking(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initTestGitRepo(t)
+	runDir := filepath.Join(repo, ".harness", "runs", "feat-test-branch")
+
+	runH := func(args ...string) (int, string, string) {
+		var out, errB bytes.Buffer
+		rc := RunHarness(ctx, append(args, "--repo-root", repo), nil, &out, &errB)
+		return rc, out.String(), errB.String()
+	}
+
+	// Usage lists validate and parallelism.
+	if usage := harnessUsage(); !strings.Contains(usage, "validate") || !strings.Contains(usage, "parallelism") {
+		t.Fatalf("harnessUsage missing validate/parallelism: %q", usage)
+	}
+
+	if rc, _, errB := runH("init", "--policy", "fix-existing", "--goal", "Test LOOP-06", "--completion", "all green"); rc != 0 {
+		t.Fatalf("init rc=%d err=%s", rc, errB)
+	}
+
+	// Hold state: dry-run and --apply without --record-hold do NOT write parallelism.json or append row.
+	rc, out, errB := runH("parallelism", "--apply", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("hold apply rc=%d err=%s", rc, errB)
+	}
+	var holdRes map[string]any
+	if err := json.Unmarshal([]byte(out), &holdRes); err != nil {
+		t.Fatalf("hold json: %v (%s)", err, out)
+	}
+	if holdRes["current"] != float64(2) || holdRes["recommended"] != float64(2) || holdRes["changed"] != false {
+		t.Fatalf("unexpected hold result: %#v", holdRes)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "parallelism.json")); !os.IsNotExist(err) {
+		t.Fatalf("parallelism.json should not be written on unchanged hold without --record-hold")
+	}
+
+	// --apply --record-hold records hold row and writes parallelism.json.
+	rc, _, errB = runH("parallelism", "--apply", "--record-hold")
+	if rc != 0 {
+		t.Fatalf("record-hold rc=%d err=%s", rc, errB)
+	}
+	parJSONBytes := readTestFile(t, filepath.Join(runDir, "parallelism.json"))
+	if !strings.Contains(string(parJSONBytes), `"changed": false`) {
+		t.Fatalf("expected changed:false in parallelism.json: %s", string(parJSONBytes))
+	}
+
+	// Record 10 adopted outcomes -> scale up 2 -> 4 with --apply.
+	for i := 0; i < 10; i++ {
+		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "packet ok", "--why", "verified", "--evidence", "commit:abcdef1", "--result", "adopted"); rc != 0 {
+			t.Fatalf("log adopted %d rc=%d err=%s", i, rc, errB)
+		}
+	}
+	rc, out, errB = runH("parallelism", "--apply", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("scale up rc=%d out=%q err=%q", rc, out, errB)
+	}
+	var upRes map[string]any
+	if err := json.Unmarshal([]byte(out), &upRes); err != nil {
+		t.Fatalf("scale up json: %v (%s)", err, out)
+	}
+	if upRes["current"] != float64(2) || upRes["recommended"] != float64(4) || upRes["delta"] != float64(2) || upRes["changed"] != true {
+		t.Fatalf("unexpected scale-up result: %#v", upRes)
+	}
+	decisionsRaw := readTestFile(t, filepath.Join(runDir, "decisions.tsv"))
+	if !strings.Contains(string(decisionsRaw), "\tparallelism\tparallelism 2 -> 4\t") {
+		t.Fatalf("decisions.tsv missing parallelism 2 -> 4 row:\n%s", string(decisionsRaw))
+	}
+	parJSONBytes = readTestFile(t, filepath.Join(runDir, "parallelism.json"))
+	var parState map[string]any
+	if err := json.Unmarshal(parJSONBytes, &parState); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"current", "recommended", "delta", "window_size", "counts", "reason", "updated_at", "changed"} {
+		if _, ok := parState[key]; !ok {
+			t.Fatalf("parallelism.json missing key %q: %s", key, string(parJSONBytes))
+		}
+	}
+
+	// Record 2 mismatch outcomes -> without --current, picks up current=4 from decisions.tsv and scales down 4 -> 2!
+	for i := 0; i < 2; i++ {
+		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "mismatch", "--why", "drift", "--evidence", "commit:abcdef2", "--result", "mismatch"); rc != 0 {
+			t.Fatalf("log mismatch %d rc=%d err=%s", i, rc, errB)
+		}
+	}
+	rc, out, errB = runH("parallelism", "--apply", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("scale down rc=%d out=%q err=%q", rc, out, errB)
+	}
+	var downRes map[string]any
+	if err := json.Unmarshal([]byte(out), &downRes); err != nil {
+		t.Fatalf("scale down json: %v (%s)", err, out)
+	}
+	if downRes["current"] != float64(4) || downRes["recommended"] != float64(2) || downRes["delta"] != float64(-2) || downRes["changed"] != true {
+		t.Fatalf("expected tracked current=4 -> recommended=2, got: %#v", downRes)
+	}
+	decisionsRaw = readTestFile(t, filepath.Join(runDir, "decisions.tsv"))
+	if !strings.Contains(string(decisionsRaw), "\tparallelism\tparallelism 4 -> 2\t") {
+		t.Fatalf("decisions.tsv missing parallelism 4 -> 2 row:\n%s", string(decisionsRaw))
+	}
+
+	// Explicit --current 6 overrides tracked value: holds at 6 with 0 new outcomes since last parallelism row.
+	rc, out, errB = runH("parallelism", "--current", "6", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("explicit current hold rc=%d err=%s", rc, errB)
+	}
+	var holdOverride map[string]any
+	if err := json.Unmarshal([]byte(out), &holdOverride); err != nil {
+		t.Fatal(err)
+	}
+	if holdOverride["current"] != float64(6) || holdOverride["recommended"] != float64(6) || holdOverride["changed"] != false {
+		t.Fatalf("expected explicit current=6 hold with 0 new outcomes, got: %#v", holdOverride)
+	}
+
+	// After 2 new mismatches, explicit --current 6 scales down 6 -> 4 (dry-run).
+	for i := 0; i < 2; i++ {
+		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "mismatch-2", "--why", "drift", "--evidence", "commit:abcdef3", "--result", "mismatch"); rc != 0 {
+			t.Fatalf("log mismatch-2 %d rc=%d err=%s", i, rc, errB)
+		}
+	}
+	rc, out, errB = runH("parallelism", "--current", "6", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("explicit current rc=%d err=%s", rc, errB)
+	}
+	var overrideRes map[string]any
+	if err := json.Unmarshal([]byte(out), &overrideRes); err != nil {
+		t.Fatal(err)
+	}
+	if overrideRes["current"] != float64(6) || overrideRes["recommended"] != float64(4) {
+		t.Fatalf("expected explicit current=6 -> recommended=4, got: %#v", overrideRes)
+	}
+
+	// Invalid --current exits 2.
+	for _, bad := range []string{"0", "-2", "abc"} {
+		if rc, _, _ := runH("parallelism", "--current", bad); rc != 2 {
+			t.Fatalf("--current %q rc=%d want 2", bad, rc)
+		}
+	}
+
+	// Entire decisions.tsv including all parallelism rows validates cleanly with exit 0!
+	if rc, out, errB := runH("validate"); rc != 0 {
+		t.Fatalf("validate after parallelism rows rc=%d out=%q err=%q", rc, out, errB)
+	}
+}
+
+func TestParallelismNoInfiniteReRatchetAndStatusSync(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initTestGitRepo(t)
+
+	runH := func(args ...string) (int, string, string) {
+		var out, errB bytes.Buffer
+		rc := RunHarness(ctx, append(args, "--repo-root", repo), nil, &out, &errB)
+		return rc, out.String(), errB.String()
+	}
+
+	if rc, _, errB := runH("init", "--policy", "block-new", "--goal", "No re-ratchet", "--completion", "go test passes"); rc != 0 {
+		t.Fatalf("init rc=%d err=%s", rc, errB)
+	}
+	for i := 0; i < 10; i++ {
+		if rc, _, errB := runH("log", "--phase", "handoff", "--decision", "pkt ok", "--why", "green", "--evidence", "ADR-001039", "--result", "adopted"); rc != 0 {
+			t.Fatalf("log %d rc=%d err=%s", i, rc, errB)
+		}
+	}
+
+	// First --apply scales 2 -> 4 (changed=true).
+	rc, out, errB := runH("parallelism", "--apply", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("first apply rc=%d err=%s", rc, errB)
+	}
+	var first map[string]any
+	if err := json.Unmarshal([]byte(out), &first); err != nil {
+		t.Fatalf("json: %v (%s)", err, out)
+	}
+	if first["current"] != float64(2) || first["recommended"] != float64(4) || first["changed"] != true {
+		t.Fatalf("first apply=%#v, want current=2 recommended=4 changed=true", first)
+	}
+
+	// Second --apply with 0 new outcomes MUST hold at 4 (changed=false), never infinitely re-ratchet!
+	rc, out, errB = runH("parallelism", "--apply", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("second apply rc=%d err=%s", rc, errB)
+	}
+	var second map[string]any
+	if err := json.Unmarshal([]byte(out), &second); err != nil {
+		t.Fatalf("json: %v (%s)", err, out)
+	}
+	if second["current"] != float64(4) || second["recommended"] != float64(4) || second["changed"] != false || second["window_size"] != float64(0) {
+		t.Fatalf("second apply=%#v, want current=4 recommended=4 changed=false window_size=0", second)
+	}
+
+	// harness-run status MUST match tracked parallelism=4 (not stale base=2).
+	rc, out, errB = runH("status", "--format", "json")
+	if rc != 0 {
+		t.Fatalf("status rc=%d err=%s", rc, errB)
+	}
+	var statusPayload map[string]any
+	if err := json.Unmarshal([]byte(out), &statusPayload); err != nil {
+		t.Fatalf("status json: %v (%s)", err, out)
+	}
+	curRun := statusPayload["current_run"].(map[string]any)
+	par := curRun["parallelism"].(map[string]any)
+	if par["base"] != float64(4) || par["recommended"] != float64(4) || par["delta"] != float64(0) || par["window_size"] != float64(0) {
+		t.Fatalf("status parallelism=%#v, want base=4 recommended=4 delta=0 window_size=0", par)
+	}
+
+	// status & parallelism reject out-of-range --base-parallelism (<= 0 or > 8) with exit 2.
+	for _, bad := range []string{"0", "-1", "9", "abc"} {
+		if rc, _, _ := runH("status", "--base-parallelism", bad); rc != 2 {
+			t.Fatalf("status --base-parallelism %q rc=%d want 2", bad, rc)
+		}
+		if rc, _, _ := runH("parallelism", "--base-parallelism", bad); rc != 2 {
+			t.Fatalf("parallelism --base-parallelism %q rc=%d want 2", bad, rc)
+		}
+	}
+	if rc, _, _ := runH("parallelism", "--current", "9"); rc != 2 {
+		t.Fatalf("parallelism --current 9 rc=%d want 2", rc)
+	}
+}
+
+func TestDecisionsRoundTripAutoInitAndInitSemicolon(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("uninitialized log auto-writes valid Row 1 init and passes validate", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		var out, errB bytes.Buffer
+		if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "verify", "--decision", "green", "--why", "tests pass", "--evidence", "ADR-001039", "--result", "adopted"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("log rc=%d err=%s", rc, errB.String())
+		}
+		out.Reset()
+		errB.Reset()
+		if rc := RunHarness(ctx, []string{"validate", "--repo-root", repo, "--format", "json"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("validate after uninitialized log rc=%d out=%q err=%q", rc, out.String(), errB.String())
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+			t.Fatalf("json: %v", err)
+		}
+		if parsed["valid"] != true || parsed["rows"] != float64(2) {
+			t.Fatalf("unexpected validate result: %#v", parsed)
+		}
+	})
+
+	t.Run("init rejects semicolon-only/placeholder goal or completion and semicolon inside goal", func(t *testing.T) {
+		t.Parallel()
+		badCases := []struct {
+			name, goal, completion string
+		}{
+			{"semicolon-only completion", "test", ";"},
+			{"multi-semicolon completion", "test", " ; ; "},
+			{"placeholder completion TBD", "test", "TBD"},
+			{"placeholder goal N/A", "N/A", "go test ./..."},
+			{"semicolon in goal", "fix a; fix b", "go test ./..."},
+		}
+		for _, tc := range badCases {
+			repo := initTestGitRepo(t)
+			var out, errB bytes.Buffer
+			if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "block-new", "--goal", tc.goal, "--completion", tc.completion}, nil, &out, &errB); rc != 2 {
+				t.Fatalf("%s: init rc=%d want 2 out=%q err=%q", tc.name, rc, out.String(), errB.String())
+			}
+		}
+	})
+
+	t.Run("init with multi-command completion containing semicolon passes validate", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		var out, errB bytes.Buffer
+		if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "block-new", "--goal", "Fix service", "--completion", "cd app; go test ./..."}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("init rc=%d err=%s", rc, errB.String())
+		}
+		out.Reset()
+		errB.Reset()
+		if rc := RunHarness(ctx, []string{"validate", "--repo-root", repo}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("validate multi-command completion rc=%d out=%q err=%q", rc, out.String(), errB.String())
+		}
+		m := initCompletionRE.FindStringSubmatch("policy=block-new; goal=Fix service; completion=cd app; go test ./...")
+		if len(m) < 2 || m[1] != "cd app; go test ./..." {
+			t.Fatalf("initCompletionRE truncated multi-command completion: %#v", m)
+		}
+	})
+}
+
+func TestSymlinkEscapeRejectedInHarnessRunAndAppendDecision(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("branch dir symlink escape blocked", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		outside := t.TempDir()
+		runsDir := filepath.Join(repo, ".harness", "runs")
+		if err := os.MkdirAll(runsDir, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(runsDir, "feat-test-branch")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RunDirForBranch(repo, ""); err == nil {
+			t.Fatal("RunDirForBranch accepted symlinked branch dir escaping .harness/runs")
+		}
+		var out, errB bytes.Buffer
+		if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "block-new", "--goal", "g", "--completion", "c"}, nil, &out, &errB); rc == 0 {
+			t.Fatalf("init succeeded through symlinked branch dir: %s", out.String())
+		}
+		if _, err := os.Stat(filepath.Join(outside, "decisions.tsv")); !os.IsNotExist(err) {
+			t.Fatalf("init wrote decisions.tsv outside repo via symlink!")
+		}
+	})
+
+	t.Run("harness or runs dir symlink escape blocked", func(t *testing.T) {
+		t.Parallel()
+		repo1 := initTestGitRepo(t)
+		outside1 := t.TempDir()
+		if err := os.Symlink(outside1, filepath.Join(repo1, ".harness")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RunDirForBranch(repo1, ""); err == nil {
+			t.Fatal("RunDirForBranch accepted symlinked .harness dir")
+		}
+
+		repo2 := initTestGitRepo(t)
+		outside2 := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repo2, ".harness"), fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside2, filepath.Join(repo2, ".harness", "runs")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RunDirForBranch(repo2, ""); err == nil {
+			t.Fatal("RunDirForBranch accepted symlinked .harness/runs dir")
+		}
+	})
+
+	t.Run("dangling decisions.tsv and parallelism.json symlinks rejected", func(t *testing.T) {
+		t.Parallel()
+		repo := initTestGitRepo(t)
+		outside := t.TempDir()
+		victimTSV := filepath.Join(outside, "victim.tsv")
+		victimPar := filepath.Join(outside, "victim.json")
+		runDir := filepath.Join(repo, ".harness", "runs", "feat-test-branch")
+		if err := os.MkdirAll(runDir, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		decPath := filepath.Join(runDir, "decisions.tsv")
+		if err := os.Symlink(victimTSV, decPath); err != nil {
+			t.Fatal(err)
+		}
+		if err := AppendDecisionToFile(decPath, "review", "d", "w", "ADR-001039", "info"); err == nil {
+			t.Fatal("AppendDecisionToFile followed dangling symlink")
+		}
+		var out, errB bytes.Buffer
+		if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--force", "--policy", "block-new", "--goal", "g", "--completion", "c"}, nil, &out, &errB); rc == 0 {
+			t.Fatalf("init --force followed dangling decisions.tsv symlink")
+		}
+		if _, err := os.Stat(victimTSV); !os.IsNotExist(err) {
+			t.Fatal("victim.tsv was created through dangling symlink!")
+		}
+
+		// Replace decisions.tsv with real init, symlink parallelism.json -> dangling victim.json.
+		_ = os.Remove(decPath)
+		if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "block-new", "--goal", "g", "--completion", "c"}, nil, &out, &errB); rc != 0 {
+			t.Fatalf("init rc=%d err=%s", rc, errB.String())
+		}
+		if err := os.Symlink(victimPar, filepath.Join(runDir, "parallelism.json")); err != nil {
+			t.Fatal(err)
+		}
+		if rc := RunHarness(ctx, []string{"parallelism", "--repo-root", repo, "--apply", "--record-hold"}, nil, &out, &errB); rc == 0 {
+			t.Fatal("parallelism --apply --record-hold followed dangling parallelism.json symlink")
+		}
+		if _, err := os.Stat(victimPar); !os.IsNotExist(err) {
+			t.Fatal("victim.json was created through dangling symlink!")
+		}
+	})
+}
+
+func TestFormulaInjectionAndTabCRInPhaseAndEvidence(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	badPointers := []string{
+		`=HYPERLINK("http://evil.example/pwn","click")`,
+		`=cmd|'/C_calc'!A0`,
+		`+cmd|'/C_calc'!A0`,
+		`@SUM(1,2)/x`,
+		`-1+1/x`,
+		`-=cmd/x`,
+		`-(1)/x`,
+		"cmd:go test\t./...",
+		"cmd:go test\r./...",
+		"cmd:go test\n./...",
+	}
+	for _, ev := range badPointers {
+		if IsValidEvidencePointer(ev) {
+			t.Errorf("IsValidEvidencePointer(%q) = true, want false", ev)
+		}
+	}
+
+	repo := initTestGitRepo(t)
+	var out, errB bytes.Buffer
+	if rc := RunHarness(ctx, []string{"init", "--repo-root", repo, "--policy", "block-new", "--goal", "g", "--completion", "c"}, nil, &out, &errB); rc != 0 {
+		t.Fatalf("init rc=%d err=%s", rc, errB.String())
+	}
+
+	// Repro SEC-02: formula evidence MUST be rejected.
+	if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "=SUM(1,2)", "--decision", "ok", "--why", "ok", "--evidence", "=cmd|'/C_calc'!A0", "--result", "info"}, nil, &out, &errB); rc == 0 {
+		t.Fatal("log accepted formula-injection evidence")
+	}
+
+	// Formula-triggering phase and numeric/formula minus cells must be neutralized and pass validate.
+	if rc := RunHarness(ctx, []string{"log", "--repo-root", repo, "--phase", "=SUM(1,2)", "--decision", "-2 scale down", "--why", "-=1+1", "--evidence", "ADR-001039", "--result", "info"}, nil, &out, &errB); rc != 0 {
+		t.Fatalf("log with formula phase rc=%d err=%s", rc, errB.String())
+	}
+	decPath := filepath.Join(repo, ".harness", "runs", "feat-test-branch", "decisions.tsv")
+	raw := readTestFile(t, decPath)
+	if strings.Contains(string(raw), "\t=SUM(") || strings.Contains(string(raw), "\t-2 ") || strings.Contains(string(raw), "\t-=") {
+		t.Fatalf("unescaped formula trigger remained in decisions.tsv:\n%s", string(raw))
+	}
+	out.Reset()
+	errB.Reset()
+	if rc := RunHarness(ctx, []string{"validate", "--repo-root", repo}, nil, &out, &errB); rc != 0 {
+		t.Fatalf("validate sanitized decisions.tsv rc=%d out=%q err=%q", rc, out.String(), errB.String())
+	}
+
+	// Raw unescaped formula trigger in phase column fails ValidateDecisionsFile.
+	badTSV := filepath.Join(t.TempDir(), "decisions.tsv")
+	content := "ts\tphase\tdecision\twhy\tevidence\tresult\n" +
+		"2026-11-28T00:00:00Z\tinit\tpolicy=block-new; completion=ok\tinit\tADR-001039\tinfo\n" +
+		"2026-11-28T00:01:00Z\t=SUM(1,2)\tok\tok\tADR-001039\tinfo\n"
+	if err := os.WriteFile(badTSV, []byte(content), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errB.Reset()
+	if rc := RunHarness(ctx, []string{"validate", "--decisions-file", badTSV, "--format", "json"}, nil, &out, &errB); rc != 1 {
+		t.Fatalf("validate unescaped formula phase rc=%d want 1 out=%q", rc, out.String())
 	}
 }

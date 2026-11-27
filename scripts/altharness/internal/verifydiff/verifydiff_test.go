@@ -179,15 +179,19 @@ func TestRunEquivalentSplitPassesAndRecordsEvidenceAndDecision(t *testing.T) {
 		t.Fatalf("missing decisions.tsv at %s: %v", decisionsPath, err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(rawTSV)), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected header + 1 row in decisions.tsv, got %d lines:\n%s", len(lines), string(rawTSV))
+	if len(lines) != 3 {
+		t.Fatalf("expected header + auto-init Row 1 + 1 verify-02 row in decisions.tsv, got %d lines:\n%s", len(lines), string(rawTSV))
 	}
 	if lines[0] != "ts\tphase\tdecision\twhy\tevidence\tresult" {
 		t.Fatalf("unexpected header: %q", lines[0])
 	}
-	cols := strings.Split(lines[1], "\t")
+	initCols := strings.Split(lines[1], "\t")
+	if len(initCols) != 6 || initCols[1] != "init" {
+		t.Fatalf("expected canonical Row 1 init, got: %q", lines[1])
+	}
+	cols := strings.Split(lines[2], "\t")
 	if len(cols) != 6 {
-		t.Fatalf("expected 6 columns, got %d: %q", len(cols), lines[1])
+		t.Fatalf("expected 6 columns, got %d: %q", len(cols), lines[2])
 	}
 	if cols[1] != "verify-02" {
 		t.Fatalf("phase=%q, want verify-02", cols[1])
@@ -200,6 +204,9 @@ func TestRunEquivalentSplitPassesAndRecordsEvidenceAndDecision(t *testing.T) {
 	}
 	if cols[5] != "info" {
 		t.Fatalf("result=%q, want info", cols[5])
+	}
+	if _, findings, err := guards.ValidateDecisionsFile(decisionsPath); err != nil || len(findings) != 0 {
+		t.Fatalf("auto-initialized decisions.tsv must pass ValidateDecisionsFile, err=%v findings=%+v", err, findings)
 	}
 	// Branch run dir must NOT have been pre-created without `harness-run init`.
 	if _, err := os.Stat(filepath.Join(repo, ".harness", "runs", "main", "decisions.tsv")); !os.IsNotExist(err) {
@@ -513,8 +520,8 @@ func TestRunCustomOutputPathsAndSequentialAppend(t *testing.T) {
 		t.Fatalf("read custom decisions.tsv: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(rawTSV)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected header + 2 rows, got %d:\n%s", len(lines), string(rawTSV))
+	if len(lines) != 4 {
+		t.Fatalf("expected header + auto-init Row 1 + 2 rows, got %d:\n%s", len(lines), string(rawTSV))
 	}
 }
 
