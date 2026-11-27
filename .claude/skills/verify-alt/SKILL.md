@@ -81,7 +81,7 @@ Alt の本番スタックは同一ホスト上で Docker Compose プロジェク
 
 `doctor` が検証する項目:
 1. **Isolation**: `COMPOSE_PROJECT_NAME`（および `--project`）が `alt` でないこと。
-2. **Toolchain**: `go`、および `news-creator/app/.venv/bin/python`（または `fastapi`+`uvicorn` 利用可能な `python3` / `uv`）が実行可能であること。
+2. **Toolchain**: `go`、および `news_creator.handler.sse_stream` を import できる Python（`news-creator/app/.venv/bin/python`、または news-creator の依存が入った `python3` / `uv`）が実行可能であること。`fastapi`+`uvicorn` だけでは足りない。無ければ `news-creator/app` で `uv sync` する。
 3. **Evidence Dir**: `.harness/evidence`（または `--evidence-dir`）が安全に書き込み可能であること。
 4. **Skills & Symlinks**: `.claude/skills/verify-alt/SKILL.md`、`.claude/skills/maintain-verification-skill/SKILL.md`、および `.agents/skills/{verify-alt,maintain-verification-skill}` シンボリックリンクが壊れていないこと。
 5. **Feature Map Index Hygiene**: `.claude/skills/verify-alt/features/` 配下の全 `*.md`（`README.md` を除く）が `features/README.md` からリンクされており、かつ `features/README.md` のリンク先がすべて実在し、必須 4 セクション（`Sub-features` / `How to get to it` / `Driving it with the harness` / `Gotchas`）を備えていること（孤児ファイル 0・リンク切れ 0）。

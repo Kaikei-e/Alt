@@ -329,9 +329,21 @@ func hasMarkdownHeading(content, heading string) bool {
 	return false
 }
 
-// resolvePythonForSSE returns a command prefix capable of running FastAPI + Uvicorn
-// for live news-creator SSE verification, preferring news-creator's local .venv.
+// sseReadinessImports mirrors the imports of sseLiveServerPy. Importing the
+// handler runs the news_creator.handler package init, which pulls in most of
+// news-creator's runtime dependencies — fastapi and uvicorn alone do not
+// satisfy it.
+const sseReadinessImports = `import sys
+sys.path.insert(0, sys.argv[1])
+import uvicorn
+from fastapi import FastAPI, Request
+from news_creator.handler.sse_stream import SSEHeartbeatConfig, create_sse_response
+`
+
+// resolvePythonForSSE returns a command prefix that can import the news-creator
+// SSE handler for live verification, preferring news-creator's local .venv.
 func resolvePythonForSSE(ctx context.Context, repoRoot string) ([]string, string, error) {
+	ncDir := filepath.Join(repoRoot, "news-creator", "app")
 	candidates := []struct {
 		label string
 		cmd   []string
@@ -349,23 +361,27 @@ func resolvePythonForSSE(ctx context.Context, repoRoot string) ([]string, string
 			cmd   []string
 		}{label: "python3", cmd: []string{py3}})
 	}
+	var tried []string
 	for _, c := range candidates {
-		args := append(append([]string(nil), c.cmd...), "-c", "import fastapi, uvicorn")
+		args := append(append([]string(nil), c.cmd...), "-c", sseReadinessImports, ncDir)
 		_, _, code, err := execx.Combined(ctx, execx.Cmd{Args: args})
 		if err == nil && code == 0 {
-			return c.cmd, c.label + " (fastapi+uvicorn ready)", nil
+			return c.cmd, c.label + " (SSE handler importable)", nil
 		}
+		tried = append(tried, c.label)
 	}
 	if uvPath, err := exec.LookPath("uv"); err == nil {
-		ncDir := filepath.Join(repoRoot, "news-creator", "app")
 		if st, serr := os.Stat(ncDir); serr == nil && st.IsDir() {
 			return []string{uvPath, "run", "--offline", "--directory", ncDir, "python"}, "uv offline fallback", nil
 		}
 	}
-	if py3, err := exec.LookPath("python3"); err == nil {
-		return []string{py3}, "python3 stdlib only (fastapi/uvicorn not installed)", nil
+	if len(tried) == 0 {
+		tried = []string{"none found"}
 	}
-	return nil, "", fmt.Errorf("no usable python3 or news-creator .venv found")
+	return nil, "", fmt.Errorf(
+		"no Python can import news_creator.handler.sse_stream (tried: %s); install news-creator's dependencies with `uv sync` in news-creator/app",
+		strings.Join(tried, ", "),
+	)
 }
 
 func resolveStdlibPython() (string, error) {
