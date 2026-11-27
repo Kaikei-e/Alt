@@ -150,5 +150,8 @@ python3 scripts/tests/test-observability-compose-tool-images.py
 stage "synthetic probes audit — scripts/tests/test-synthetic-probes-audit.py"
 python3 scripts/tests/test-synthetic-probes-audit.py
 
+stage "TLS handshake probe contract — scripts/tests/test-tls-handshake-probe.py"
+python3 scripts/tests/test-tls-handshake-probe.py
+
 echo ""
 echo "==> observability config validation passed"

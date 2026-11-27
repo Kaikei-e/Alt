@@ -2,12 +2,12 @@
   "schema_version": 1,
   "generated_from": "compose/compose.yaml include chain",
   "counts": {
-    "declared_total": 82,
-    "long_running": 67,
+    "declared_total": 83,
+    "long_running": 68,
     "ephemeral": 10,
     "profiled": 5,
-    "compose_config_default_profiles": 77,
-    "compose_config_full_profiles": 82
+    "compose_config_default_profiles": 78,
+    "compose_config_full_profiles": 83
   },
   "long_running": [
     "acolyte-db",
@@ -25,6 +25,7 @@
     "auth-hub",
     "auth-hub-logs",
     "auth-token-manager",
+    "blackbox-exporter",
     "cadvisor",
     "clickhouse",
     "dashboard",
@@ -97,13 +98,13 @@
     "restic-backup",
     "tts-speaker"
   ],
-  "measured_at": "2026-10-03",
+  "measured_at": "2026-11-27",
   "discrepancy": {
     "false_94": "compose/backup.yaml top-level networks.backup-docker-proxy is a network, not a service. A grep of indented `name:` keys counts it and reports 94. Unique keys under services: across the include chain are the declared total.",
-    "compose_config_default_profiles": 77,
-    "compose_config_full_profiles": 82,
+    "compose_config_default_profiles": 78,
+    "compose_config_full_profiles": 83,
     "compose_config_note": "docker compose -f compose/compose.yaml config without --profile omits the 5 profiled services (alt-perf, irodori-tts, k6, restic-backup, tts-speaker).",
-    "yaml_declared": 82,
+    "yaml_declared": 83,
     "profiled_excluded_from_default_up": [
       "alt-perf",
       "irodori-tts",

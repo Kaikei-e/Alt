@@ -1,0 +1,1152 @@
+# promtool unit tests for the externally observed mTLS handshake alerts.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/tls-handshake-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules for the same reason as the other test
+# files: a test file inside the rules glob is a fatal config error.
+#
+# Cadence follows production: probe series (probe_success, the probe's expiry
+# and the probe job's `up`) carry one sample per 60s scrape, and the :9110 ops
+# series one per 15s, so the tests tick every 15s and a probe sample sits on
+# every fourth tick. A failed scrape is a `stale` marker (the series is gone
+# until the next good scrape); a bare gap would keep the series visible
+# through the 5m lookback.
+# pki-agent-alerts.yml is loaded too, so the tests can say which alert owns a
+# fault when the two files overlap.
+
+rule_files:
+  - ../rules/tls-handshake-alerts.yml
+  - ../rules/pki-agent-alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  # A listener of a live process fails while the canary blinks once every 4m: the page comes at
+  # 5-6m and stays. The canary ticket is a separate matter: a canary that fails this often is
+  # itself broken, so it opens its own ticket once the 10m `for` has passed.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 10m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 18m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 10m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake-canary
+              instance: step-ca:9000
+            exp_annotations:
+              summary: "TLS handshake canary against step-ca is failing"
+              description: |
+                The prober cannot complete a verified handshake with step-ca using the trust
+                bundle every service uses, or reports nothing for it. Listener results cannot
+                be trusted, so the listener-failure page is held back. Check blackbox-exporter
+                (container, /trust/ca-bundle.pem, network) and then step-ca.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The canary succeeds one probe in four (step-ca restarting): every run of three failures is
+  # 3m without a success, so the guard holds the listener page back each time and `for` keeps
+  # restarting. Only the canary ticket opens; the page does not come.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake-canary
+              instance: step-ca:9000
+            exp_annotations:
+              summary: "TLS handshake canary against step-ca is failing"
+              description: |
+                The prober cannot complete a verified handshake with step-ca using the trust
+                bundle every service uses, or reports nothing for it. Listener results cannot
+                be trusted, so the listener-failure page is held back. Check blackbox-exporter
+                (container, /trust/ca-bundle.pem, network) and then step-ca.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 9m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+
+  # The canary fails two probes in a row and then succeeds, repeatedly: two failures are never 3m
+  # without a success, so the guard never engages and the listener page comes and stays. (The canary
+  # ticket opens as well, since any failure in 5m counts.)
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x120'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 20m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The :9110 scrape fails once every 2m (a scrape failure drops the series until the next
+  # good scrape) while the TLS listener is dead: the page must not wait for a quiet period.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale 1x6 stale'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 30m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The probe scrape itself fails one minute in three (the series drops until the next good scrape)
+  # while the listener is dead: the page must still come.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _ 0 _ _ _ 0 _ _ _ stale _ _ _'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The presented certificate is short while the :9110 scrape fails once every 2m: the expiry page
+  # must not restart its `for` at every gap in the disk-side series.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000 80000x5 stale 80000'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443 expires in
+                2h 40m 40s (negative once it has expired) while the on-disk leaf
+                reported for news-creator had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 20m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443 expires in
+                2h 26m 40s (negative once it has expired) while the on-disk leaf
+                reported for news-creator had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A crash-looping service: the :9110 endpoint answers for 30s each 2m cycle and the TLS listener
+  # never opens. The service reports healthy every time it answers, so the page fires.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4 1x1 stale _x4'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 20m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The page is firing and the canary fails for one probe (minute 9-10): the page keeps firing
+  # instead of resolving and re-firing later.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 10m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 10m30s
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 16m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: news-creator:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Presented and on-disk both under 4h, then the service is stopped (its series go stale): the
+  # handshake expiry alert never fires, neither while the disk side is short nor after its series
+  # disappear.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ stale'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x11 stale'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x11 stale'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+
+  # The on-disk certificate is corrupt or expired (healthy=0, remaining=0, reported not_after is
+  # now, the Rust shape) and the listener fails as well: the enrollment alert owns it, so the
+  # listener page and the divergence ticket stay quiet.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0x160'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0x160'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0+15x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: PkiEnrollmentCertExpired
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: recap-worker-ops
+              instance: recap-worker:9110
+              service: recap-worker
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker in-process mTLS cert expired / missing / corrupt"
+              description: |
+                pki_enrollment_healthy=0 for subject recap-worker.
+                Consumer east-west calls will fail until rotation succeeds.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The whole process is down (ops scrape and probe both fail): the listener page stays out because
+  # the 2m window closes before its 5m `for`, and PkiEnrollmentOpsDown pages.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="news-creator-ops",instance="news-creator:9110"}'
+        values: '0x160'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x7 stale'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PkiEnrollmentOpsDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: news-creator-ops
+              instance: news-creator:9110
+            exp_annotations:
+              summary: "news-creator-ops PKI ops scrape failing"
+              description: |
+                Prometheus cannot scrape news-creator-ops :9110. Static targets
+                report up=0 rather than vanishing, so this is the parent-ops
+                scrape-down alert. Leftover pki-agent sidecars are a Docker-label
+                gate, not this scrape.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The trust bundle is missing, so the canary and every listener fail for good: no page at all, and
+  # the canary ticket opens after its 10m `for`.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake-canary
+              instance: step-ca:9000
+            exp_annotations:
+              summary: "TLS handshake canary against step-ca is failing"
+              description: |
+                The prober cannot complete a verified handshake with step-ca using the trust
+                bundle every service uses, or reports nothing for it. Listener results cannot
+                be trusted, so the listener-failure page is held back. Check blackbox-exporter
+                (container, /trust/ca-bundle.pem, network) and then step-ca.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A stale listener reaches its expiry at 10m. The expiry page is already firing and goes on after
+  # the expiry series disappears; the listener page joins 5m after the first failed probe.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ 600 _ _ _ stale'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '80000x240'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '1x240'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: recap-worker:9443
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on recap-worker:9443 expires in
+                7m 0s (negative once it has expired) while the on-disk leaf
+                reported for recap-worker had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: recap-worker:9443
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on recap-worker:9443 expires in
+                -2m 0s (negative once it has expired) while the on-disk leaf
+                reported for recap-worker had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "1 TLS listener(s) cannot complete a handshake"
+              description: |
+                Handshake probes fail for listeners of services that still report enrollment
+                state, so the process is up but its TLS listener is not serving.
+                Failing listeners: recap-worker:9443
+                If the whole service is down, PkiEnrollmentOpsDown fires separately.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 16m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: recap-worker:9443
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on recap-worker:9443 expires in
+                -6m 0s (negative once it has expired) while the on-disk leaf
+                reported for recap-worker had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Presented certificate short while the disk side reports plenty: pages. Only not_after is
+  # reported, no remaining_seconds series, so the page does not depend on that metric.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x40'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator:9443 presents a certificate that expires in under 4h"
+              description: |
+                The certificate presented in the TLS handshake on news-creator:9443 expires in
+                2h 43m 40s (negative once it has expired) while the on-disk leaf
+                reported for news-creator had 4h or more left within the last 2m, so the process is
+                serving a stale certificate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Renewal is failing and both sides are short: the enrollment alert pages, this one stays quiet.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000 _ _ _ 10000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x40'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '10000x40'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: PkiEnrollmentCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: news-creator-ops
+              instance: news-creator:9110
+              service: news-creator
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator in-process mTLS cert expires in under 4h"
+              description: |
+                news-creator reports only 10ks left
+                on the leaf certificate (in-process enrollment, not pki-agent).
+                Check: docker logs alt-news-creator-1
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A healthy rotation: the service reports the new leaf at 30m and the handshake follows 2m
+  # later. Nothing fires. The stale case (the handshake never follows) is the divergence test below.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _'
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x119 50057000x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '80000x240'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x240'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts: []
+
+  # A rolling deploy: the service fails its probe for 2m and its :9110 series are gone for 1m.
+  # Nothing fires.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 0 _ _ _ 0 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ stale _ _ _ stale _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _'
+      - series: 'pki_enrollment_healthy{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '1x20 stale _x2 1x160'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x20 stale _x2 50000000x160'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '80000x20 stale _x2 80000x160'
+      - series: 'probe_success{job="tls-handshake-canary",instance="step-ca:9000"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+
+  # The listener still presents the old, valid leaf while a Rust parent reports a corrupt disk
+  # (healthy=0, not_after=now): no divergence, the enrollment alert pages.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0+15x120'
+      - series: 'pki_enrollment_cert_remaining_seconds{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0x120'
+      - series: 'pki_enrollment_healthy{job="recap-worker-ops",instance="recap-worker:9110",service="recap-worker",subject="recap-worker"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: TlsHandshakeCertExpirySoon
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: PkiEnrollmentCertExpired
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: recap-worker-ops
+              instance: recap-worker:9110
+              service: recap-worker
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker in-process mTLS cert expired / missing / corrupt"
+              description: |
+                pki_enrollment_healthy=0 for subject recap-worker.
+                Consumer east-west calls will fail until rotation succeeds.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Divergence on a two-port subject: only the stale port is named. The control subject matches.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000 _ _ _ 50057000'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50057000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_healthy{job="alt-data-hub",instance="alt-data-hub:9110",service="alt-data-hub",subject="alt-data-hub"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: TlsHandshakeCertDivergesFromReported
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: auth-hub:8443
+              subject: auth-hub
+            exp_annotations:
+              summary: "auth-hub presents a different certificate on auth-hub:8443 than it reports"
+              description: |
+                The not_after seen in the TLS handshake on auth-hub:8443 differs by
+                15h 50m 0s from pki_enrollment_cert_not_after_seconds for
+                auth-hub while enrollment reports healthy. Possible causes: the listener and
+                enrollment read different certificate paths, a clock that moved backwards, a
+                stopped reload poll, or a listener that bypasses reload. Check these before
+                recreating anything.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The reported side is incomplete for news-creator (no healthy series): the comparison cannot run,
+  # which is its own ticket. auth-hub is complete.
+  - interval: 15s
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '50000000x120'
+      - series: 'pki_enrollment_healthy{job="auth-hub",instance="auth-hub:9110",service="auth-hub",subject="auth-hub"}'
+        values: '1x120'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'pki_enrollment_cert_not_after_seconds{job="news-creator-ops",instance="news-creator:9110",service="news-creator",subject="news-creator"}'
+        values: '50000000x120'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeReportedCertMissing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: news-creator:9443
+              subject: news-creator
+            exp_annotations:
+              summary: "news-creator reports no certificate state to compare against"
+              description: |
+                probe_ssl_earliest_cert_expiry exists for news-creator:9443 but pki_enrollment_cert_not_after_seconds
+                or pki_enrollment_healthy is missing for subject news-creator, so the
+                reported-versus-presented comparison cannot run.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # A successful probe without an expiry series is blind: recap-worker is, news-creator is not.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_ssl_earliest_cert_expiry{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000 _ _ _ 50000000'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeNoExpiry
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake
+              instance: recap-worker:9443
+              subject: recap-worker
+            exp_annotations:
+              summary: "recap-worker:9443 handshake succeeded but exposed no certificate expiry"
+              description: |
+                probe_success is 1 yet probe_ssl_earliest_cert_expiry is absent, so the
+                certificate checks for recap-worker:9443 are blind.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Fleet pin: 11 of 12 listeners for the first 15m (the twelfth appears then), so the ticket fires
+  # and later resolves.
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="tls-handshake",instance="alt-data-hub:9443",subject="alt-data-hub"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="auth-hub:8443",subject="auth-hub"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="search-indexer:9443",subject="search-indexer"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="pre-processor:9443",subject="pre-processor"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="tag-generator:9443",subject="tag-generator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="acolyte-orchestrator:9443",subject="acolyte-orchestrator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="recap-subworker:9443",subject="recap-subworker"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9010",subject="rag-orchestrator"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+      - series: 'probe_success{job="tls-handshake",instance="rag-orchestrator:9011",subject="rag-orchestrator"}'
+        values: '_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 11 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 16m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts: []
+
+  # No probe series at all (Prometheus alone): the fleet pin fires, and since the prober's own up
+  # series is missing too the canary ticket joins it.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="prometheus"}'
+        values: '1x160'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 0 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 11m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake-canary
+            exp_annotations:
+              summary: "TLS handshake canary against step-ca is failing"
+              description: |
+                The prober cannot complete a verified handshake with step-ca using the trust
+                bundle every service uses, or reports nothing for it. Listener results cannot
+                be trusted, so the listener-failure page is held back. Check blackbox-exporter
+                (container, /trust/ca-bundle.pem, network) and then step-ca.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The prober is gone: exactly two tickets (prober down, fleet pin), no page, and neither the
+  # canary nor the scrape alert adds a third.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
+        values: '0x160'
+      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeProberDown
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: blackbox-exporter
+              instance: blackbox-exporter:9115
+              service: blackbox-exporter
+            exp_annotations:
+              summary: "blackbox-exporter is not answering scrapes"
+              description: |
+                Prometheus cannot scrape blackbox-exporter, so no handshake is being probed and
+                the probe alerts have nothing to evaluate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "TLS handshake probe covers 0 listeners (want exactly 12)"
+              description: |
+                Each of the 12 east-west TLS listeners must report probe_success. A missing
+                series means a target dropped out of the scrape config or blackbox_exporter
+                stopped answering; `or vector(0)` fires when every series is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 11m
+        alertname: TlsHandshakeProbeScrapeFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: TlsHandshakeListenerFailing
+        exp_alerts: []
+
+  # The prober is up but scraped no canary series at all.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
+        values: '1x160'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TlsHandshakeCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+              job: tls-handshake-canary
+            exp_annotations:
+              summary: "TLS handshake canary against step-ca is failing"
+              description: |
+                The prober cannot complete a verified handshake with step-ca using the trust
+                bundle every service uses, or reports nothing for it. Listener results cannot
+                be trusted, so the listener-failure page is held back. Check blackbox-exporter
+                (container, /trust/ca-bundle.pem, network) and then step-ca.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Scrape failures while the prober answers: one ticket carrying the count.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="blackbox-exporter",instance="blackbox-exporter:9115",service="blackbox-exporter"}'
+        values: '1x160'
+      - series: 'up{job="tls-handshake",instance="news-creator:9443",subject="news-creator"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'up{job="tls-handshake",instance="recap-worker:9443",subject="recap-worker"}'
+        values: '0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0 _ _ _ 0'
+      - series: 'up{job="tls-handshake",instance="auth-hub:9443",subject="auth-hub"}'
+        values: '1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1 _ _ _ 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: TlsHandshakeProbeScrapeFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: mtls
+            exp_annotations:
+              summary: "2 TLS handshake probe scrapes are failing"
+              description: |
+                Prometheus gets no result for the TLS handshake probe from blackbox-exporter while
+                the prober itself is up. Check the tls-handshake targets in Prometheus.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 6m
+        alertname: TlsHandshakeProberDown
+        exp_alerts: []

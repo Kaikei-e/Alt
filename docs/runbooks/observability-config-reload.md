@@ -63,6 +63,7 @@ make observability-reload-install
 | `observability/prometheus/rules/*.yml` | Prometheus (`rule_files` glob 経由) | reload |
 | `observability/prometheus/tests/*_test.yml` | promtool のみ。**Prometheus は読まない** | — (rules/ に置くと config 全体が壊れる) |
 | `observability/alertmanager/alertmanager.yml` | Alertmanager | reload |
+| `observability/blackbox/blackbox.yml` | blackbox-exporter (`configs:` で mount) | **コンテナ再作成** (`up -d --force-recreate --no-deps blackbox-exporter`)。`observability-drift-check` の比較対象外なので、差分は自動では見つからない |
 | `observability/grafana/dashboards/*.json` | Grafana | 自動ポーリング (`updateIntervalSeconds: 30`) |
 | `observability/grafana/provisioning/datasources/*.yaml` | Grafana | **起動時のみ** → コンテナ再作成が必要 |
 | `observability/grafana/provisioning/alerting/*.yaml` | Grafana | **起動時のみ** → コンテナ再作成が必要 |
@@ -185,6 +186,50 @@ docker kill -s HUP "$PROM_CID"
 # 再作成が必要な場合 (compose の port 再 bind の都合上 --force-recreate を付ける)
 docker compose -f compose/compose.yaml -p alt up -d --force-recreate prometheus
 ```
+
+### 2.4 blackbox-exporter を初めて有効化する順序
+
+`scrape_configs` の `tls-handshake` / `tls-handshake-canary` job は prober が居ない状態で
+読み込むと、prober 停止と本数不一致の ticket 2 本が鳴る (page は出ない)。次の順に行う。
+
+```bash
+# 1. prober を単独で起動する (他サービスを巻き込まない)
+docker compose -f compose/compose.yaml -p alt up -d --no-deps blackbox-exporter
+
+# 2. 12 listener と canary (step-ca) の probe が成功することを、prober 自身のコンテナの
+#    busybox wget で確認する (新しい image は pull しない)。13 行とも probe_success 1 になること
+for t in alt-data-hub:9443 auth-hub:9443 auth-hub:8443 search-indexer:9443 \
+         pre-processor:9443 tag-generator:9443 recap-worker:9443 \
+         acolyte-orchestrator:9443 recap-subworker:9443 news-creator:9443 \
+         rag-orchestrator:9010 rag-orchestrator:9011 step-ca:9000; do
+  r=$(docker compose -f compose/compose.yaml -p alt exec -T blackbox-exporter \
+        wget -qO- "http://localhost:9115/probe?module=mtls_server_cert&target=$t" 2>&1 \
+      | grep '^probe_success') || r='NO RESULT (exec or wget failed)'
+  printf '%s %s\n' "$t" "$r"
+done
+
+# 3. その後で Prometheus に設定とルールを読ませる
+make observability-reload
+```
+
+設定ファイルの変更を検知して自動で再読み込みする仕組み
+(`make observability-reload-install` の timer など) を入れているホストでは、この順序は
+保証できない。ファイルが配置されてから数分以内に Prometheus が新しい設定を読むので、
+prober を起動するまで `TlsHandshakeProberDown` と `TlsHandshakeProbeFleetIncomplete` の
+ticket 2 本が鳴る。page にはならないので、慌てず手順 1〜2 を済ませればよい。
+
+### 2.5 導入直後の確認 (Prometheus UI か `/api/v1/query`)
+
+本番の証明書チェーンでは計測していないので、有効化から 24 時間以内に次を確かめる。
+
+| 確認 | PromQL / コマンド | 期待値 |
+|---|---|---|
+| 12 本とも成功 | `count(probe_success{job="tls-handshake"} == 1)` と `count(probe_success{job="tls-handshake"} == 0)` | 前者 12、後者は空 |
+| canary (step-ca) が成功 | `probe_success{job="tls-handshake-canary"}` | 1 |
+| ルール 9 本が読み込まれている | `curl -s http://127.0.0.1:9090/api/v1/rules \| python3 -c 'import sys,json; print(sum(1 for g in json.load(sys.stdin)["data"]["groups"] for r in g["rules"] if r["name"].startswith("TlsHandshake")))'` | 9 |
+| 提示と報告の差が数秒以内 (最短期限が leaf であること) | `abs(probe_ssl_earliest_cert_expiry{job="tls-handshake"} - on(subject) group_left() max by (subject) (pki_enrollment_cert_not_after_seconds))` | 全系列 5 以下 |
+| 交渉された TLS が 1.3 (Rust の recap-worker を含む) | `probe_tls_version_info{job="tls-handshake",version!="TLS 1.3"}` | 空 |
+| probe 由来のログ行数 | `docker compose -f compose/compose.yaml -p alt logs --since 24h <service> \| grep -c 'TLS handshake error'` (クライアント認証を要求する Go の listener) | listener あたり 1 日約 1,440 行、6 本合計で約 8,600 行 |
 
 ---
 
