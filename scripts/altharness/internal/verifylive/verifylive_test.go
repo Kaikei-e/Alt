@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"alt/scripts/altharness/internal/fsperm"
 	"alt/scripts/altharness/internal/verifylive"
@@ -332,6 +333,72 @@ func TestCheckC07Corpus_DetectsBuggyAfterAndPassesFixedBefore(t *testing.T) {
 		})
 		if code != 1 {
 			t.Fatalf("expected exit 1 when after.py does not fail live probe, got %d\nstdout=%s", code, out.String())
+		}
+	})
+	t.Run("broken_import_is_runner_error_not_sse_hang", func(t *testing.T) {
+		t.Parallel()
+		brokenPath := filepath.Join(t.TempDir(), "broken_import.py")
+		if err := os.WriteFile(brokenPath, []byte("import nonexistent_module_verify04_xyz\n"), fsperm.File); err != nil {
+			t.Fatalf("write broken module: %v", err)
+		}
+		ok, sig, detail := verifylive.EvaluateC07Subject(context.Background(), brokenPath, 2*time.Second)
+		if ok || sig != "" {
+			t.Fatalf("broken import must return runner error (ok=false, signal=\"\"), got ok=%v sig=%q detail=%q", ok, sig, detail)
+		}
+		var out, errBuf bytes.Buffer
+		code := verifylive.RunWithOptions(context.Background(), []string{
+			"check-c07-corpus", "--before", beforePath, "--after", brokenPath, "--format", "json",
+		}, verifylive.Options{Stdout: &out, Stderr: &errBuf})
+		if code == 0 {
+			t.Fatalf("check-c07-corpus must fail on broken after.py import, got exit 0\nstdout=%s", out.String())
+		}
+	})
+}
+
+func TestDoctor_HygieneOnlyAndSymlinkRejection(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	t.Run("hygiene_only_does_not_write_evidence_dir", func(t *testing.T) {
+		t.Parallel()
+		evDir := filepath.Join(t.TempDir(), "uncreated-evidence")
+		var out, errBuf bytes.Buffer
+		code := verifylive.RunWithOptions(context.Background(), []string{
+			"doctor", "--hygiene-only", "--repo-root", root, "--evidence-dir", evDir, "--format", "json",
+		}, verifylive.Options{
+			Stdout: &out,
+			Stderr: &errBuf,
+			Env:    map[string]string{"COMPOSE_PROJECT_NAME": ""},
+		})
+		if code != 0 {
+			t.Fatalf("doctor --hygiene-only failed with exit %d\nstdout=%s\nstderr=%s", code, out.String(), errBuf.String())
+		}
+		if _, err := os.Stat(evDir); !os.IsNotExist(err) {
+			t.Fatalf("doctor --hygiene-only must not create %s", evDir)
+		}
+	})
+
+	t.Run("symlink_evidence_dir_rejected", func(t *testing.T) {
+		t.Parallel()
+		base := t.TempDir()
+		realDir := filepath.Join(base, "real")
+		if err := os.MkdirAll(realDir, fsperm.Dir); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		linkDir := filepath.Join(base, "link")
+		if err := os.Symlink(realDir, linkDir); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		var out, errBuf bytes.Buffer
+		code := verifylive.RunWithOptions(context.Background(), []string{
+			"run", "--task", "symtest", "--probe", "body-limit", "--repo-root", root, "--evidence-dir", linkDir,
+		}, verifylive.Options{
+			Stdout: &out,
+			Stderr: &errBuf,
+			Env:    map[string]string{"COMPOSE_PROJECT_NAME": ""},
+		})
+		if code == 0 {
+			t.Fatalf("expected symlink evidence-dir to be rejected, got exit 0")
 		}
 	})
 }

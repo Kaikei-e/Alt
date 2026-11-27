@@ -521,3 +521,63 @@ def test_padding_2() -> None:
 			victimFailure.Seed, reproRep.PassedRounds, reproRep.FailedRounds)
 	}
 }
+
+func TestFlakyHuntRejectsFlagInjectionSymlinksAndZeroTests(t *testing.T) {
+	t.Parallel()
+	repo := makeTempRepo(t)
+	writeGoModule(t, repo, "good-go/app", "example.com/goodgo", `package app
+
+import "testing"
+
+func TestReal(t *testing.T) {}
+`)
+
+	t.Run("rejects --pkg flag injection", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		rc := Run(context.Background(), []string{
+			"good-go/app", "--repo-root", repo, "--pkg", "-exec=/bin/true",
+		}, &out, &errBuf)
+		if rc != 2 {
+			t.Fatalf("expected exit 2 for --pkg flag injection, got %d stderr=%q", rc, errBuf.String())
+		}
+	})
+
+	t.Run("fails closed when go test executes zero tests", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		rc := Run(context.Background(), []string{
+			"good-go/app", "--repo-root", repo, "--rounds", "1", "--race=false", "--format", "json", "--", "-run", "^TestNonExistent999$",
+		}, &out, &errBuf)
+		if rc != 1 {
+			t.Fatalf("expected exit 1 on 0-test match, got %d stdout=%q stderr=%q", rc, out.String(), errBuf.String())
+		}
+		var rep Report
+		if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+			t.Fatalf("json: %v", err)
+		}
+		if len(rep.Failures) == 0 || rep.Failures[0].Kind != "zero_tests" {
+			t.Fatalf("expected zero_tests failure, got %+v", rep.Failures)
+		}
+	})
+
+	t.Run("rejects symlinked evidence directory", func(t *testing.T) {
+		t.Parallel()
+		base := t.TempDir()
+		realDir := filepath.Join(base, "real")
+		if err := os.MkdirAll(realDir, fsperm.Dir); err != nil {
+			t.Fatal(err)
+		}
+		linkDir := filepath.Join(base, "sym")
+		if err := os.Symlink(realDir, linkDir); err != nil {
+			t.Fatal(err)
+		}
+		var out, errBuf bytes.Buffer
+		rc := Run(context.Background(), []string{
+			"good-go/app", "--repo-root", repo, "--rounds", "1", "--race=false", "--evidence-dir", linkDir,
+		}, &out, &errBuf)
+		if rc != 2 {
+			t.Fatalf("expected exit 2 for symlink evidence dir, got %d stderr=%q", rc, errBuf.String())
+		}
+	})
+}

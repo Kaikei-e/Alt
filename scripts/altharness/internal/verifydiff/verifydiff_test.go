@@ -172,8 +172,8 @@ func TestRunEquivalentSplitPassesAndRecordsEvidenceAndDecision(t *testing.T) {
 		t.Fatalf("disk evidence sha256 %q != stdout %q", diskEv.OutputSHA256, report.OutputSHA256)
 	}
 
-	// Verify LOOP-03 decisions.tsv row.
-	decisionsPath := filepath.Join(repo, ".harness", "runs", "main", "decisions.tsv")
+	// Verify LOOP-03 decisions.tsv row (uninitialized branch writes into evidence dir so harness-run init stays intact).
+	decisionsPath := filepath.Join(repo, ".harness", "evidence", "verify-02", "decisions.tsv")
 	rawTSV, err := os.ReadFile(decisionsPath)
 	if err != nil {
 		t.Fatalf("missing decisions.tsv at %s: %v", decisionsPath, err)
@@ -198,8 +198,12 @@ func TestRunEquivalentSplitPassesAndRecordsEvidenceAndDecision(t *testing.T) {
 	if !guards.IsValidEvidencePointer(cols[4]) {
 		t.Fatalf("evidence pointer %q rejected by guards.IsValidEvidencePointer", cols[4])
 	}
-	if cols[5] != "pass" {
-		t.Fatalf("result=%q, want pass", cols[5])
+	if cols[5] != "info" {
+		t.Fatalf("result=%q, want info", cols[5])
+	}
+	// Branch run dir must NOT have been pre-created without `harness-run init`.
+	if _, err := os.Stat(filepath.Join(repo, ".harness", "runs", "main", "decisions.tsv")); !os.IsNotExist(err) {
+		t.Fatalf("uninitialized branch decisions.tsv should not be created by verify-diff")
 	}
 }
 
@@ -221,6 +225,15 @@ func TestRunBrokenSplitFailsAndRecordsFailDecision(t *testing.T) {
 
 	runnerDir := t.TempDir()
 	runner := writeDiffRunnerScript(t, runnerDir, "diff_runner.py")
+
+	// When branch decisions.tsv already exists (from harness-run init), verify-diff appends there with result=mismatch.
+	branchDecisions := filepath.Join(repo, ".harness", "runs", "main", "decisions.tsv")
+	if err := os.MkdirAll(filepath.Dir(branchDecisions), fsperm.Dir); err != nil {
+		t.Fatalf("mkdir branch run: %v", err)
+	}
+	if err := os.WriteFile(branchDecisions, []byte("ts\tphase\tdecision\twhy\tevidence\tresult\n2026-11-27T00:00:00Z\tinit\tpolicy\tinit\tdocs/ADR/001037.md\tinfo\n"), fsperm.File); err != nil {
+		t.Fatalf("seed decisions.tsv: %v", err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code := verifydiff.Run(context.Background(), []string{
@@ -250,18 +263,17 @@ func TestRunBrokenSplitFailsAndRecordsFailDecision(t *testing.T) {
 		t.Fatalf("expected non-zero exit_code in evidence JSON, got 0")
 	}
 
-	decisionsPath := filepath.Join(repo, ".harness", "runs", "main", "decisions.tsv")
-	rawTSV, err := os.ReadFile(decisionsPath)
+	rawTSV, err := os.ReadFile(branchDecisions)
 	if err != nil {
 		t.Fatalf("missing decisions.tsv: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(rawTSV)), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines (header + init + mismatch), got %d:\n%s", len(lines), string(rawTSV))
 	}
-	cols := strings.Split(lines[1], "\t")
-	if cols[5] != "fail" {
-		t.Fatalf("expected result=fail in decisions.tsv, got %q", cols[5])
+	cols := strings.Split(lines[2], "\t")
+	if cols[5] != "mismatch" {
+		t.Fatalf("expected result=mismatch in decisions.tsv, got %q", cols[5])
 	}
 }
 

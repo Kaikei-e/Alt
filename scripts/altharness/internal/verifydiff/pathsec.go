@@ -136,28 +136,69 @@ func validateRepoFilePath(repoRoot, rawPath string) (relSlash string, absResolve
 	return filepath.ToSlash(relReal), resolved, nil
 }
 
-// resolveSafeOutputPath resolves a repo-scoped output path (for evidence dir or decisions file),
-// rejecting symlink escapes and relative traversal outside repoRoot.
-func resolveSafeOutputPath(repoResolved, rawPath string, defaultPath string) (string, error) {
-	if strings.TrimSpace(rawPath) == "" {
-		return defaultPath, nil
+func checkNoSymlinkAncestors(target string) error {
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return err
 	}
-	if strings.Contains(rawPath, "\x00") {
-		return "", errors.New("output path contains NUL byte")
-	}
-	var candidate string
-	if filepath.IsAbs(rawPath) {
-		candidate = filepath.Clean(rawPath)
-	} else {
-		normalized := strings.ReplaceAll(strings.TrimSpace(rawPath), "\\", "/")
-		for _, seg := range strings.Split(normalized, "/") {
-			if seg == ".." {
-				return "", fmt.Errorf("output path %q must not contain '..'", rawPath)
-			}
+	cur := filepath.Clean(abs)
+	var stack []string
+	for {
+		stack = append(stack, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
 		}
-		candidate = filepath.Join(repoResolved, filepath.FromSlash(normalized))
+		cur = parent
 	}
-	// Walk existing ancestor to verify no symlink escapes if candidate is under repoRoot.
+	tmpRoot := filepath.Clean(os.TempDir())
+	for i := len(stack) - 1; i >= 0; i-- {
+		p := stack[i]
+		st, lerr := os.Lstat(p)
+		if lerr != nil {
+			if os.IsNotExist(lerr) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", p, lerr)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			if p == tmpRoot {
+				continue
+			}
+			return fmt.Errorf("output path must not traverse or target a symlink: %s", p)
+		}
+	}
+	return nil
+}
+
+// resolveSafeOutputPath resolves a repo-scoped output path (for evidence dir or decisions file),
+// rejecting symlink escapes on both default and explicit paths.
+func resolveSafeOutputPath(repoResolved, rawPath string, defaultPath string) (string, error) {
+	isDefault := strings.TrimSpace(rawPath) == ""
+	var candidate string
+	if isDefault {
+		candidate = filepath.Clean(defaultPath)
+	} else {
+		if strings.Contains(rawPath, "\x00") {
+			return "", errors.New("output path contains NUL byte")
+		}
+		if filepath.IsAbs(rawPath) {
+			candidate = filepath.Clean(rawPath)
+		} else {
+			normalized := strings.ReplaceAll(strings.TrimSpace(rawPath), "\\", "/")
+			for _, seg := range strings.Split(normalized, "/") {
+				if seg == ".." {
+					return "", fmt.Errorf("output path %q must not contain '..'", rawPath)
+				}
+			}
+			candidate = filepath.Join(repoResolved, filepath.FromSlash(normalized))
+		}
+	}
+	if err := checkNoSymlinkAncestors(candidate); err != nil {
+		return "", err
+	}
+	// Walk existing ancestor to compute canonical path and enforce repo containment
+	// for default and relative paths.
 	cur := candidate
 	var tail []string
 	for {
@@ -170,8 +211,8 @@ func resolveSafeOutputPath(repoResolved, rawPath string, defaultPath string) (st
 				return "", rerr
 			}
 			final := filepath.Join(append([]string{resolved}, tail...)...)
-			if !filepath.IsAbs(rawPath) && !pathWithin(final, repoResolved) {
-				return "", fmt.Errorf("output path %q escapes repository root", rawPath)
+			if (isDefault || !filepath.IsAbs(rawPath)) && !pathWithin(final, repoResolved) {
+				return "", fmt.Errorf("output path %q escapes repository root", candidate)
 			}
 			return final, nil
 		}

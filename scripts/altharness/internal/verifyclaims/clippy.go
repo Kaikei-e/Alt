@@ -18,6 +18,7 @@ import (
 var (
 	toolchainChannelRE = regexp.MustCompile(`(?m)^\s*channel\s*=\s*"([^"]+)"`)
 	rustAllowAttrRE    = regexp.MustCompile(`#(!?)\[\s*allow\s*\(([^)]*)\)\s*\]`)
+	rustCfgAttrAllowRE = regexp.MustCompile(`#(!?)\[\s*cfg_attr\s*\([^[]*?,\s*allow\s*\(([^)]*)\)\s*\)\s*\]`)
 )
 
 type recapClippyOptions struct {
@@ -333,6 +334,7 @@ func inventoryRustAllows(projectAbs string) ([]AllowEntry, string, error) {
 					codePart = codePart[:commentIdx]
 				}
 				matches := rustAllowAttrRE.FindAllStringSubmatch(codePart, -1)
+				matches = append(matches, rustCfgAttrAllowRE.FindAllStringSubmatch(codePart, -1)...)
 				for _, m := range matches {
 					kind := "outer"
 					if m[1] == "!" {

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -403,6 +404,15 @@ if __name__ == "__main__":
     asyncio.run(_main())
 `
 
+const SignalC07SSEBadResponse = "VERIFY_04_SSE_BAD_RESPONSE"
+
+type c07EvalOutcome struct {
+	ok        bool
+	runnerErr error
+	signal    string
+	detail    string
+}
+
 // CheckC07Corpus executes a real loopback HTTP SSE probe against both beforePath
 // (expected to terminate cleanly with error event + EOF) and afterPath (expected
 // to hang when aclose() raises inside finally before queueing the sentinel).
@@ -429,34 +439,69 @@ func CheckC07Corpus(ctx context.Context, beforePath, afterPath string, timeout t
 		return C07CorpusResult{}, fmt.Errorf("after file not found: %w", err)
 	}
 
-	beforeOK, beforeDetail := evalC07Subject(ctx, pyBin, beforeAbs, timeout)
-	afterOK, afterDetail := evalC07Subject(ctx, pyBin, afterAbs, timeout)
+	beforeOut := evalC07Subject(ctx, pyBin, beforeAbs, timeout)
+	if beforeOut.runnerErr != nil {
+		return C07CorpusResult{}, fmt.Errorf("before subject runner error: %w", beforeOut.runnerErr)
+	}
+	afterOut := evalC07Subject(ctx, pyBin, afterAbs, timeout)
+	if afterOut.runnerErr != nil {
+		return C07CorpusResult{}, fmt.Errorf("after subject runner error: %w", afterOut.runnerErr)
+	}
 
 	res := C07CorpusResult{
 		BeforePath:   beforePath,
 		AfterPath:    afterPath,
-		BeforePassed: beforeOK,
-		AfterPassed:  afterOK,
-		Detected:     beforeOK && !afterOK,
-		BeforeDetail: beforeDetail,
-		AfterDetail:  afterDetail,
-	}
-	if !afterOK {
-		res.Signal = SignalC07SSEHang
+		BeforePassed: beforeOut.ok,
+		AfterPassed:  afterOut.ok,
+		Detected:     beforeOut.ok && !afterOut.ok && afterOut.signal == SignalC07SSEHang,
+		BeforeDetail: beforeOut.detail,
+		AfterDetail:  afterOut.detail,
+		Signal:       afterOut.signal,
 	}
 	return res, nil
 }
 
-func evalC07Subject(ctx context.Context, pyBin, moduleAbsPath string, timeout time.Duration) (bool, string) {
+// EvaluateC07Subject runs the isolated 127.0.0.1 loopback SSE probe against a
+// single Python module path (before.py or after.py). It returns ok=true when
+// the SSE stream terminates cleanly with an error event + EOF despite aclose()
+// raising; ok=false with SignalC07SSEHang ONLY on a genuine post-header SSE
+// stream termination hang; ok=false with SignalC07SSEBadResponse on non-200 or
+// missing frames; and ok=false with signal="" on runner/startup/import errors.
+func EvaluateC07Subject(ctx context.Context, modulePath string, timeout time.Duration) (bool, string, string) {
+	if timeout <= 0 {
+		timeout = defaultC07Timeout
+	}
+	pyBin, err := resolveStdlibPython()
+	if err != nil {
+		return false, "", err.Error()
+	}
+	absPath, err := filepath.Abs(modulePath)
+	if err != nil {
+		return false, "", fmt.Sprintf("resolve module path: %v", err)
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		return false, "", fmt.Sprintf("module file not found: %v", err)
+	}
+	out := evalC07Subject(ctx, pyBin, absPath, timeout)
+	if out.runnerErr != nil {
+		return false, "", out.runnerErr.Error()
+	}
+	if out.ok {
+		return true, "", out.detail
+	}
+	return false, out.signal, out.detail
+}
+
+func evalC07Subject(ctx context.Context, pyBin, moduleAbsPath string, timeout time.Duration) c07EvalOutcome {
 	tmpDir, err := os.MkdirTemp("", "alt-verifylive-c07-*")
 	if err != nil {
-		return false, fmt.Sprintf("mkdirtemp: %v", err)
+		return c07EvalOutcome{runnerErr: fmt.Errorf("mkdirtemp: %w", err)}
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	scriptPath := filepath.Join(tmpDir, "c07_server.py")
 	if err := os.WriteFile(scriptPath, []byte(c07CorpusServerPy), fsperm.File); err != nil {
-		return false, fmt.Sprintf("write c07 script: %v", err)
+		return c07EvalOutcome{runnerErr: fmt.Errorf("write c07 script: %w", err)}
 	}
 	readyFile := filepath.Join(tmpDir, "ready.url")
 	child, err := startLoopbackChild(ctx, childSpec{
@@ -467,7 +512,7 @@ func evalC07Subject(ctx context.Context, pyBin, moduleAbsPath string, timeout ti
 		ReadyTimeout: 10 * time.Second,
 	})
 	if err != nil {
-		return false, fmt.Sprintf("start c07 server: %v", err)
+		return c07EvalOutcome{runnerErr: fmt.Errorf("start c07 server: %w", err)}
 	}
 	defer child.Stop()
 
@@ -475,26 +520,54 @@ func evalC07Subject(ctx context.Context, pyBin, moduleAbsPath string, timeout ti
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, child.baseURL+"/sse", nil)
 	if err != nil {
-		return false, err.Error()
+		return c07EvalOutcome{runnerErr: err}
 	}
 	client := loopbackHTTPClient(timeout)
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Sprintf("SSE request failed/hung before headers: %v", err)
+		return c07EvalOutcome{runnerErr: fmt.Errorf("SSE request failed before headers: %w", err)}
 	}
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if readErr != nil {
-		return false, fmt.Sprintf("SSE stream hung without terminal sentinel (partial=%q, err=%v)", strings.TrimSpace(string(body)), readErr)
+		if resp.StatusCode == http.StatusOK && strings.Contains(ct, "text/event-stream") &&
+			(errors.Is(readErr, context.DeadlineExceeded) || errors.Is(reqCtx.Err(), context.DeadlineExceeded)) {
+			return c07EvalOutcome{
+				ok:     false,
+				signal: SignalC07SSEHang,
+				detail: fmt.Sprintf("SSE stream hung without terminal sentinel (partial=%q, err=%v)", strings.TrimSpace(string(body)), readErr),
+			}
+		}
+		return c07EvalOutcome{
+			ok:     false,
+			signal: SignalC07SSEBadResponse,
+			detail: fmt.Sprintf("SSE read error without deadline hang (status=%d, ct=%q, err=%v)", resp.StatusCode, ct, readErr),
+		}
 	}
 	bodyStr := string(body)
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Sprintf("unexpected status %d", resp.StatusCode)
+		return c07EvalOutcome{
+			ok:     false,
+			signal: SignalC07SSEBadResponse,
+			detail: fmt.Sprintf("unexpected status %d", resp.StatusCode),
+		}
+	}
+	if !strings.Contains(ct, "text/event-stream") {
+		return c07EvalOutcome{
+			ok:     false,
+			signal: SignalC07SSEBadResponse,
+			detail: fmt.Sprintf("unexpected content-type %q", ct),
+		}
 	}
 	if !strings.Contains(bodyStr, `data: "chunk-1"`) || !strings.Contains(bodyStr, "event: error") {
-		return false, fmt.Sprintf("missing expected SSE frames: %q", bodyStr)
+		return c07EvalOutcome{
+			ok:     false,
+			signal: SignalC07SSEBadResponse,
+			detail: fmt.Sprintf("missing expected SSE frames: %q", bodyStr),
+		}
 	}
-	return true, "received data chunk + error event + clean EOF before timeout"
+	return c07EvalOutcome{ok: true, detail: "received data chunk + error event + clean EOF before timeout"}
 }
 
 // ============================================================================
@@ -509,8 +582,6 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"pre-processor/internal/httpserver"
 )
 
 func TestVerifyLiveBodyLimitServer(t *testing.T) {
@@ -521,10 +592,7 @@ func TestVerifyLiveBodyLimitServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen 127.0.0.1:0: %v", err)
 	}
-	srv := httpserver.New(httpserver.Config{
-		Handler:           e,
-		ReadHeaderTimeout: 5 * time.Second,
-	})
+	srv := newHTTPListenerServer(ln.Addr().String(), e)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.Serve(ln)
@@ -686,6 +754,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net"
 	"os"
@@ -695,14 +764,12 @@ import (
 	"auth-hub/config"
 	"auth-hub/internal/adapter/gateway"
 	adapterhandler "auth-hub/internal/adapter/handler"
-	"auth-hub/internal/httpserver"
 	infracache "auth-hub/internal/infrastructure/cache"
 	infratoken "auth-hub/internal/infrastructure/token"
 	"auth-hub/internal/usecase"
-	appmiddleware "auth-hub/middleware"
+	"auth-hub/utils/otel"
 
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 )
 
 func TestVerifyLiveAuthHubServer(t *testing.T) {
@@ -729,30 +796,36 @@ func TestVerifyLiveAuthHubServer(t *testing.T) {
 	sessionUC := usecase.NewGetSession(kratosGW, sessionCache, jwtIssuer, log)
 	invalidateUC := usecase.NewInvalidateSession(sessionCache, log)
 
-	validateHandler := adapterhandler.NewValidateHandler(validateUC, jwtIssuer)
-	sessionHandler := adapterhandler.NewSessionHandler(sessionUC, invalidateUC)
-	healthHandler := adapterhandler.NewHealthHandler()
+	handlers := authHubHandlers{
+		validate: adapterhandler.NewValidateHandler(validateUC, jwtIssuer),
+		session:  adapterhandler.NewSessionHandler(sessionUC, invalidateUC),
+		csrf:     adapterhandler.NewCSRFHandler(nil),
+		health:   adapterhandler.NewHealthHandler(),
+		internal: adapterhandler.NewInternalHandler(nil, nil, nil),
+	}
 
+	var secretRaw [32]byte
+	if _, err := rand.Read(secretRaw[:]); err != nil {
+		t.Fatalf("generate ephemeral internal auth secret: %v", err)
+	}
+	cfg := &config.Config{
+		InternalAuthSecret:     hex.EncodeToString(secretRaw[:]),
+		TrustedProxiesDisabled: true,
+		ValidateRateLimit:      100.0 / 60.0,
+		SessionRateLimit:       30.0 / 60.0,
+		CSRFRateLimit:          100.0,
+		IntrospectRateLimit:    1200.0 / 60.0,
+		IntrospectBurst:        100,
+	}
 	e := echo.New()
-	e.Logger = log
-	configureTrustedProxies(context.Background(), e, &config.Config{TrustedProxiesDisabled: true}, log)
-	e.Use(appmiddleware.SecurityHeaders())
-	e.Use(newRequestLoggerMiddleware())
-	e.Use(middleware.Recover())
-
-	e.GET("/validate", validateHandler.Handle)
-	e.GET("/session", sessionHandler.Handle)
-	e.GET("/health", healthHandler.Handle)
+	configureAuthHubEcho(context.Background(), e, cfg, otel.Config{Enabled: false, ServiceName: "auth-hub"}, log, handlers)
 
 	handler := buildPlaintextHandler(e, true)
 	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen 127.0.0.1:0: %v", err)
 	}
-	srv := httpserver.New(httpserver.Config{
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-	})
+	srv := newPlaintextServer(ln.Addr().String(), handler)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.Serve(ln)

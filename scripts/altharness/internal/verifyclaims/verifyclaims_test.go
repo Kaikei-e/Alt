@@ -34,7 +34,7 @@ func TestValidateReportValid(t *testing.T) {
 	t.Run("2-column Japanese claim evidence table with anchor", func(t *testing.T) {
 		t.Parallel()
 		repo := t.TempDir()
-		writeFile(t, filepath.Join(repo, "docs", "review", "ledger.md"), "# Evidence\nok\n")
+		writeFile(t, filepath.Join(repo, "docs", "review", "ledger.md"), "# Evidence\n\n## Plecto\nok\n")
 		report := filepath.Join(repo, "report.md")
 		writeFile(t, report, `# 実装報告
 
@@ -589,4 +589,72 @@ func TestCommittedVerify06EvidenceLedgerValidates(t *testing.T) {
 	if !res.Valid || res.ClaimsChecked < 4 || res.EvidencePathsChecked < 4 {
 		t.Fatalf("unexpected ledger validation summary: %+v", res)
 	}
+}
+
+func TestValidateReportRejectsCarbonHighBypassesAndCfgAttrAllows(t *testing.T) {
+	t.Parallel()
+
+	t.Run("single script token cannot serve as both command and evidence", func(t *testing.T) {
+		t.Parallel()
+		repo := t.TempDir()
+		writeFile(t, filepath.Join(repo, "scripts", "lint", "adr.sh"), "#!/bin/sh\nexit 0\n")
+		report := filepath.Join(repo, "report.md")
+		writeFile(t, report, "# R\n\n| 主張 | 証拠 |\n| --- | --- |\n| ADR passes | `./scripts/lint/adr.sh` |\n")
+		code, _, errOut := runCLI("validate", report, "--repo-root", repo)
+		if code == exitOK {
+			t.Fatalf("expected single-token script bypass to fail, got exit 0")
+		}
+		if !strings.Contains(errOut, "MISSING_EVIDENCE_PATH") && !strings.Contains(errOut, "NON_EVIDENCE_ARTIFACT") {
+			t.Fatalf("expected MISSING_EVIDENCE_PATH or NON_EVIDENCE_ARTIFACT, got: %s", errOut)
+		}
+	})
+
+	t.Run("prose starting with go/make/git does not satisfy command requirement", func(t *testing.T) {
+		t.Parallel()
+		repo := t.TempDir()
+		writeFile(t, filepath.Join(repo, "docs", "review", "ev.log"), "ok\n")
+		report := filepath.Join(repo, "report.md")
+		writeFile(t, report, "# R\n\n| 主張 | 証拠 |\n| --- | --- |\n| safe | go through logs and check `docs/review/ev.log` |\n")
+		code, _, errOut := runCLI("validate", report, "--repo-root", repo)
+		if code == exitOK || !strings.Contains(errOut, "MISSING_REPRO_COMMAND") {
+			t.Fatalf("expected MISSING_REPRO_COMMAND for prose bypass, got code=%d stderr=%s", code, errOut)
+		}
+	})
+
+	t.Run("missing markdown anchor and bare self-reference rejected", func(t *testing.T) {
+		t.Parallel()
+		repo := t.TempDir()
+		writeFile(t, filepath.Join(repo, "docs", "review", "notes.md"), "# Real Heading\n\ncontent\n")
+		report := filepath.Join(repo, "docs", "review", "rep.md")
+		writeFile(t, report, "# Rep\n\n| 主張 | 証拠 |\n| --- | --- |\n| c1 | `go test ./...` / `docs/review/notes.md#nonexistent-999` |\n| c2 | `go test ./...` / `docs/review/rep.md` |\n")
+		code, _, errOut := runCLI("validate", report, "--repo-root", repo)
+		if code == exitOK || !strings.Contains(errOut, "MISSING_EVIDENCE_ANCHOR") || !strings.Contains(errOut, "SELF_REFERENTIAL_EVIDENCE") {
+			t.Fatalf("expected MISSING_EVIDENCE_ANCHOR and SELF_REFERENTIAL_EVIDENCE, got code=%d stderr=%s", code, errOut)
+		}
+	})
+
+	t.Run("unclosed code fence and reworded blanket claim rejected", func(t *testing.T) {
+		t.Parallel()
+		repo := t.TempDir()
+		writeFile(t, filepath.Join(repo, "docs", "review", "ev.log"), "ok\n")
+		report := filepath.Join(repo, "report.md")
+		writeFile(t, report, "# R\n\n| 主張 | 証拠 |\n| --- | --- |\n| 全モジュールで実行時挙動への影響なし | `go test ./...` / `docs/review/ev.log` |\n\n```text\nunclosed fence hides trailing text\n")
+		code, _, errOut := runCLI("validate", report, "--repo-root", repo)
+		if code == exitOK || !strings.Contains(errOut, "UNCLOSED_CODE_FENCE") || !strings.Contains(errOut, "BLANKET_UNBACKED_CLAIM") {
+			t.Fatalf("expected UNCLOSED_CODE_FENCE and BLANKET_UNBACKED_CLAIM, got code=%d stderr=%s", code, errOut)
+		}
+	})
+
+	t.Run("inventoryRustAllows captures cfg_attr allows", func(t *testing.T) {
+		t.Parallel()
+		proj := t.TempDir()
+		writeFile(t, filepath.Join(proj, "src", "lib.rs"), "#[cfg_attr(not(test), allow(dead_code))]\nfn helper() {}\n#![cfg_attr(test, allow(unused_imports))]\n")
+		entries, _, err := inventoryRustAllows(proj)
+		if err != nil {
+			t.Fatalf("inventoryRustAllows: %v", err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 cfg_attr allow entries, got %d: %+v", len(entries), entries)
+		}
+	})
 }

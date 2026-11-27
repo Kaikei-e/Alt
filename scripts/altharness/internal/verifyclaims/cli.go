@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -300,6 +301,41 @@ func resolveSafeRepoPath(repoRoot, rawRel string) (string, string, error) {
 	return cur, "", nil
 }
 
+func ensureNoSymlinkAncestors(target string) error {
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	cur := filepath.Clean(abs)
+	var stack []string
+	for {
+		stack = append(stack, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	tmpRoot := filepath.Clean(os.TempDir())
+	for i := len(stack) - 1; i >= 0; i-- {
+		p := stack[i]
+		st, lerr := os.Lstat(p)
+		if lerr != nil {
+			if errors.Is(lerr, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", p, lerr)
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			if p == tmpRoot {
+				continue
+			}
+			return fmt.Errorf("evidence-dir must not traverse or target a symlink: %s", p)
+		}
+	}
+	return nil
+}
+
 func ensureSafeEvidenceDir(dir string) (string, error) {
 	if strings.TrimSpace(dir) == "" || strings.ContainsRune(dir, 0) {
 		return "", errors.New("evidence-dir must be non-empty")
@@ -308,14 +344,14 @@ func ensureSafeEvidenceDir(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve evidence-dir: %w", err)
 	}
-	if isSymlink(abs) {
-		return "", fmt.Errorf("evidence-dir must not be a symlink: %s", dir)
+	if err := ensureNoSymlinkAncestors(abs); err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(abs, fsperm.Dir); err != nil {
 		return "", fmt.Errorf("create evidence-dir %s: %w", abs, err)
 	}
-	if isSymlink(abs) {
-		return "", fmt.Errorf("evidence-dir must not be a symlink: %s", dir)
+	if err := ensureNoSymlinkAncestors(abs); err != nil {
+		return "", err
 	}
 	return abs, nil
 }
@@ -338,6 +374,14 @@ func runExec(ctx context.Context, dir string, extraEnv []string, timeout time.Du
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
 	if dir != "" {
 		cmd.Dir = dir
 	}

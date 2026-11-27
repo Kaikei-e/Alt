@@ -363,6 +363,19 @@ func TestExtractEffectiveConfigFromGo_ProductionInferenceProxyPreservesXFF(t *te
 	}
 }
 
+func TestVerifyFilesOnly_RealRepoSevenTargets(t *testing.T) {
+	t.Parallel()
+	repoRoot := findRepoRootForTest(t)
+	var out, errBuf bytes.Buffer
+	code := Run(t.Context(), []string{"--check-files-only", "--repo-root", repoRoot, "--format", "text"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("Run(--check-files-only) exited %d, stdout=%q stderr=%q", code, out.String(), errBuf.String())
+	}
+	if !strings.Contains(out.String(), "OK: verify-golden passed (7/7 targets)") {
+		t.Fatalf("unexpected output:\n%s", out.String())
+	}
+}
+
 func TestVerify_RealRepoSevenTargets(t *testing.T) {
 	if os.Getenv("VERIFY_GOLDEN_REAL_REPO") != "1" {
 		t.Skip("set VERIFY_GOLDEN_REAL_REPO=1 to run all 7 real repo targets")

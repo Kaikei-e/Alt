@@ -17,7 +17,11 @@ notes = "In docker/inference-proxy/main.go (aa50c76ba), SA1019 migration from ht
 
 [detection]
 planned_checks = ["CHECK-01", "VERIFY-03"]
-active_checks = ["CHECK-01"]
+active_checks = ["CHECK-01", "VERIFY-03"]
 currently_caught = true
-current_method = "CHECK-01"
-expected_signal = "go.reverse_proxy_rewrite_change"
+current_method = "CHECK-01+VERIFY-03"
+expected_signal = ""
+
+[detection.expected_signals]
+CHECK-01 = "go.reverse_proxy_rewrite_change"
+VERIFY-03 = "VERIFY-03:effective_config_diff"

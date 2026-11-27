@@ -5,6 +5,7 @@ import (
 	"alt/scripts/altharness/internal/fsperm"
 	"alt/scripts/altharness/internal/pyver"
 	"alt/scripts/altharness/internal/suppress"
+	"alt/scripts/altharness/internal/verifylive"
 	"context"
 	"fmt"
 	"io"
@@ -35,6 +36,8 @@ var builtinRunners = map[string]runner{
 	"CHECK-05":  {mode: "diff", runDiff: runCheck05Diff},
 	"CHECK-06":  {mode: "diff", runDiff: runCheck06Diff},
 	"VERIFY-01": {mode: "diff", runDiff: runVerify01Diff},
+	"VERIFY-03": {mode: "diff", runDiff: runVerify03Diff},
+	"VERIFY-04": {mode: "after", runSingle: adaptSingle(runVerify04)},
 }
 
 func phaseTarget(c Case, phase string) string {
@@ -387,4 +390,16 @@ func runArch03(ctx context.Context, c Case, phase, _ string, timeout time.Durati
 func runArch06(ctx context.Context, c Case, phase, repoRoot string, timeout time.Duration) CheckOutcome {
 	rule := filepath.Join(repoRoot, "scripts", "lint", "ast-grep", "rules", "python-no-direct-sys-modules-assign.yml")
 	return runAstGrep(ctx, c, phase, []string{rule}, timeout)
+}
+
+func runVerify04(ctx context.Context, c Case, phase, _ string, timeout time.Duration) CheckOutcome {
+	targetPath := filepath.Join(c.CaseDir, phaseTarget(c, phase))
+	ok, signal, detail := verifylive.EvaluateC07Subject(ctx, targetPath, timeout)
+	if ok {
+		return CheckOutcome{ExitCode: 0, Output: detail}
+	}
+	if signal == "" {
+		return CheckOutcome{ExitCode: -1, RunnerError: fmt.Sprintf("VERIFY-04 exec error: %s", detail)}
+	}
+	return CheckOutcome{ExitCode: 1, Output: fmt.Sprintf("%s: %s", signal, detail)}
 }
