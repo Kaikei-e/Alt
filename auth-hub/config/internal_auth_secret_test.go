@@ -13,8 +13,11 @@ func baseValidConfig(t *testing.T) *Config {
 	t.Helper()
 	return &Config{
 		KratosURL:              "http://kratos:4433",
+		KratosAdminURL:         "http://kratos-admin:4434",
 		Port:                   "8888",
 		CacheTTL:               60 * time.Second,
+		BackendTokenIssuer:     "auth-hub",
+		BackendTokenAudience:   "alt-backend",
 		BackendTokenTTL:        5 * time.Minute,
 		CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 		BackendTokenSigningKey: generateTestEd25519Key(t),

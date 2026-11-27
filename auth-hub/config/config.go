@@ -282,12 +282,24 @@ func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, bool, error) {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.KratosURL == "" {
+	if strings.TrimSpace(c.KratosURL) == "" {
 		return fmt.Errorf("KRATOS_URL cannot be empty")
 	}
 
-	if c.Port == "" {
+	if strings.TrimSpace(c.KratosAdminURL) == "" {
+		return fmt.Errorf("KRATOS_ADMIN_URL cannot be empty")
+	}
+
+	if strings.TrimSpace(c.Port) == "" {
 		return fmt.Errorf("PORT cannot be empty")
+	}
+
+	if strings.TrimSpace(c.BackendTokenIssuer) == "" {
+		return fmt.Errorf("BACKEND_TOKEN_ISSUER cannot be empty")
+	}
+
+	if strings.TrimSpace(c.BackendTokenAudience) == "" {
+		return fmt.Errorf("BACKEND_TOKEN_AUDIENCE cannot be empty")
 	}
 
 	if c.CacheTTL <= 0 {
@@ -305,7 +317,7 @@ func (c *Config) Validate() error {
 	}
 
 	// CSRF_SECRET is required for security - no fallback to hardcoded values
-	if c.CSRFSecret == "" {
+	if strings.TrimSpace(c.CSRFSecret) == "" {
 		return fmt.Errorf("CSRF_SECRET is required")
 	}
 	if len(c.CSRFSecret) < 32 {
@@ -318,7 +330,7 @@ func (c *Config) Validate() error {
 
 	// INTERNAL_AUTH_SECRET is the shared bearer the /internal group compares
 	// X-Internal-Auth against. No default — an unset value exits non-zero.
-	if c.InternalAuthSecret == "" {
+	if strings.TrimSpace(c.InternalAuthSecret) == "" {
 		return fmt.Errorf("INTERNAL_AUTH_SECRET is required")
 	}
 	if len(c.InternalAuthSecret) < 32 {
@@ -342,8 +354,8 @@ func (c *Config) Validate() error {
 }
 
 // getEnv retrieves an environment variable or returns a fallback value.
-// When <KEY>_FILE is non-empty, its file must be readable and safe; read errors
-// fail fast without falling back to <KEY> or fallback.
+// When <KEY>_FILE is non-empty, its file must be readable, safe, and non-empty;
+// read or empty-file errors fail fast without falling back to <KEY> or fallback.
 func getEnv(key, fallback string) (string, error) {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
@@ -351,7 +363,11 @@ func getEnv(key, fallback string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("read %s_FILE: %w", key, err)
 		}
-		return strings.TrimSpace(string(content)), nil
+		trimmed := strings.TrimSpace(string(content))
+		if trimmed == "" {
+			return "", fmt.Errorf("read %s_FILE: file is empty", key)
+		}
+		return trimmed, nil
 	}
 
 	if value := os.Getenv(key); value != "" {

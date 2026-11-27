@@ -571,8 +571,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid configuration",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -585,8 +588,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "missing Kratos URL",
 			config: &Config{
 				KratosURL:              "",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -597,11 +603,68 @@ func TestConfig_Validate(t *testing.T) {
 			errContains: "KRATOS_URL",
 		},
 		{
+			name: "whitespace Kratos URL",
+			config: &Config{
+				KratosURL:              "   ",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "KRATOS_URL",
+		},
+		{
+			name: "missing Kratos Admin URL",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "KRATOS_ADMIN_URL",
+		},
+		{
+			name: "whitespace Kratos Admin URL",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "   ",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "KRATOS_ADMIN_URL",
+		},
+		{
 			name: "missing port",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -612,11 +675,104 @@ func TestConfig_Validate(t *testing.T) {
 			errContains: "PORT",
 		},
 		{
+			name: "whitespace port",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "   ",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "PORT",
+		},
+		{
+			name: "missing backend token issuer",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_ISSUER",
+		},
+		{
+			name: "whitespace backend token issuer",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "   ",
+				BackendTokenAudience:   "alt-backend",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_ISSUER",
+		},
+		{
+			name: "missing backend token audience",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_AUDIENCE",
+		},
+		{
+			name: "whitespace backend token audience",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "   ",
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_AUDIENCE",
+		},
+		{
 			name: "invalid cache TTL (zero)",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               0,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -630,8 +786,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid cache TTL (negative)",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               -1 * time.Minute,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -645,8 +804,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "missing CSRF secret",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "",
 				BackendTokenSigningKey: validKey,
@@ -660,8 +822,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "CSRF secret too short",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "short-secret",
 				BackendTokenSigningKey: validKey,
@@ -675,8 +840,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid CSRF secret",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -689,8 +857,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "missing backend token signing key",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: nil,
@@ -704,8 +875,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid backend token signing key length",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: ed25519.PrivateKey("short"),
@@ -719,8 +893,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "missing trusted proxy CIDRs",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -734,8 +911,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid configuration with trusted proxies explicitly disabled",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -748,8 +928,11 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid configuration combining disabled trusted proxies with CIDRs",
 			config: &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -846,8 +1029,11 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 		baseCfg := func() *Config {
 			return &Config{
 				KratosURL:              "http://kratos:4433",
+				KratosAdminURL:         "http://kratos-admin:4434",
 				Port:                   "8888",
 				CacheTTL:               60 * time.Second,
+				BackendTokenIssuer:     "auth-hub",
+				BackendTokenAudience:   "alt-backend",
 				BackendTokenTTL:        5 * time.Minute,
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
@@ -1152,6 +1338,68 @@ func TestLoad_EnvFileFailFast(t *testing.T) {
 				require.Error(t, err)
 				assert.Nil(t, cfg)
 				assert.Contains(t, err.Error(), key+"_FILE")
+			})
+		}
+	})
+
+	t.Run("empty or whitespace-only _FILE fails fast for all keys", func(t *testing.T) {
+		keys := []string{
+			"BACKEND_TOKEN_ISSUER",
+			"BACKEND_TOKEN_AUDIENCE",
+			"KRATOS_ADMIN_URL",
+			"KRATOS_URL",
+			"PORT",
+			"CSRF_SECRET",
+			"INTERNAL_AUTH_SECRET",
+		}
+		payloads := []struct {
+			name    string
+			content []byte
+		}{
+			{name: "0-byte file", content: []byte("")},
+			{name: "whitespace-only file", content: []byte("  \n")},
+		}
+
+		for _, key := range keys {
+			for _, payload := range payloads {
+				t.Run(key+"_FILE/"+payload.name, func(t *testing.T) {
+					setValidBaseEnv(t)
+					p := filepath.Join(t.TempDir(), key)
+					require.NoError(t, os.WriteFile(p, payload.content, fsperm.SecretFile))
+					t.Setenv(key+"_FILE", p)
+
+					cfg, err := Load()
+					require.Error(t, err)
+					assert.Nil(t, cfg)
+					assert.Contains(t, err.Error(), key+"_FILE")
+				})
+			}
+		}
+	})
+
+	t.Run("whitespace-only raw env vars fail Load", func(t *testing.T) {
+		cases := []struct {
+			key   string
+			value string
+		}{
+			{key: "KRATOS_URL", value: "   "},
+			{key: "PORT", value: "   "},
+			{key: "KRATOS_ADMIN_URL", value: "   "},
+			{key: "BACKEND_TOKEN_ISSUER", value: "   "},
+			{key: "BACKEND_TOKEN_AUDIENCE", value: "   "},
+			{key: "CSRF_SECRET", value: "                                "},
+			{key: "INTERNAL_AUTH_SECRET", value: "                                "},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.key, func(t *testing.T) {
+				setValidBaseEnv(t)
+				t.Setenv(tc.key, tc.value)
+
+				cfg, err := Load()
+				require.Error(t, err)
+				assert.Nil(t, cfg)
+				assert.Contains(t, err.Error(), tc.key)
 			})
 		}
 	})
