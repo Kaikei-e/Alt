@@ -67,7 +67,7 @@ subcommands:
   brief [--base REV] [--focus-file PATH] [--out PATH] [--repo-root DIR] [--format json|markdown]
   validate <report.json> [--require-focus-all] [--repo-root DIR] [--format text|json]
   record <report.json> [--branch NAME] [--decisions-file PATH] [--runs-dir DIR] [--repo-root DIR] [--require-focus-all] [--format text|json]
-  check-coverage [--decisions-file PATH] [--branch NAME] [--runs-dir DIR] [--repo-root DIR] [--format text|json]
+  check-coverage [--decisions-file PATH] [--branch NAME] [--runs-dir DIR] [--repo-root DIR] [--strict-resolved] [--format text|json]
 `)
 }
 
@@ -382,7 +382,9 @@ func cmdCheckCoverage(ctx context.Context, args []string, stdout, stderr io.Writ
 			"--repo-root":      true,
 			"--format":         true,
 		},
-		nil,
+		map[string]bool{
+			"--strict-resolved": true,
+		},
 	)
 	if err != nil {
 		writef(stderr, "error: %v\n", err)
@@ -430,7 +432,9 @@ func cmdCheckCoverage(ctx context.Context, args []string, stdout, stderr io.Writ
 		}
 	}
 
-	cov := CheckCoverage(decisionsPath)
+	cov := CheckCoverageWithOptions(decisionsPath, CoverageOptions{
+		StrictResolved: p.bools["--strict-resolved"],
+	})
 	if format == "json" {
 		raw, merr := marshalJSON(cov)
 		if merr != nil {

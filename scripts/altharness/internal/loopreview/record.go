@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"alt/scripts/altharness/internal/fsperm"
 	"alt/scripts/altharness/internal/guards"
 )
+
+var idRefEvidenceRE = regexp.MustCompile(`(?i)^(?:ADR-\d{6}|PM-\d{4}-\d{3}|C-\d{2,}|#\d+)$`)
 
 // RecordOptions configures `loop-review record`.
 type RecordOptions struct {
@@ -31,6 +34,9 @@ func normalizeEvidenceForTSV(raw string) string {
 	}
 	stripped := stripLineSuffix(cleaned)
 	if guards.IsValidEvidencePointer(stripped) {
+		if idRefEvidenceRE.MatchString(stripped) {
+			return stripped
+		}
 		if !strings.Contains(cleaned, "/") && !strings.ContainsAny(cleaned, " \t") {
 			candidate := "./" + cleaned
 			if guards.IsValidEvidencePointer(candidate) {
@@ -64,6 +70,9 @@ func resolveRunAndDecisionsPaths(opts RecordOptions) (runDir, runsBase, decision
 		if err := ensureNoSymlinkPath(absRuns); err != nil {
 			return "", "", "", err
 		}
+		if st, serr := os.Lstat(absRuns); serr == nil && !st.IsDir() {
+			return "", "", "", fmt.Errorf("runs directory path is not a directory: %s", absRuns)
+		}
 		safeBranch := guards.SanitizeBranchName(guards.ResolveGitBranch(opts.RepoRoot, opts.Branch))
 		runDir = filepath.Join(absRuns, safeBranch)
 		runsBase = absRuns
@@ -77,6 +86,9 @@ func resolveRunAndDecisionsPaths(opts RecordOptions) (runDir, runsBase, decision
 		}
 		runDir = rd
 		runsBase = filepath.Join(opts.RepoRoot, ".harness", "runs")
+		if err := checkNoSymlinkUnderBase(opts.RepoRoot, runsBase); err != nil {
+			return "", "", "", err
+		}
 	}
 
 	if err := checkNoSymlinkUnderBase(runsBase, runDir); err != nil {
@@ -91,8 +103,13 @@ func resolveRunAndDecisionsPaths(opts RecordOptions) (runDir, runsBase, decision
 		if err := ensureNoSymlinkPath(absDec); err != nil {
 			return "", "", "", err
 		}
-		if st, serr := os.Lstat(absDec); serr == nil && st.IsDir() {
-			return "", "", "", fmt.Errorf("decisions file path is a directory: %s", absDec)
+		if st, serr := os.Lstat(absDec); serr == nil {
+			if st.Mode()&os.ModeSymlink != 0 {
+				return "", "", "", fmt.Errorf("refusing to overwrite symlink: %s", absDec)
+			}
+			if st.IsDir() {
+				return "", "", "", fmt.Errorf("decisions file path is a directory: %s", absDec)
+			}
 		}
 		decisionsPath = absDec
 	} else {
@@ -102,6 +119,46 @@ func resolveRunAndDecisionsPaths(opts RecordOptions) (runDir, runsBase, decision
 		}
 	}
 	return runDir, runsBase, decisionsPath, nil
+}
+
+func ensureDecisionsInitialized(decisionsPath string) error {
+	if err := ensureNoSymlinkPath(decisionsPath); err != nil {
+		return err
+	}
+	st, err := os.Lstat(decisionsPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return guards.AppendDecisionToFile(
+			decisionsPath,
+			"init",
+			"policy=fix-existing; goal=auto-initialized harness run; completion=./scripts/lint/run.sh <target> exit 0",
+			"auto-initialized LOOP-03 decision log (override via harness-run init --force)",
+			"docs/ADR/001038.md",
+			"info",
+		)
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to overwrite symlink: %s", decisionsPath)
+	}
+	if st.IsDir() {
+		return fmt.Errorf("decisions file path is a directory: %s", decisionsPath)
+	}
+	if st.Size() == 0 {
+		if err := writeFileInDirSafe(filepath.Dir(decisionsPath), filepath.Base(decisionsPath), []byte("ts\tphase\tdecision\twhy\tevidence\tresult\n")); err != nil {
+			return err
+		}
+		return guards.AppendDecisionToFile(
+			decisionsPath,
+			"init",
+			"policy=fix-existing; goal=auto-initialized harness run; completion=./scripts/lint/run.sh <target> exit 0",
+			"auto-initialized LOOP-03 decision log (override via harness-run init --force)",
+			"docs/ADR/001038.md",
+			"info",
+		)
+	}
+	return nil
 }
 
 func checkNoSymlinkUnderBase(base, target string) error {
@@ -157,37 +214,54 @@ func RecordReport(report *Report, rawJSON []byte, opts RecordOptions) (RecordRes
 	}
 
 	reviewsDir := filepath.Join(runDir, "reviews")
-	destPath := filepath.Join(reviewsDir, report.ReviewID+".json")
+	fileName := report.ReviewID + ".json"
+	destPath := filepath.Join(reviewsDir, fileName)
 	if err := checkNoSymlinkUnderBase(runsBase, reviewsDir); err != nil {
 		return RecordResult{}, err
 	}
 	if err := checkNoSymlinkUnderBase(runsBase, destPath); err != nil {
 		return RecordResult{}, err
 	}
-	if st, serr := os.Lstat(destPath); serr == nil && st.IsDir() {
-		return RecordResult{}, fmt.Errorf("review report destination is a directory: %s", destPath)
+	if st, serr := os.Lstat(reviewsDir); serr == nil && !st.IsDir() {
+		return RecordResult{}, fmt.Errorf("reviews path is not a directory: %s", reviewsDir)
+	}
+	if st, serr := os.Lstat(destPath); serr == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return RecordResult{}, fmt.Errorf("refusing to overwrite symlink: %s", destPath)
+		}
+		if st.IsDir() {
+			return RecordResult{}, fmt.Errorf("review report destination is a directory: %s", destPath)
+		}
 	}
 
 	if err := os.MkdirAll(reviewsDir, fsperm.Dir); err != nil {
 		return RecordResult{}, fmt.Errorf("create reviews dir %s: %w", reviewsDir, err)
 	}
-	// Re-check resolved containment after directory creation.
+	// Re-check symlink & resolved containment after directory creation.
+	if err := checkNoSymlinkUnderBase(runsBase, reviewsDir); err != nil {
+		return RecordResult{}, err
+	}
 	resolvedBase, err := filepath.EvalSymlinks(runsBase)
 	if err != nil {
 		return RecordResult{}, fmt.Errorf("resolve runs base %s: %w", runsBase, err)
+	}
+	resolvedRunDir, err := filepath.EvalSymlinks(runDir)
+	if err != nil {
+		return RecordResult{}, fmt.Errorf("resolve run dir %s: %w", runDir, err)
 	}
 	resolvedReviewsDir, err := filepath.EvalSymlinks(reviewsDir)
 	if err != nil {
 		return RecordResult{}, fmt.Errorf("resolve reviews dir %s: %w", reviewsDir, err)
 	}
-	if !isWithinDir(resolvedReviewsDir, resolvedBase) {
-		return RecordResult{}, fmt.Errorf("reviews directory %s escapes %s", resolvedReviewsDir, resolvedBase)
+	if !isWithinDir(resolvedRunDir, resolvedBase) || !isWithinDir(resolvedReviewsDir, resolvedRunDir) {
+		return RecordResult{}, fmt.Errorf("reviews directory %s escapes %s", resolvedReviewsDir, resolvedRunDir)
 	}
-	if isSymlink(destPath) {
-		return RecordResult{}, fmt.Errorf("refusing to overwrite symlink: %s", destPath)
-	}
-	if err := os.WriteFile(destPath, rawJSON, fsperm.File); err != nil {
+	if err := writeFileInDirSafe(reviewsDir, fileName, rawJSON); err != nil {
 		return RecordResult{}, fmt.Errorf("write report copy %s: %w", destPath, err)
+	}
+
+	if err := ensureDecisionsInitialized(decisionsPath); err != nil {
+		return RecordResult{}, fmt.Errorf("initialize decisions.tsv: %w", err)
 	}
 
 	canonMap := canonicalFocusMap()

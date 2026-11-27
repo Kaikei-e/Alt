@@ -14,12 +14,13 @@ import (
 var (
 	reviewIDRE        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
 	lineSuffixRE      = regexp.MustCompile(`(?::\d+(?:[:-]\d+)?|#L\d+(?:-L\d+)?)$`)
+	providerPrefixRE  = regexp.MustCompile(`^(?:us|eu|ap|apac|global|ca|me|sa|af|aws|gcp|azure|bedrock|vertex|openrouter|anthropic|google|openai|meta|deepseek|mistral|cohere|amazon|xai|alibaba|qwen)[.:]`)
 	nonTokenRE        = regexp.MustCompile(`[^a-z0-9.]+`)
 	multiDashRE       = regexp.MustCompile(`-{2,}`)
-	geminiVerTierRE   = regexp.MustCompile(`^(gemini-\d+(?:\.\d+)?-(?:neon|carbon|pro|flash|ultra))(?:$|-.*)`)
-	geminiTierRE      = regexp.MustCompile(`^(gemini-(?:neon|carbon|pro|flash|ultra))(?:$|-.*)`)
-	claudeTierFirstRE = regexp.MustCompile(`^(claude-(?:opus|sonnet|haiku))(?:$|-.*)`)
-	claudeVerFirstRE  = regexp.MustCompile(`^claude-\d+(?:[.-]\d+)*-(opus|sonnet|haiku)(?:$|-.*)`)
+	geminiTierRE      = regexp.MustCompile(`^gemini-(?:\d+(?:[.-]\d+)*-)?(neon|carbon|pro|flash|ultra)(?:$|-.*)`)
+	geminiShortTierRE = regexp.MustCompile(`^(?:\d+(?:[.-]\d+)*-)?(neon|carbon)(?:$|-.*)`)
+	geminiBaseRE      = regexp.MustCompile(`^gemini(?:$|-(?:\d+(?:[.-]\d+)*|latest|exp|preview).*)$`)
+	claudeTierRE      = regexp.MustCompile(`^claude-(?:\d+(?:[.-]\d+)*-)?(opus|sonnet|haiku)(?:$|-.*)`)
 	openaiORe         = regexp.MustCompile(`^(o\d+)(?:$|-.*)`)
 	deepseekRE        = regexp.MustCompile(`^(deepseek-[a-z0-9]+)(?:$|-.*)`)
 	llamaRE           = regexp.MustCompile(`^(llama-\d+(?:\.\d+)?)(?:$|-.*)`)
@@ -65,15 +66,23 @@ var (
 )
 
 // NormalizeModelFamily normalizes a model identifier or display name into its
-// lineage/family key so same-family reviews (e.g. gemini-4-neon-high vs
-// gemini-4-neon-xhigh) can be deterministically rejected.
+// lineage/family key so same-family reviews (e.g. gemini-4-neon-xhigh vs
+// Gemini 4.0 Neon (XHigh) or anthropic.claude-opus-4-6 vs claude-opus-5-5-high)
+// can be deterministically rejected.
 func NormalizeModelFamily(model string) string {
 	s := strings.TrimSpace(strings.ToLower(model))
 	if s == "" {
 		return ""
 	}
-	if idx := strings.LastIndex(s, "/"); idx >= 0 && idx+1 < len(s) {
+	if idx := strings.LastIndex(s, "/"); idx >= 0 {
 		s = s[idx+1:]
+	}
+	for {
+		next := providerPrefixRE.ReplaceAllString(s, "")
+		if next == s {
+			break
+		}
+		s = next
 	}
 	s = nonTokenRE.ReplaceAllString(s, "-")
 	s = multiDashRE.ReplaceAllString(s, "-")
@@ -81,16 +90,16 @@ func NormalizeModelFamily(model string) string {
 	if s == "" {
 		return ""
 	}
-	if m := geminiVerTierRE.FindStringSubmatch(s); m != nil {
-		return m[1]
-	}
 	if m := geminiTierRE.FindStringSubmatch(s); m != nil {
-		return m[1]
+		return "gemini-" + m[1]
 	}
-	if m := claudeTierFirstRE.FindStringSubmatch(s); m != nil {
-		return m[1]
+	if m := geminiShortTierRE.FindStringSubmatch(s); m != nil {
+		return "gemini-" + m[1]
 	}
-	if m := claudeVerFirstRE.FindStringSubmatch(s); m != nil {
+	if geminiBaseRE.MatchString(s) {
+		return "gemini"
+	}
+	if m := claudeTierRE.FindStringSubmatch(s); m != nil {
 		return "claude-" + m[1]
 	}
 	if s == "gpt" || strings.HasPrefix(s, "gpt-") {
@@ -121,6 +130,22 @@ func NormalizeModelFamily(model string) string {
 	return s
 }
 
+func hasFormulaTrigger(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch s[0] {
+	case '=', '+', '@':
+		return true
+	case '-':
+		if len(s) >= 2 {
+			c := s[1]
+			return (c >= '0' && c <= '9') || c == '=' || c == '+' || c == '@' || c == '('
+		}
+	}
+	return false
+}
+
 func isPlaceholder(s string) bool {
 	cleaned := strings.TrimSpace(s)
 	if cleaned == "" {
@@ -147,17 +172,21 @@ func stripLineSuffix(raw string) string {
 }
 
 // IsValidEvidence verifies that raw is a concrete evidence pointer, accepting
-// file:line and file:line-end references alongside guards.IsValidEvidencePointer.
+// file:line and file:line-end references alongside guards.IsValidEvidencePointer
+// while rejecting TSV/control characters and spreadsheet formula triggers.
 func IsValidEvidence(raw string) bool {
+	if strings.ContainsAny(raw, "\t\r\n\x00") {
+		return false
+	}
 	cleaned := strings.TrimSpace(raw)
-	if isPlaceholder(cleaned) {
+	if isPlaceholder(cleaned) || hasFormulaTrigger(cleaned) {
 		return false
 	}
 	if guards.IsValidEvidencePointer(cleaned) {
 		return true
 	}
 	stripped := stripLineSuffix(cleaned)
-	if stripped == cleaned {
+	if stripped == cleaned || hasFormulaTrigger(stripped) {
 		return false
 	}
 	return guards.IsValidEvidencePointer(stripped)
@@ -261,15 +290,43 @@ func ValidateReport(report *Report, path string, requireFocusAll bool) Validatio
 		})
 	}
 
-	validateModelFamilies(report, &res)
-	validateFocusVerdicts(report, requireFocusAll, &res)
-	validateFindings(report, &res)
+	if len(report.FocusVerdicts) == 0 && len(report.Findings) == 0 {
+		res.Errors = append(res.Errors, Issue{
+			Code:    "EMPTY_REVIEW_REPORT",
+			Path:    "report",
+			Message: "review report must contain at least one focus_verdict or finding",
+		})
+	}
+
+	authorFam := validateModelFamilies(report, &res)
+	fixFocusIDs := collectFixFocusIDs(report.Findings)
+	validateFocusVerdicts(report, requireFocusAll, fixFocusIDs, &res)
+	validateFindings(report, authorFam, &res)
 
 	res.Valid = len(res.Errors) == 0
 	return res
 }
 
-func validateModelFamilies(report *Report, res *ValidationResult) {
+func collectFixFocusIDs(findings []Finding) map[string][]string {
+	out := map[string][]string{}
+	for _, f := range findings {
+		if strings.TrimSpace(f.Bucket) != "fix" {
+			continue
+		}
+		fid := strings.TrimSpace(f.FocusID)
+		if fid == "" {
+			continue
+		}
+		id := strings.TrimSpace(f.ID)
+		if id == "" {
+			id = "(unnamed)"
+		}
+		out[fid] = append(out[fid], id)
+	}
+	return out
+}
+
+func validateModelFamilies(report *Report, res *ValidationResult) string {
 	authorRaw := strings.TrimSpace(report.AuthorModel)
 	authorFam := NormalizeModelFamily(authorRaw)
 	if isPlaceholder(authorRaw) || authorFam == "" {
@@ -288,7 +345,7 @@ func validateModelFamilies(report *Report, res *ValidationResult) {
 			Path:    "reviewers",
 			Message: "reviewers must include at least one reviewer model from a distinct model family",
 		})
-		return
+		return authorFam
 	}
 
 	famSet := map[string]struct{}{}
@@ -323,9 +380,10 @@ func validateModelFamilies(report *Report, res *ValidationResult) {
 			Message: fmt.Sprintf("at least one reviewer must belong to a different model family than author_model (%q -> family %q); got families %v", report.AuthorModel, authorFam, fams),
 		})
 	}
+	return authorFam
 }
 
-func validateFocusVerdicts(report *Report, requireFocusAll bool, res *ValidationResult) {
+func validateFocusVerdicts(report *Report, requireFocusAll bool, fixFocusIDs map[string][]string, res *ValidationResult) {
 	seen := map[string]int{}
 	for i, fv := range report.FocusVerdicts {
 		prefix := fmt.Sprintf("focus_verdicts[%d]", i)
@@ -378,6 +436,13 @@ func validateFocusVerdicts(report *Report, requireFocusAll bool, res *Validation
 		}
 
 		if status == "safe" {
+			if fixIDs := fixFocusIDs[fid]; len(fixIDs) > 0 {
+				res.Errors = append(res.Errors, Issue{
+					Code:    "CONTRADICTORY_SAFE_VERDICT",
+					Path:    prefix + ".status",
+					Message: fmt.Sprintf("focus_id %q cannot have status='safe' while fix finding(s) %v exist for the same focus_id (must be 'fixed' or 'deferred')", fid, fixIDs),
+				})
+			}
 			validateBlastRadiusProof(fv.BlastRadiusProof, prefix, res)
 		}
 	}
@@ -438,7 +503,15 @@ func validateBlastRadiusProof(brp *BlastRadiusProof, prefix string, res *Validat
 	}
 }
 
-func validateFindings(report *Report, res *ValidationResult) {
+func validateFindings(report *Report, authorFam string, res *ValidationResult) {
+	declaredReviewers := make(map[string]struct{}, len(report.Reviewers))
+	for _, rev := range report.Reviewers {
+		key := strings.ToLower(strings.TrimSpace(rev))
+		if key != "" {
+			declaredReviewers[key] = struct{}{}
+		}
+	}
+
 	seen := map[string]int{}
 	for i, f := range report.Findings {
 		prefix := fmt.Sprintf("findings[%d]", i)
@@ -466,12 +539,29 @@ func validateFindings(report *Report, res *ValidationResult) {
 				Message: "finding focus_id must be non-empty and not a placeholder",
 			})
 		}
-		if isPlaceholder(f.ReviewerModel) {
+		revTrim := strings.TrimSpace(f.ReviewerModel)
+		revFam := NormalizeModelFamily(revTrim)
+		if isPlaceholder(revTrim) || revFam == "" {
 			res.Errors = append(res.Errors, Issue{
 				Code:    "EMPTY_REVIEWER_MODEL",
 				Path:    prefix + ".reviewer_model",
-				Message: "finding reviewer_model must be non-empty and not a placeholder",
+				Message: "finding reviewer_model must be a non-empty model identifier",
 			})
+		} else {
+			if _, ok := declaredReviewers[strings.ToLower(revTrim)]; !ok {
+				res.Errors = append(res.Errors, Issue{
+					Code:    "UNDECLARED_FINDING_REVIEWER",
+					Path:    prefix + ".reviewer_model",
+					Message: fmt.Sprintf("finding reviewer_model %q must match a reviewer declared in reviewers", f.ReviewerModel),
+				})
+			}
+			if authorFam != "" && revFam == authorFam {
+				res.Errors = append(res.Errors, Issue{
+					Code:    "SINGLE_MODEL_FAMILY_REVIEW",
+					Path:    prefix + ".reviewer_model",
+					Message: fmt.Sprintf("finding reviewer_model %q (family %q) must belong to a different model family than author_model (%q -> family %q)", f.ReviewerModel, revFam, report.AuthorModel, authorFam),
+				})
+			}
 		}
 		bucket := strings.TrimSpace(f.Bucket)
 		if _, ok := validBuckets[bucket]; !ok {

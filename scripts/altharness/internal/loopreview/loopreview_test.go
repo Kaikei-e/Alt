@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/guards"
 	"alt/scripts/altharness/internal/loopreview"
 )
 
@@ -165,22 +166,48 @@ func TestNormalizeModelFamily(t *testing.T) {
 		model string
 		want  string
 	}{
-		{"gemini-4-neon-xhigh", "gemini-4-neon"},
-		{"gemini-4-neon-high", "gemini-4-neon"},
-		{"Gemini 4 Neon (XHigh)", "gemini-4-neon"},
-		{"google/gemini-4-neon-pro", "gemini-4-neon"},
-		{"gemini-4-carbon-high", "gemini-4-carbon"},
-		{"Gemini 4 Carbon High", "gemini-4-carbon"},
+		{"gemini-4-neon-xhigh", "gemini-neon"},
+		{"gemini-4-neon-high", "gemini-neon"},
+		{"Gemini 4 Neon (XHigh)", "gemini-neon"},
+		{"Gemini 4.0 Neon (XHigh)", "gemini-neon"},
+		{"Gemini Neon (XHigh)", "gemini-neon"},
+		{"neon-xhigh", "gemini-neon"},
+		{"google/gemini-4-neon-pro", "gemini-neon"},
+		{"google.gemini-4.0-neon-xhigh", "gemini-neon"},
+		{"gemini-4-carbon-high", "gemini-carbon"},
+		{"Gemini 4 Carbon High", "gemini-carbon"},
+		{"Gemini 4.0 Carbon (High)", "gemini-carbon"},
+		{"Gemini Carbon (High)", "gemini-carbon"},
+		{"carbon-high", "gemini-carbon"},
+		{"google.gemini-4.0-carbon-high", "gemini-carbon"},
+		{"anthropic.claude-opus-4-6", "claude-opus"},
+		{"us.anthropic.claude-opus-4-6-v1:0", "claude-opus"},
+		{"claude-opus-5-5-high", "claude-opus"},
+		{"Claude 4.6 Opus", "claude-opus"},
+		{"claude-opus", "claude-opus"},
 		{"claude-opus-4-1", "claude-opus"},
 		{"claude-opus-4-5-20260101", "claude-opus"},
+		{"anthropic.claude-sonnet-4-5", "claude-sonnet"},
+		{"claude-sonnet-5-5-high", "claude-sonnet"},
+		{"Claude Sonnet 4.5", "claude-sonnet"},
 		{"claude-sonnet-4-5", "claude-sonnet"},
 		{"claude-3-5-sonnet-20241022", "claude-sonnet"},
+		{"anthropic.claude-haiku-4-5", "claude-haiku"},
 		{"anthropic/claude-haiku-4-5", "claude-haiku"},
+		{"Claude Haiku", "claude-haiku"},
 		{"gpt-5", "gpt"},
+		{"gpt-5.2", "gpt"},
+		{"gpt-4o", "gpt"},
 		{"gpt-4o-mini", "gpt"},
+		{"openai/gpt-5", "gpt"},
+		{"openai.gpt-5.2", "gpt"},
 		{"openai/gpt-5-codex", "gpt"},
 		{"custom-alpha-xhigh", "custom-alpha"},
 		{"custom-alpha-low", "custom-alpha"},
+		{"---", ""},
+		{"...", ""},
+		{"google/", ""},
+		{"anthropic.", ""},
 	}
 	for _, tc := range cases {
 		if got := loopreview.NormalizeModelFamily(tc.model); got != tc.want {
@@ -215,7 +242,7 @@ func TestValidateValidReport(t *testing.T) {
 	if !res.Valid || res.ReviewID != "LOOP04-2026-11-28" || res.FocusVerdictsCount != 7 || res.FindingsCount != 4 {
 		t.Fatalf("unexpected validation result: %+v", res)
 	}
-	if res.AuthorFamily != "gemini-4-neon" || len(res.ReviewerFamilies) != 1 || res.ReviewerFamilies[0] != "gemini-4-carbon" {
+	if res.AuthorFamily != "gemini-neon" || len(res.ReviewerFamilies) != 1 || res.ReviewerFamilies[0] != "gemini-carbon" {
 		t.Fatalf("unexpected families: author=%q reviewers=%v", res.AuthorFamily, res.ReviewerFamilies)
 	}
 	if res.BucketCounts["fix"] != 1 || res.BucketCounts["investigate"] != 1 || res.BucketCounts["note"] != 1 || res.BucketCounts["dismiss"] != 1 {
@@ -450,6 +477,9 @@ func TestValidateAcceptsMixedReviewersWithOneDistinctFamily(t *testing.T) {
 	report := makeValidFullReport()
 	report["author_model"] = "gemini-4-neon-xhigh"
 	report["reviewers"] = []string{"gemini-4-neon-high", "claude-opus-4-1"}
+	for _, f := range report["findings"].([]map[string]any) {
+		f["reviewer_model"] = "claude-opus-4-1"
+	}
 	reportPath := filepath.Join(dir, "report.json")
 	writeJSON(t, reportPath, report)
 
@@ -664,10 +694,14 @@ func TestRecordFailClosedAndCoverage(t *testing.T) {
 	decisionsPath := filepath.Join(runsDir, "feat-demo", "decisions.tsv")
 	rawTSV := readTestFile(t, decisionsPath)
 	lines := strings.Split(strings.TrimSpace(string(rawTSV)), "\n")
-	// 1 header + 4 findings + 7 focus verdicts = 12 lines
-	if len(lines) != 12 {
-		t.Fatalf("expected 12 lines in decisions.tsv (1 header + 4 findings + 7 focus verdicts), got %d:\n%s", len(lines), string(rawTSV))
+	// 1 header + 1 init + 4 findings + 7 focus verdicts = 13 lines
+	if len(lines) < 12 {
+		t.Fatalf("expected at least 12 lines in decisions.tsv, got %d:\n%s", len(lines), string(rawTSV))
 	}
+	if _, findings, err := guards.ValidateDecisionsFile(decisionsPath); err != nil || len(findings) != 0 {
+		t.Fatalf("recorded decisions.tsv failed ValidateDecisionsFile: err=%v findings=%+v\n%s", err, findings, string(rawTSV))
+	}
+	initCount := 0
 	interrogateCount := 0
 	loop04Count := 0
 	for i, line := range lines[1:] {
@@ -679,6 +713,8 @@ func TestRecordFailClosedAndCoverage(t *testing.T) {
 			t.Errorf("row %d result=%q, want info", i+1, cols[5])
 		}
 		switch cols[1] {
+		case "init":
+			initCount++
 		case "interrogate":
 			interrogateCount++
 			if !strings.HasPrefix(cols[2], "[F-") {
@@ -696,8 +732,8 @@ func TestRecordFailClosedAndCoverage(t *testing.T) {
 			t.Errorf("unexpected phase %q in row %d", cols[1], i+1)
 		}
 	}
-	if interrogateCount != 4 || loop04Count != 7 {
-		t.Fatalf("expected 4 interrogate rows and 7 loop-04 rows, got interrogate=%d loop-04=%d", interrogateCount, loop04Count)
+	if initCount != 1 || interrogateCount != 4 || loop04Count != 7 {
+		t.Fatalf("expected 1 init, 4 interrogate, 7 loop-04 rows; got init=%d interrogate=%d loop-04=%d", initCount, interrogateCount, loop04Count)
 	}
 
 	// 3. check-coverage passes (7/7)
@@ -735,9 +771,10 @@ func TestCheckCoveragePartialAndMissing(t *testing.T) {
 	// Partial coverage (only F-01 and F-02; F-03 only in interrogate phase must NOT count as loop-04 verdict!)
 	tsv := strings.Join([]string{
 		"ts\tphase\tdecision\twhy\tevidence\tresult",
-		"2026-11-28T00:00:00Z\tloop-04\tfocus F-01 (safe): errorlint が書き換えた条件式\tverified\tfoo_test.go\tinfo",
-		"2026-11-28T00:00:01Z\tloop-04\tfocus F-02 (fixed): protogetter の nil ガード\tfixed\tbar_test.go\tinfo",
-		"2026-11-28T00:00:02Z\tinterrogate\t[F-03/note] REV-1: note only\tjust a note\tbaz.go\tinfo",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=loop04 test; completion=go test ./...\tinit run\tdocs/ADR/001038.md\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): errorlint が書き換えた条件式\tverified\tfoo_test.go\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (fixed): protogetter の nil ガード\tfixed\tbar_test.go\tinfo",
+		"2026-11-28T00:00:03Z\tinterrogate\t[F-03/note] REV-1: note only\tjust a note\tbaz.go\tinfo",
 	}, "\n") + "\n"
 	if err := os.WriteFile(decisions, []byte(tsv), fsperm.File); err != nil {
 		t.Fatalf("write tsv: %v", err)
@@ -883,5 +920,549 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 	code, _, stderr := runCLI(t, "check-coverage", "--decisions-file", tsv, "--format", "text")
 	if code != 1 || !strings.Contains(stderr, "F-01") || !strings.Contains(stderr, "F-07") {
 		t.Fatalf("expected text coverage failure listing F-01..F-07, got code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestValidateCrossFamilyBypassProbes(t *testing.T) {
+	t.Parallel()
+	pairs := []struct {
+		name     string
+		author   string
+		reviewer string
+	}{
+		{"neon version decimal", "gemini-4-neon-xhigh", "Gemini 4.0 Neon (XHigh)"},
+		{"neon no version", "gemini-4-neon-xhigh", "Gemini Neon (XHigh)"},
+		{"neon bare shorthand", "gemini-4-neon-xhigh", "neon-xhigh"},
+		{"neon google dot prefix", "gemini-4-neon-xhigh", "google.gemini-4.0-neon-high"},
+		{"carbon version decimal", "gemini-4-carbon-high", "Gemini 4.0 Carbon (High)"},
+		{"carbon bare shorthand", "gemini-4-carbon-high", "carbon-high"},
+		{"opus bedrock dot prefix vs version", "anthropic.claude-opus-4-6", "claude-opus-5-5-high"},
+		{"opus bedrock vs display name", "anthropic.claude-opus-4-6", "Claude 4.6 Opus"},
+		{"opus bedrock vs bare", "anthropic.claude-opus-4-6", "claude-opus"},
+		{"sonnet bedrock vs version", "anthropic.claude-sonnet-4-5", "claude-sonnet-5-5-high"},
+		{"sonnet bedrock vs display name", "anthropic.claude-sonnet-4-5", "Claude Sonnet 4.5"},
+		{"haiku bedrock vs display name", "anthropic.claude-haiku-4-5", "Claude Haiku"},
+		{"gpt version vs slash provider", "gpt-5.2", "openai/gpt-5"},
+		{"gpt-4o vs gpt-5.2", "gpt-4o", "gpt-5.2"},
+	}
+
+	for _, tc := range pairs {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			report := makeValidFullReport()
+			report["author_model"] = tc.author
+			report["reviewers"] = []string{tc.reviewer}
+			for _, f := range report["findings"].([]map[string]any) {
+				f["reviewer_model"] = tc.reviewer
+			}
+			reportPath := filepath.Join(dir, "report.json")
+			writeJSON(t, reportPath, report)
+
+			code, stdout, stderr := runCLI(t, "validate", reportPath, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1 for same-family (%q vs %q), got %d; stdout=%s stderr=%s", tc.author, tc.reviewer, code, stdout, stderr)
+			}
+			var res struct {
+				Valid  bool               `json:"valid"`
+				Errors []loopreview.Issue `json:"errors"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+				t.Fatalf("unmarshal validate json: %v\nstdout=%s", err, stdout)
+			}
+			found := false
+			for _, iss := range res.Errors {
+				if iss.Code == "SINGLE_MODEL_FAMILY_REVIEW" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected SINGLE_MODEL_FAMILY_REVIEW for %q vs %q, got %+v", tc.author, tc.reviewer, res.Errors)
+			}
+		})
+	}
+}
+
+func TestValidateAuditProbesSpec05Sec05Sec02(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SPEC-05 combined probe rejects all three violations", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		raw := `{"review_id":"R1","author_model":"gemini-4-neon-xhigh","reviewers":["Gemini 4.0 Neon (XHigh)"],"auto_applied":false,"focus_verdicts":[{"focus_id":"F-01","title":"t","status":"safe","summary":"s","evidence":"ADR-001038","blast_radius_proof":{"assumption":"ok predicate","command":"true","exit_code":0,"evidence":"ADR-001038"}}],"findings":[{"id":"F1","focus_id":"F-01","reviewer_model":"---","bucket":"fix","summary":"bug","rationale":"why","evidence":"ADR-001038","repro":{"command":"false","exit_code":1,"proof_evidence":"ADR-001038"}}]}`
+		reportPath := filepath.Join(dir, "spec05.json")
+		if err := os.WriteFile(reportPath, []byte(raw), fsperm.File); err != nil {
+			t.Fatalf("write spec05: %v", err)
+		}
+		code, stdout, stderr := runCLI(t, "validate", reportPath, "--format", "json")
+		if code != 1 {
+			t.Fatalf("SPEC-05 probe must fail with exit 1, got %d; stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		var res struct {
+			Errors []loopreview.Issue `json:"errors"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		codes := map[string]bool{}
+		for _, iss := range res.Errors {
+			codes[iss.Code] = true
+		}
+		for _, want := range []string{"SINGLE_MODEL_FAMILY_REVIEW", "EMPTY_REVIEWER_MODEL", "CONTRADICTORY_SAFE_VERDICT"} {
+			if !codes[want] {
+				t.Errorf("expected error code %q in %+v", want, res.Errors)
+			}
+		}
+	})
+
+	t.Run("SEC-05 combined probe rejects same-family and self-review finding", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		raw := `{"review_id":"R1","author_model":"gemini-4-neon-xhigh","reviewers":["Gemini Neon (XHigh)"],"auto_applied":false,"focus_verdicts":[],"findings":[{"id":"F1","focus_id":"F-01","reviewer_model":"gemini-4-neon-xhigh","bucket":"note","summary":"s","rationale":"r","evidence":"C-01"}]}`
+		reportPath := filepath.Join(dir, "sec05.json")
+		if err := os.WriteFile(reportPath, []byte(raw), fsperm.File); err != nil {
+			t.Fatalf("write sec05: %v", err)
+		}
+		code, stdout, stderr := runCLI(t, "validate", reportPath, "--format", "json")
+		if code != 1 {
+			t.Fatalf("SEC-05 probe must fail with exit 1, got %d; stdout=%s stderr=%s", code, stdout, stderr)
+		}
+		if !strings.Contains(stdout, "SINGLE_MODEL_FAMILY_REVIEW") {
+			t.Fatalf("expected SINGLE_MODEL_FAMILY_REVIEW in %s", stdout)
+		}
+	})
+
+	cases := []struct {
+		name     string
+		mutate   func(r map[string]any)
+		wantCode string
+	}{
+		{
+			name: "finding reviewer_model dashes rejected",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["reviewer_model"] = "---"
+			},
+			wantCode: "EMPTY_REVIEWER_MODEL",
+		},
+		{
+			name: "finding reviewer_model undeclared in reviewers",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["reviewer_model"] = "claude-opus-4-6"
+			},
+			wantCode: "UNDECLARED_FINDING_REVIEWER",
+		},
+		{
+			name: "author self-review finding sneaking alongside rubber-stamp reviewer",
+			mutate: func(r map[string]any) {
+				r["author_model"] = "gemini-4-neon-xhigh"
+				r["reviewers"] = []string{"gemini-4-neon-high", "gemini-4-carbon-high"}
+				findings := r["findings"].([]map[string]any)
+				findings[1]["reviewer_model"] = "gemini-4-neon-high"
+			},
+			wantCode: "SINGLE_MODEL_FAMILY_REVIEW",
+		},
+		{
+			name: "contradictory safe verdict with fix finding on same focus_id",
+			mutate: func(r map[string]any) {
+				verdicts := r["focus_verdicts"].([]map[string]any)
+				// F-06 has a bucket="fix" finding (REV-01); flipping F-06 to safe must fail.
+				verdicts[5]["status"] = "safe"
+				verdicts[5]["blast_radius_proof"] = map[string]any{
+					"assumption": "safe despite open fix",
+					"command":    "true",
+					"exit_code":  0,
+					"evidence":   "ADR-001038",
+				}
+			},
+			wantCode: "CONTRADICTORY_SAFE_VERDICT",
+		},
+		{
+			name: "vacuous report with zero verdicts and zero findings",
+			mutate: func(r map[string]any) {
+				r["focus_verdicts"] = []map[string]any{}
+				r["findings"] = []map[string]any{}
+			},
+			wantCode: "EMPTY_REVIEW_REPORT",
+		},
+		{
+			name: "SEC-02 evidence with embedded tab in cmd",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "cmd:go test\t./..."
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence with CR/LF",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "cmd:go test\r\n./..."
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence formula =cmd",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "=cmd|'/C_calc'!A0"
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence formula =HYPERLINK",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = `=HYPERLINK("http://evil.example/pwn","click")`
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence formula leading +",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "+1+1/evil.go"
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence formula leading @",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "@SUM(1,2)/evil.go"
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+		{
+			name: "SEC-02 evidence formula leading -[0-9=+@(]",
+			mutate: func(r map[string]any) {
+				findings := r["findings"].([]map[string]any)
+				findings[1]["evidence"] = "-1+1/evil.go"
+			},
+			wantCode: "INVALID_EVIDENCE",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			report := makeValidFullReport()
+			tc.mutate(report)
+			reportPath := filepath.Join(dir, "report.json")
+			writeJSON(t, reportPath, report)
+
+			code, stdout, stderr := runCLI(t, "validate", reportPath, "--format", "json")
+			if code != 1 {
+				t.Fatalf("expected exit 1, got %d; stdout=%s stderr=%s", code, stdout, stderr)
+			}
+			var res struct {
+				Errors []loopreview.Issue `json:"errors"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+				t.Fatalf("unmarshal: %v\nstdout=%s", err, stdout)
+			}
+			found := false
+			for _, iss := range res.Errors {
+				if iss.Code == tc.wantCode {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected error code %q in %+v", tc.wantCode, res.Errors)
+			}
+		})
+	}
+}
+
+func TestRecordNormalizesIDLineEvidenceAndRoundTripsValidate(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	runsDir := filepath.Join(t.TempDir(), "runs")
+
+	report := makeValidFullReport()
+	verdicts := report["focus_verdicts"].([]map[string]any)
+	verdicts[0]["evidence"] = "ADR-001038:42"
+	verdicts[1]["evidence"] = "PM-2026-045:12-20"
+	verdicts[2]["evidence"] = "C-01:5"
+	findings := report["findings"].([]map[string]any)
+	findings[1]["evidence"] = "ADR-001038#L99"
+	findings[2]["evidence"] = "PM-2026-045:7"
+	findings[3]["evidence"] = "C-11:3"
+
+	reportPath := filepath.Join(t.TempDir(), "idline.json")
+	writeJSON(t, reportPath, report)
+
+	code, stdout, stderr := runCLI(t, "record", reportPath, "--repo-root", repo, "--runs-dir", runsDir, "--branch", "feat/idline", "--require-focus-all", "--format", "json")
+	if code != 0 {
+		t.Fatalf("record failed: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+
+	decisionsPath := filepath.Join(runsDir, "feat-idline", "decisions.tsv")
+	raw := string(readTestFile(t, decisionsPath))
+	for _, forbidden := range []string{"./ADR-001038", "./PM-2026-045", "./C-01", "./C-11"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("decisions.tsv must NEVER prefix ID ref with ./, found %q in:\n%s", forbidden, raw)
+		}
+	}
+	for _, expected := range []string{"\tADR-001038\t", "\tPM-2026-045\t", "\tC-01\t", "\tC-11\t", "\t./ollama_gateway.py:118\t"} {
+		if !strings.Contains(raw, expected) {
+			t.Errorf("decisions.tsv missing normalized evidence %q in:\n%s", expected, raw)
+		}
+	}
+
+	if _, valFindings, err := guards.ValidateDecisionsFile(decisionsPath); err != nil || len(valFindings) != 0 {
+		t.Fatalf("decisions.tsv failed ValidateDecisionsFile: err=%v findings=%+v\n%s", err, valFindings, raw)
+	}
+}
+
+func TestCheckCoverageHardened(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// 1. Malformed 3-column TSV mentioning F-01..F-07 MUST fail closed.
+	malformed := filepath.Join(dir, "malformed.tsv")
+	malformedContent := strings.Join([]string{
+		"ts\tphase\tdecision",
+		"2026-11-28T00:00:00Z\tloop-04\tfocus F-01 (safe): a",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-02 (safe): b",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-03 (safe): c",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-04 (safe): d",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-05 (safe): e",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-06 (safe): f",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-07 (safe): g",
+	}, "\n") + "\n"
+	if err := os.WriteFile(malformed, []byte(malformedContent), fsperm.File); err != nil {
+		t.Fatalf("write malformed: %v", err)
+	}
+	code, stdout, _ := runCLI(t, "check-coverage", "--decisions-file", malformed, "--format", "json")
+	if code != 1 {
+		t.Fatalf("malformed 3-column TSV must fail closed, got exit %d; stdout=%s", code, stdout)
+	}
+	var cov loopreview.CoverageResult
+	if err := json.Unmarshal([]byte(stdout), &cov); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cov.Covered || cov.Error == "" || cov.CoveredCount != 0 {
+		t.Fatalf("expected fail-closed coverage error on malformed TSV, got %+v", cov)
+	}
+
+	// 2. Uninitialized 6-column TSV (missing init Row 1) MUST fail closed even with F-01..F-07.
+	uninit := filepath.Join(dir, "uninit.tsv")
+	uninitContent := strings.Join([]string{
+		"ts\tphase\tdecision\twhy\tevidence\tresult",
+		"2026-11-28T00:00:00Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-06 (safe): f\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-07 (safe): g\tok\tADR-001038\tinfo",
+	}, "\n") + "\n"
+	if err := os.WriteFile(uninit, []byte(uninitContent), fsperm.File); err != nil {
+		t.Fatalf("write uninit: %v", err)
+	}
+	code, stdout, _ = runCLI(t, "check-coverage", "--decisions-file", uninit, "--format", "json")
+	if code != 1 {
+		t.Fatalf("uninitialized TSV must fail closed, got exit %d; stdout=%s", code, stdout)
+	}
+
+	// 3. Reverted / mismatch rows must NOT count toward coverage.
+	reverted := filepath.Join(dir, "reverted.tsv")
+	revertedContent := strings.Join([]string{
+		"ts\tphase\tdecision\twhy\tevidence\tresult",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001038\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\treverted fix\tADR-001038\treverted",
+		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (safe): g\tmismatch claim\tADR-001038\tmismatch",
+	}, "\n") + "\n"
+	if err := os.WriteFile(reverted, []byte(revertedContent), fsperm.File); err != nil {
+		t.Fatalf("write reverted: %v", err)
+	}
+	code, stdout, _ = runCLI(t, "check-coverage", "--decisions-file", reverted, "--format", "json")
+	if code != 1 {
+		t.Fatalf("reverted/mismatch rows must not satisfy coverage, got exit %d; stdout=%s", code, stdout)
+	}
+	cov = loopreview.CoverageResult{}
+	if err := json.Unmarshal([]byte(stdout), &cov); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cov.CoveredCount != 5 || len(cov.MissingIDs) != 2 || cov.MissingIDs[0] != "F-06" || cov.MissingIDs[1] != "F-07" {
+		t.Fatalf("expected F-06 and F-07 missing, got %+v", cov)
+	}
+
+	// 4. Default mode accepts safe|fixed|deferred; --strict-resolved rejects deferred until resolved.
+	deferredFile := filepath.Join(dir, "deferred.tsv")
+	deferredContent := strings.Join([]string{
+		"ts\tphase\tdecision\twhy\tevidence\tresult",
+		"2026-11-28T00:00:00Z\tinit\tpolicy=fix-existing; goal=g; completion=c\tinit\tADR-001038\tinfo",
+		"2026-11-28T00:00:01Z\tloop-04\tfocus F-01 (safe): a\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:02Z\tloop-04\tfocus F-02 (safe): b\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:03Z\tloop-04\tfocus F-03 (safe): c\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:04Z\tloop-04\tfocus F-04 (safe): d\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:05Z\tloop-04\tfocus F-05 (safe): e\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:06Z\tloop-04\tfocus F-06 (fixed): f\tok\tADR-001038\tinfo",
+		"2026-11-28T00:00:07Z\tloop-04\tfocus F-07 (deferred): g\tdeferred for follow-up\tADR-001038\tinfo",
+	}, "\n") + "\n"
+	if err := os.WriteFile(deferredFile, []byte(deferredContent), fsperm.File); err != nil {
+		t.Fatalf("write deferred: %v", err)
+	}
+	code, stdout, stderr := runCLI(t, "check-coverage", "--decisions-file", deferredFile, "--format", "json")
+	if code != 0 {
+		t.Fatalf("default check-coverage should accept deferred, got exit %d; stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	code, stdout, _ = runCLI(t, "check-coverage", "--decisions-file", deferredFile, "--strict-resolved", "--format", "json")
+	if code != 1 {
+		t.Fatalf("--strict-resolved must reject deferred F-07, got exit %d; stdout=%s", code, stdout)
+	}
+	cov = loopreview.CoverageResult{}
+	if err := json.Unmarshal([]byte(stdout), &cov); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cov.Covered || len(cov.MissingIDs) != 1 || cov.MissingIDs[0] != "F-07" {
+		t.Fatalf("expected only F-07 missing under --strict-resolved, got %+v", cov)
+	}
+	// Appending F-07 (fixed) satisfies --strict-resolved.
+	resolvedContent := deferredContent + "2026-11-28T00:00:08Z\tloop-04\tfocus F-07 (fixed): g\tresolved\tADR-001038\tinfo\n"
+	if err := os.WriteFile(deferredFile, []byte(resolvedContent), fsperm.File); err != nil {
+		t.Fatalf("write resolved deferred file: %v", err)
+	}
+	code, stdout, stderr = runCLI(t, "check-coverage", "--decisions-file", deferredFile, "--strict-resolved", "--format", "json")
+	if code != 0 {
+		t.Fatalf("--strict-resolved should pass after F-07 fixed, got exit %d; stdout=%s stderr=%s", code, stdout, stderr)
+	}
+
+	// 5. Symlinked --decisions-file MUST be rejected fail-closed.
+	linkDec := filepath.Join(dir, "link-decisions.tsv")
+	if err := os.Symlink(deferredFile, linkDec); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	code, stdout, _ = runCLI(t, "check-coverage", "--decisions-file", linkDec, "--format", "json")
+	if code != 1 {
+		t.Fatalf("symlinked decisions file must fail coverage, got exit %d; stdout=%s", code, stdout)
+	}
+}
+
+func TestRecordIntoPreInitializedDecisionsNoDuplicateInit(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	var initOut, initErr bytes.Buffer
+	rc := guards.RunHarness(context.Background(), []string{
+		"init", "--repo-root", repo, "--branch", "feat/preinit",
+		"--policy", "block-new", "--goal", "loop04 preinit", "--completion", "go test ./...",
+	}, nil, &initOut, &initErr)
+	if rc != 0 {
+		t.Fatalf("harness-run init failed: rc=%d out=%s err=%s", rc, initOut.String(), initErr.String())
+	}
+
+	reportPath := filepath.Join(t.TempDir(), "report.json")
+	writeJSON(t, reportPath, makeValidFullReport())
+
+	code, stdout, stderr := runCLI(t, "record", reportPath, "--repo-root", repo, "--branch", "feat/preinit", "--require-focus-all", "--format", "json")
+	if code != 0 {
+		t.Fatalf("record into pre-initialized repo failed: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	decisionsPath := filepath.Join(repo, ".harness", "runs", "feat-preinit", "decisions.tsv")
+	raw := string(readTestFile(t, decisionsPath))
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	// 1 header + 1 existing init + 4 findings + 7 focus verdicts = 13 lines
+	if len(lines) != 13 {
+		t.Fatalf("expected 13 lines (no duplicate init row), got %d:\n%s", len(lines), raw)
+	}
+	if _, findings, err := guards.ValidateDecisionsFile(decisionsPath); err != nil || len(findings) != 0 {
+		t.Fatalf("ValidateDecisionsFile failed: err=%v findings=%+v", err, findings)
+	}
+	code, stdout, stderr = runCLI(t, "check-coverage", "--repo-root", repo, "--branch", "feat/preinit", "--format", "json")
+	if code != 0 {
+		t.Fatalf("check-coverage failed: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+}
+
+func TestSymlinkAndDanglingSymlinkDefense(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	outside := t.TempDir()
+
+	// 1. brief --out dangling symlink must be rejected without creating target outside.
+	danglingOutTarget := filepath.Join(outside, "dangling-brief.md")
+	danglingOutLink := filepath.Join(t.TempDir(), "brief-link.md")
+	if err := os.Symlink(danglingOutTarget, danglingOutLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	code, _, _ := runCLI(t, "brief", "--repo-root", repo, "--out", danglingOutLink)
+	if code == 0 {
+		t.Fatalf("expected failure when brief --out is a dangling symlink")
+	}
+	if _, err := os.Lstat(danglingOutTarget); !os.IsNotExist(err) {
+		t.Fatalf("dangling brief --out target must not be created")
+	}
+
+	reportPath := filepath.Join(t.TempDir(), "report.json")
+	writeJSON(t, reportPath, makeValidFullReport())
+
+	// 2. record --runs-dir dangling symlink must be rejected.
+	danglingRunsTarget := filepath.Join(outside, "runs-created")
+	danglingRunsLink := filepath.Join(t.TempDir(), "runs-link")
+	if err := os.Symlink(danglingRunsTarget, danglingRunsLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	code, _, _ = runCLI(t, "record", reportPath, "--repo-root", repo, "--runs-dir", danglingRunsLink, "--branch", "feat/sec01")
+	if code == 0 {
+		t.Fatalf("expected failure when --runs-dir is a dangling symlink")
+	}
+	if _, err := os.Lstat(danglingRunsTarget); !os.IsNotExist(err) {
+		t.Fatalf("dangling --runs-dir target must not be created")
+	}
+
+	// 3. record --decisions-file dangling symlink must be rejected.
+	danglingDecTarget := filepath.Join(outside, "victim-dangling.tsv")
+	danglingDecLink := filepath.Join(t.TempDir(), "decisions-dangling.tsv")
+	if err := os.Symlink(danglingDecTarget, danglingDecLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	code, _, _ = runCLI(t, "record", reportPath, "--repo-root", repo, "--runs-dir", filepath.Join(t.TempDir(), "clean-runs"), "--branch", "feat/sec01", "--decisions-file", danglingDecLink)
+	if code == 0 {
+		t.Fatalf("expected failure when --decisions-file is a dangling symlink")
+	}
+	if _, err := os.Lstat(danglingDecTarget); !os.IsNotExist(err) {
+		t.Fatalf("dangling --decisions-file target must not be created")
+	}
+
+	// 4. record with default repo .harness symlink escaping outside must be rejected.
+	evilRepo := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(evilRepo, ".harness")); err != nil {
+		t.Fatalf("symlink .harness: %v", err)
+	}
+	code, _, _ = runCLI(t, "record", reportPath, "--repo-root", evilRepo, "--branch", "feat/sec01")
+	if code == 0 {
+		t.Fatalf("expected failure when repo .harness is a symlink")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("outside dir must remain untouched, got %d entries", len(entries))
+	}
+
+	// 5. record with dangling symlink at <runDir>/reviews/<review_id>.json must be rejected.
+	runsWithDanglingReview := filepath.Join(t.TempDir(), "runs-dangling-rev")
+	reviewsDir := filepath.Join(runsWithDanglingReview, "feat-sec01", "reviews")
+	if err := os.MkdirAll(reviewsDir, fsperm.Dir); err != nil {
+		t.Fatalf("mkdir reviews: %v", err)
+	}
+	danglingReviewTarget := filepath.Join(outside, "escaped-review.json")
+	if err := os.Symlink(danglingReviewTarget, filepath.Join(reviewsDir, "LOOP04-2026-11-28.json")); err != nil {
+		t.Fatalf("symlink review json: %v", err)
+	}
+	code, _, _ = runCLI(t, "record", reportPath, "--repo-root", repo, "--runs-dir", runsWithDanglingReview, "--branch", "feat/sec01")
+	if code == 0 {
+		t.Fatalf("expected failure when <review_id>.json is a dangling symlink")
+	}
+	if _, err := os.Lstat(danglingReviewTarget); !os.IsNotExist(err) {
+		t.Fatalf("dangling review json target must not be created")
 	}
 }

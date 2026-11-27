@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"alt/scripts/altharness/internal/corpus"
+	"alt/scripts/altharness/internal/execx"
 	"alt/scripts/altharness/internal/fsperm"
 	"alt/scripts/altharness/internal/screener"
 )
@@ -314,19 +314,26 @@ func runGitOutput(ctx context.Context, repoRoot string, args ...string) (string,
 	}
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, "git", args...)
-	cmd.Dir = repoRoot
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+	fullArgs := append([]string{"git"}, args...)
+	stdout, stderr, code, err := execx.Combined(cctx, execx.Cmd{
+		Args: fullArgs,
+		Dir:  repoRoot,
+	})
+	if err != nil {
+		msg := strings.TrimSpace(stderr)
 		if msg == "" {
 			msg = err.Error()
 		}
 		return "", fmt.Errorf("%s", msg)
 	}
-	return stdout.String(), nil
+	if code != 0 {
+		msg := strings.TrimSpace(stderr)
+		if msg == "" {
+			msg = fmt.Sprintf("git exited %d", code)
+		}
+		return "", fmt.Errorf("%s", msg)
+	}
+	return stdout, nil
 }
 
 // RenderBriefMarkdown formats a focused adversarial review packet in Markdown.
@@ -446,6 +453,37 @@ func ensureNoSymlinkPath(target string) error {
 	return nil
 }
 
+func writeFileInDirSafe(dir, name string, data []byte) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("open root %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
+	if st, lerr := root.Lstat(name); lerr == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to overwrite symlink: %s", filepath.Join(dir, name))
+		}
+		if st.IsDir() {
+			return fmt.Errorf("output path is a directory: %s", filepath.Join(dir, name))
+		}
+	} else if !errors.Is(lerr, os.ErrNotExist) {
+		return fmt.Errorf("lstat %s: %w", filepath.Join(dir, name), lerr)
+	}
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fsperm.File)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", filepath.Join(dir, name), err)
+	}
+	_, wErr := f.Write(data)
+	cErr := f.Close()
+	if wErr != nil {
+		return fmt.Errorf("write %s: %w", filepath.Join(dir, name), wErr)
+	}
+	if cErr != nil {
+		return fmt.Errorf("close %s: %w", filepath.Join(dir, name), cErr)
+	}
+	return nil
+}
+
 func writeSafeFile(outPath string, data []byte) error {
 	if err := ensureNoSymlinkPath(outPath); err != nil {
 		return err
@@ -461,12 +499,15 @@ func writeSafeFile(outPath string, data []byte) error {
 		if st.IsDir() {
 			return fmt.Errorf("output path is a directory: %s", abs)
 		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat output path: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), fsperm.Dir); err != nil {
+	parentDir := filepath.Dir(abs)
+	if err := os.MkdirAll(parentDir, fsperm.Dir); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 	if err := ensureNoSymlinkPath(abs); err != nil {
 		return err
 	}
-	return os.WriteFile(abs, data, fsperm.File)
+	return writeFileInDirSafe(parentDir, filepath.Base(abs), data)
 }

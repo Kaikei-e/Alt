@@ -138,16 +138,22 @@ type RecordResult struct {
 	FocusVerdictsWritten int    `json:"focus_verdicts_recorded"`
 }
 
+// CoverageOptions configures `loop-review check-coverage`.
+type CoverageOptions struct {
+	StrictResolved bool
+}
+
 // CoverageResult is the structured outcome of `loop-review check-coverage`.
 type CoverageResult struct {
-	Covered       bool        `json:"covered"`
-	DecisionsFile string      `json:"decisions_file"`
-	TotalRequired int         `json:"total_required"`
-	CoveredCount  int         `json:"covered_count"`
-	CoveredIDs    []string    `json:"covered_ids"`
-	MissingIDs    []string    `json:"missing_ids"`
-	MissingItems  []FocusItem `json:"missing_items"`
-	Error         string      `json:"error,omitempty"`
+	Covered        bool        `json:"covered"`
+	StrictResolved bool        `json:"strict_resolved,omitempty"`
+	DecisionsFile  string      `json:"decisions_file"`
+	TotalRequired  int         `json:"total_required"`
+	CoveredCount   int         `json:"covered_count"`
+	CoveredIDs     []string    `json:"covered_ids"`
+	MissingIDs     []string    `json:"missing_ids"`
+	MissingItems   []FocusItem `json:"missing_items"`
+	Error          string      `json:"error,omitempty"`
 }
 
 var canonicalFocusAreas = []FocusItem{
