@@ -29,7 +29,7 @@
       "evidence": "search-indexer/app/internal/connectguard/connectguard_gen_test.go",
       "blast_radius_proof": {
         "assumption": "Every unary Connect-RPC client wires connectguard.NewUnaryNilResponseInterceptor() so nil responses fail fast before generated proto Get*() accessors return silent zero values.",
-        "command": "/home/koko/.local/bin/ast-grep scan -c scripts/lint/ast-grep/sgconfig.yml pre-processor/app search-indexer/app alt-backend/app && go -C pre-processor/app test ./driver/mqhub_connect/... ./driver/backend_api/... ./repository/... ./internal/connectguard/... && go -C search-indexer/app test ./driver/backend_api/... ./internal/connectguard/... && go -C alt-backend/app test ./internal/connectguard/... ./orchestrator/driver/preprocessor_connect/... ./orchestrator/driver/search_indexer_connect/... ./shared/driver/datahub_client/... ./shared/driver/sovereign_client/... ./shared/driver/mqhub_connect/...",
+        "command": "ast-grep scan -c scripts/lint/ast-grep/sgconfig.yml pre-processor/app search-indexer/app alt-backend/app && go -C pre-processor/app test ./driver/mqhub_connect/... ./driver/backend_api/... ./repository/... ./internal/connectguard/... && go -C search-indexer/app test ./driver/backend_api/... ./internal/connectguard/... && go -C alt-backend/app test ./internal/connectguard/... ./orchestrator/driver/preprocessor_connect/... ./orchestrator/driver/search_indexer_connect/... ./shared/driver/datahub_client/... ./shared/driver/sovereign_client/... ./shared/driver/mqhub_connect/...",
         "exit_code": 0,
         "evidence": "search-indexer/app/internal/connectguard/connectguard_gen_test.go"
       }
