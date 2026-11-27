@@ -45,19 +45,23 @@ func (h *recordingHandler) find(message string) (recordedLog, bool) {
 }
 
 type fakeRepo struct {
-	events            []sovereign_db.KnowledgeEvent
-	checkpoint        int64
-	checkpointAt      time.Time
-	checkpointExists  bool
-	advances          []fakeAdvance
-	advanceRejected   bool
-	listCalls         int
-	frontiers         []sovereign_db.SequenceGapFrontier
-	beforeGapFrontier func()
-	upserts           map[string]sovereign_db.TrailFootprint
-	branches          map[string]sovereign_db.TrailBranch
-	states            map[string]string
-	outcomes          map[string]sovereign_db.TrailActOutcome
+	events              []sovereign_db.KnowledgeEvent
+	checkpoint          int64
+	checkpointAt        time.Time
+	checkpointExists    bool
+	advances            []fakeAdvance
+	advanceRejected     bool
+	beforeAdvance       func(from sovereign_db.ProjectionCheckpoint, toSeq int64) bool
+	listCalls           int
+	frontiers           []sovereign_db.SequenceGapFrontier
+	autoBurnedFrontiers bool
+	nextXID             int64
+	frontierReads       []sovereign_db.SequenceGapFrontier
+	beforeGapFrontier   func()
+	upserts             map[string]sovereign_db.TrailFootprint
+	branches            map[string]sovereign_db.TrailBranch
+	states              map[string]string
+	outcomes            map[string]sovereign_db.TrailActOutcome
 }
 
 type fakeAdvance struct {
@@ -110,7 +114,26 @@ func (f *fakeRepo) UpsertTrailFootprint(_ context.Context, fp sovereign_db.Trail
 
 func (f *fakeRepo) AdvanceProjectionCheckpointIfUnchanged(_ context.Context, _ string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error) {
 	f.advances = append(f.advances, fakeAdvance{From: from, ToSeq: toSeq})
-	if f.advanceRejected || from.Exists != f.checkpointExists || from.LastEventSeq != f.checkpoint || !from.UpdatedAt.Equal(f.checkpointAt) {
+	if f.beforeAdvance != nil && !f.beforeAdvance(from, toSeq) {
+		return false, nil
+	}
+	if f.advanceRejected {
+		return false, nil
+	}
+	if !from.Exists {
+		if f.checkpointExists {
+			return false, nil
+		}
+		if f.checkpointAt.IsZero() {
+			f.checkpointAt = fakeCheckpointAt
+		} else {
+			f.checkpointAt = f.checkpointAt.Add(time.Second)
+		}
+		f.checkpoint = toSeq
+		f.checkpointExists = true
+		return true, nil
+	}
+	if !f.checkpointExists || from.LastEventSeq != f.checkpoint || !from.UpdatedAt.Equal(f.checkpointAt) {
 		return false, nil
 	}
 	f.checkpoint = toSeq
@@ -137,9 +160,18 @@ func (f *fakeRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq 
 	if f.beforeGapFrontier != nil {
 		f.beforeGapFrontier()
 	}
-	next := f.frontiers[0]
-	if len(f.frontiers) > 1 {
-		f.frontiers = f.frontiers[1:]
+	var next sovereign_db.SequenceGapFrontier
+	if f.autoBurnedFrontiers {
+		if f.nextXID == 0 {
+			f.nextXID = 100
+		}
+		f.nextXID++
+		next = sovereign_db.SequenceGapFrontier{Ceiling: f.nextXID, Xmin: f.nextXID}
+	} else {
+		next = f.frontiers[0]
+		if len(f.frontiers) > 1 {
+			f.frontiers = f.frontiers[1:]
+		}
 	}
 	next.HoleOpen = true
 	for _, evt := range f.events {
@@ -147,6 +179,7 @@ func (f *fakeRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq 
 			next.HoleOpen = false
 		}
 	}
+	f.frontierReads = append(f.frontierReads, next)
 	return next, nil
 }
 

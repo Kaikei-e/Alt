@@ -6,6 +6,7 @@ on:
     tags: ['v*']
     paths-ignore:
       - 'docs/**'
+      - 'specs/**'
       - '.claude/**'
       - '.agents/**'
       - '**/CLAUDE.md'
@@ -15,6 +16,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/**'
+      - 'specs/**'
       - '.claude/**'
       - '.agents/**'
       - '**/CLAUDE.md'

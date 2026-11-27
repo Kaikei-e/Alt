@@ -1,0 +1,76 @@
+name: Formal Specifications (Tauto)
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'specs/tauto/**'
+      - 'news-creator/app/news_creator/gateway/hybrid_priority_semaphore.py'
+      - 'news-creator/app/tests/gateway/**'
+      - 'knowledge-sovereign/app/usecase/projection_gap/**'
+      - 'knowledge-sovereign/app/driver/sovereign_db/read_events.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/read_infra_checkpoints.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/rebuild_projection.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/cas_conformance_pg_test.go'
+      - 'knowledge-sovereign/app/usecase/knowledge_home_projector/**'
+      - 'knowledge-sovereign/app/usecase/knowledge_trail_projector/**'
+      - 'knowledge-sovereign/app/usecase/reading_projector/**'
+      - 'scripts/lint/**'
+      - 'scripts/altharness/**'
+      - 'Makefile'
+      - '.github/workflows/formal-specs.yaml'
+  pull_request:
+    paths:
+      - 'specs/tauto/**'
+      - 'news-creator/app/news_creator/gateway/hybrid_priority_semaphore.py'
+      - 'news-creator/app/tests/gateway/**'
+      - 'knowledge-sovereign/app/usecase/projection_gap/**'
+      - 'knowledge-sovereign/app/driver/sovereign_db/read_events.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/read_infra_checkpoints.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/rebuild_projection.go'
+      - 'knowledge-sovereign/app/driver/sovereign_db/cas_conformance_pg_test.go'
+      - 'knowledge-sovereign/app/usecase/knowledge_home_projector/**'
+      - 'knowledge-sovereign/app/usecase/knowledge_trail_projector/**'
+      - 'knowledge-sovereign/app/usecase/reading_projector/**'
+      - 'scripts/lint/**'
+      - 'scripts/altharness/**'
+      - 'Makefile'
+      - '.github/workflows/formal-specs.yaml'
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false
+      - name: Cache Tauto binary
+        id: cache-tauto
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/bin/tauto
+          key: tauto-${{ runner.os }}-${{ runner.arch }}-a6bb593f85e6dcc5ef53ba7a28c43d1f65f410a6-1.100.0
+      - name: Install Tauto
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          if [ ! -x "$HOME/.local/bin/tauto" ]; then
+            make install-tauto
+          fi
+      - name: Run Tauto formal spec gate
+        run: ./scripts/lint/run.sh tauto

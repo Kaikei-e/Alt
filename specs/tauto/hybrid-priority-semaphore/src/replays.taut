@@ -1,0 +1,421 @@
+import "model.taut" {
+  Config,
+  Event,
+  Outcome,
+  Pool,
+  Priority,
+  State,
+  cfg_be_slots,
+  cfg_rt_reserved,
+  init_state,
+  run_from_init,
+  st_be_avail,
+  st_be_queued,
+  st_consecutive_rt_releases,
+  st_held_be,
+  st_held_rt,
+  st_in_transit_be,
+  st_in_transit_rt,
+  st_rt_avail,
+  st_rt_queued,
+  step,
+  step_result_outcome
+}
+
+// ============================================================================
+// Group 5: Incident replay definitions & kernel-reduction theorems
+// ============================================================================
+
+// 1. PM-2026-012: Preemption release chain on total=2 (rt=1, be=1).
+// RT slot migrates to BE waiter, BE slot migrates to RT then BE waiter;
+// final releases return each slot to its true home pool with zero loss.
+pub fn cfg_pm_2026_012(): Config {
+  SemConfig(1, 1, 0, 0)
+}
+
+pub fn trace_pm_2026_012(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Be),
+    Acquire(Rt),
+    Release(Be, PoolBe),
+    CompleteTransfer(PoolBe),
+    Acquire(Be),
+    Acquire(Be),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Rt, PoolBe),
+    CompleteTransfer(PoolBe),
+    Release(Be, PoolRt),
+    Release(Be, PoolBe)
+  ]
+}
+
+pub theorem replay_pm_2026_012_recovers_both_pools(): run_from_init(
+  cfg_pm_2026_012(),
+  trace_pm_2026_012()
+) = SemState(1, 0, 0, 1, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 2. PM-2026-014: Single-slot be_slots=0 fallback & transfer chain.
+// BE acquires RT slot via fallback, RT queues, BE transfers RT slot to RT,
+// BE2 queues and is cancelled while queued, RT returns slot to RT pool.
+pub fn cfg_pm_2026_014(): Config {
+  SemConfig(1, 0, 0, 0)
+}
+
+pub fn trace_pm_2026_014(): List(Event) {
+  [
+    Acquire(Be),
+    Acquire(Rt),
+    Acquire(Be),
+    CancelQueued(Be),
+    Release(Be, PoolRt),
+    CompleteTransfer(PoolRt),
+    Acquire(Be),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Be, PoolRt)
+  ]
+}
+
+pub theorem replay_pm_2026_014_zero_be_pool_loss(): run_from_init(
+  cfg_pm_2026_014(),
+  trace_pm_2026_014()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 3. PM-2026-015 (pool recovery): Waiter cancelled after set_result() while
+// slot is in-transit recovers slot back to RT pool with zero loss.
+pub fn cfg_pm_2026_015(): Config {
+  SemConfig(1, 0, 0, 0)
+}
+
+pub fn trace_pm_2026_015_pool(): List(Event) {
+  [Acquire(Be), Acquire(Be), Release(Be, PoolRt), CancelInTransit(PoolRt)]
+}
+
+pub theorem replay_pm_2026_015_recovers_to_pool(): run_from_init(
+  cfg_pm_2026_015(),
+  trace_pm_2026_015_pool()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 4. PM-2026-015 (forward recovery + consecutive_rt_releases reset):
+// Waiter cancelled after set_result() forwards the in-transit slot to the
+// next queued BE waiter and resets consecutive_rt_releases to 0.
+pub fn cfg_pm_2026_015_forward(): Config {
+  SemConfig(1, 0, 0, 3)
+}
+
+pub fn trace_pm_2026_015_forward(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Rt),
+    Acquire(Be),
+    Release(Rt, PoolRt),
+    CancelInTransit(PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Be, PoolRt)
+  ]
+}
+
+pub theorem replay_pm_2026_015_forwards_and_resets_ratio(): run_from_init(
+  cfg_pm_2026_015_forward(),
+  trace_pm_2026_015_forward()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+pub theorem replay_pm_2026_015_forward_mid_resets_consec(): st_consecutive_rt_releases(
+  run_from_init(
+    cfg_pm_2026_015_forward(),
+    [Acquire(Rt), Acquire(Rt), Acquire(Be), Release(Rt, PoolRt), CancelInTransit(PoolRt)]
+  )
+) = 0 {
+  Refl
+}
+
+// 5. SCENARIO_MULTI_IN_TRANSIT: Two slots simultaneously in-transit in the
+// same event-loop turn (total=2, rt=1, be=1).
+pub fn cfg_multi_in_transit(): Config {
+  SemConfig(1, 1, 0, 0)
+}
+
+pub fn trace_multi_in_transit_mid(): List(Event) {
+  [Acquire(Rt), Acquire(Be), Acquire(Rt), Acquire(Be), Release(Rt, PoolRt), Release(Be, PoolBe)]
+}
+
+pub fn trace_multi_in_transit(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Be),
+    Acquire(Rt),
+    Acquire(Be),
+    Release(Rt, PoolRt),
+    Release(Be, PoolBe),
+    CompleteTransfer(PoolRt),
+    CompleteTransfer(PoolBe),
+    Release(Rt, PoolRt),
+    Release(Be, PoolBe)
+  ]
+}
+
+pub theorem replay_multi_in_transit_holds_two_in_transit(): run_from_init(
+  cfg_multi_in_transit(),
+  trace_multi_in_transit_mid()
+) = SemState(0, 0, 1, 0, 0, 1, 0, 0, 0) {
+  Refl
+}
+
+pub theorem replay_multi_in_transit_drains_cleanly(): run_from_init(
+  cfg_multi_in_transit(),
+  trace_multi_in_transit()
+) = SemState(1, 0, 0, 1, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 6. Strict invalid/double release rejection while a waiter is queued.
+pub fn cfg_invalid_release(): Config {
+  SemConfig(1, 1, 0, 0)
+}
+
+pub fn trace_invalid_release(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Rt),
+    Release(Rt, PoolBe),
+    Release(Rt, PoolRt),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Rt, PoolRt),
+    Release(Rt, PoolRt)
+  ]
+}
+
+pub theorem replay_invalid_release_no_phantom_slot(): run_from_init(
+  cfg_invalid_release(),
+  trace_invalid_release()
+) = SemState(1, 0, 0, 1, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+pub theorem replay_invalid_release_be_outcome_rejected(): step_result_outcome(
+  step(
+    cfg_invalid_release(),
+    run_from_init(cfg_invalid_release(), [Acquire(Rt), Acquire(Rt)]),
+    Release(Rt, PoolBe)
+  )
+) = RejectedInvalidRelease {
+  Refl
+}
+
+// 7. Guaranteed BE bandwidth ratio (guaranteed_be_ratio = 2).
+pub fn cfg_guaranteed_be(): Config {
+  SemConfig(1, 0, 0, 2)
+}
+
+pub fn trace_guaranteed_be(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Be),
+    Acquire(Rt),
+    Acquire(Rt),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Be, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Rt, PoolRt)
+  ]
+}
+
+pub theorem replay_guaranteed_be_forces_be_on_second_rt_release(): step_result_outcome(
+  step(
+    cfg_guaranteed_be(),
+    run_from_init(
+      cfg_guaranteed_be(),
+      [
+        Acquire(Rt),
+        Acquire(Be),
+        Acquire(Rt),
+        Acquire(Rt),
+        Release(Rt, PoolRt),
+        CompleteTransfer(PoolRt)
+      ]
+    ),
+    Release(Rt, PoolRt)
+  )
+) = ReleasedToBeGuaranteed(PoolRt) {
+  Refl
+}
+
+pub theorem replay_guaranteed_be_drains_cleanly(): run_from_init(
+  cfg_guaranteed_be(),
+  trace_guaranteed_be()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 8. All-BE config (rt_reserved = 0) + max_queue_depth = 1.
+pub fn cfg_all_be_queue_depth(): Config {
+  SemConfig(0, 2, 1, 0)
+}
+
+pub fn trace_all_be_queue_depth(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Be),
+    Acquire(Rt),
+    Acquire(Be),
+    Release(Rt, PoolBe),
+    CompleteTransfer(PoolBe),
+    Release(Rt, PoolBe),
+    Release(Be, PoolBe)
+  ]
+}
+
+pub theorem replay_all_be_queue_full_rejected(): step_result_outcome(
+  step(
+    cfg_all_be_queue_depth(),
+    run_from_init(cfg_all_be_queue_depth(), [Acquire(Rt), Acquire(Be), Acquire(Rt)]),
+    Acquire(Be)
+  )
+) = RejectedQueueFull {
+  Refl
+}
+
+pub theorem replay_all_be_drains_cleanly(): run_from_init(
+  cfg_all_be_queue_depth(),
+  trace_all_be_queue_depth()
+) = SemState(0, 0, 0, 2, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 9. Hybrid max_queue_depth = 1: BE queue full rejects BE while RT still gets immediate RT slot.
+pub fn cfg_hybrid_queue_depth(): Config {
+  SemConfig(1, 1, 1, 0)
+}
+
+pub fn trace_hybrid_queue_depth(): List(Event) {
+  [
+    Acquire(Be),
+    Acquire(Be),
+    Acquire(Be),
+    Acquire(Rt),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Be, PoolRt),
+    Release(Be, PoolBe)
+  ]
+}
+
+pub theorem replay_hybrid_immediate_rt_bypasses_full_be_queue(): step_result_outcome(
+  step(
+    cfg_hybrid_queue_depth(),
+    run_from_init(cfg_hybrid_queue_depth(), [Acquire(Be), Acquire(Be), Acquire(Be)]),
+    Acquire(Rt)
+  )
+) = AcquiredImmediate(PoolRt) {
+  Refl
+}
+
+pub theorem replay_hybrid_queue_depth_drains_cleanly(): run_from_init(
+  cfg_hybrid_queue_depth(),
+  trace_hybrid_queue_depth()
+) = SemState(1, 0, 0, 1, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// 10. PromoteBeToRt + CancelQueued interaction.
+pub fn cfg_promote_and_cancel(): Config {
+  SemConfig(1, 0, 0, 0)
+}
+
+pub fn trace_promote_and_cancel(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Be),
+    Acquire(Rt),
+    PromoteBeToRt,
+    CancelQueued(Rt),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Be, PoolRt)
+  ]
+}
+
+pub theorem replay_promote_and_cancel_drains_cleanly(): run_from_init(
+  cfg_promote_and_cancel(),
+  trace_promote_and_cancel()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+pub theorem replay_promote_moves_be_to_rt_queue(): st_rt_queued(
+  run_from_init(cfg_promote_and_cancel(), [Acquire(Rt), Acquire(Be), Acquire(Rt), PromoteBeToRt])
+) = 2 ∧ st_be_queued(
+  run_from_init(cfg_promote_and_cancel(), [Acquire(Rt), Acquire(Be), Acquire(Rt), PromoteBeToRt])
+) = 0 {
+  AndIntro(Refl, Refl)
+}
+
+// 11. Single-slot mutual exclusion under invalid BE release while RT waiter queued.
+pub fn cfg_invalid_release_mutex(): Config {
+  SemConfig(1, 0, 0, 0)
+}
+
+pub fn trace_invalid_release_mutex(): List(Event) {
+  [
+    Acquire(Rt),
+    Acquire(Rt),
+    Release(Rt, PoolBe),
+    Release(Be, PoolBe),
+    Release(Rt, PoolRt),
+    CompleteTransfer(PoolRt),
+    Release(Rt, PoolRt)
+  ]
+}
+
+pub theorem replay_invalid_release_mutex_preserves_exclusion(): run_from_init(
+  cfg_invalid_release_mutex(),
+  [Acquire(Rt), Acquire(Rt), Release(Rt, PoolBe), Release(Be, PoolBe)]
+) = SemState(0, 1, 0, 0, 0, 0, 1, 0, 0) {
+  Refl
+}
+
+pub theorem replay_invalid_release_mutex_drains_cleanly(): run_from_init(
+  cfg_invalid_release_mutex(),
+  trace_invalid_release_mutex()
+) = SemState(1, 0, 0, 0, 0, 0, 0, 0, 0) {
+  Refl
+}
+
+// Sanity checks on init state for all pool combinations
+pub theorem init_state_all_held_zero(cfg: Config): st_held_rt(
+  init_state(cfg)
+) = 0 ∧ st_held_be(init_state(cfg)) = 0 {
+  match cfg {
+    SemConfig(rt, be, depth, ratio) => AndIntro(Refl, Refl)
+  }
+}
+
+pub theorem init_state_all_in_transit_zero(cfg: Config): st_in_transit_rt(
+  init_state(cfg)
+) = 0 ∧ st_in_transit_be(init_state(cfg)) = 0 {
+  match cfg {
+    SemConfig(rt, be, depth, ratio) => AndIntro(Refl, Refl)
+  }
+}
+
+pub theorem init_state_avail_matches_cfg(cfg: Config): st_rt_avail(
+  init_state(cfg)
+) = cfg_rt_reserved(cfg) ∧ st_be_avail(init_state(cfg)) = cfg_be_slots(cfg) {
+  match cfg {
+    SemConfig(rt, be, depth, ratio) => AndIntro(Refl, Refl)
+  }
+}

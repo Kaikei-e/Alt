@@ -1,0 +1,923 @@
+// Formal model and proofs for knowledge-sovereign's sequence-gap abandonment,
+// ContiguousPrefix safety, and PM-2026-064 same-tick double-probe catchup
+// (ADR-001031 Part B).
+//
+// Maps directly to usecase/projection_gap/gap.go and all 3 projectors'
+// same-tick burned-hole catchup logic.
+
+// Local Nat ordering and List indexing helpers (zero axioms, zero stdlib coupling).
+pub fn nat_le(a: Nat, b: Nat): Bool {
+  Nat::lt(a, Succ(b))
+}
+
+pub fn list_nth(l: List(Nat), i: Nat): Option(Nat) {
+  match l {
+    Nil => None
+    Cons(h, t) => match i {
+      Zero => Some(h)
+      Succ(j) => list_nth(t, j)
+    }
+  }
+}
+
+pub theorem nat_le_refl(a: Nat): nat_le(a, a) = true {
+  match a {
+    Zero => Refl
+    Succ(k) => nat_le_refl(k)
+  }
+}
+
+pub theorem nat_le_succ(a: Nat): nat_le(a, Succ(a)) = true {
+  match a {
+    Zero => Refl
+    Succ(k) => nat_le_succ(k)
+  }
+}
+
+pub theorem nat_le_trans(
+  a: Nat,
+  b: Nat,
+  c: Nat,
+  h1: nat_le(a, b) = true,
+  h2: nat_le(b, c) = true
+): nat_le(a, c) = true {
+  match a {
+    Zero => Refl
+    Succ(a2) => ⊢ nat_le(Succ(a2), c) = true from match b {
+      Zero => False::elim(false_ne_true(h1))
+      Succ(b2) => ⊢ nat_le(Succ(a2), c) = true from match c {
+        Zero => False::elim(false_ne_true(h2))
+        Succ(c2) => nat_le_trans(a2, b2, c2, h1, h2)
+      }
+    }
+  }
+}
+
+pub(open) inductive Hole: Type {
+  NoHole: Hole
+  OpenHole(first: Nat, last: Nat): Hole
+}
+
+pub(open) inductive Frontier: Type {
+  MkFrontier(ceiling: Nat, xmin: Nat, hole_open: Bool): Frontier
+}
+
+pub(open) inductive TrackerState: Type {
+  EmptyTracker: TrackerState
+  Watching(hole: Hole, ceiling: Nat): TrackerState
+}
+
+pub(open) inductive AbandonOutcome: Type {
+  AbandonRes(abandon: Bool, next: TrackerState): AbandonOutcome
+}
+
+pub(open) inductive PrefixResult: Type {
+  PrefixRes(prefix: List(Nat), hole: Hole): PrefixResult
+}
+
+pub(open) inductive TwoProbeOutcome: Type {
+  TwoProbeRes(abandon: Bool, probes: Nat, next: TrackerState): TwoProbeOutcome
+}
+
+pub fn hole_open(h: Hole): Bool {
+  match h {
+    NoHole => false
+    OpenHole(_, _) => true
+  }
+}
+
+pub fn hole_eq(a: Hole, b: Hole): Bool {
+  match a {
+    NoHole => match b {
+      NoHole => true
+      OpenHole(_, _) => false
+    }
+    OpenHole(f1, l1) => match b {
+      NoHole => false
+      OpenHole(f2, l2) => Nat::eq(f1, f2) && Nat::eq(l1, l2)
+    }
+  }
+}
+
+pub fn frontier_ceiling(f: Frontier): Nat {
+  match f {
+    MkFrontier(c, _, _) => c
+  }
+}
+
+pub fn frontier_xmin(f: Frontier): Nat {
+  match f {
+    MkFrontier(_, xmin, _) => xmin
+  }
+}
+
+pub fn frontier_hole_open(f: Frontier): Bool {
+  match f {
+    MkFrontier(_, _, open) => open
+  }
+}
+
+pub fn abandon_flag(res: AbandonOutcome): Bool {
+  match res {
+    AbandonRes(ab, _) => ab
+  }
+}
+
+pub fn abandon_next(res: AbandonOutcome): TrackerState {
+  match res {
+    AbandonRes(_, next) => next
+  }
+}
+
+pub fn two_probe_abandon(res: TwoProbeOutcome): Bool {
+  match res {
+    TwoProbeRes(ab, _, _) => ab
+  }
+}
+
+pub fn two_probe_count(res: TwoProbeOutcome): Nat {
+  match res {
+    TwoProbeRes(_, probes, _) => probes
+  }
+}
+
+pub fn two_probe_next(res: TwoProbeOutcome): TrackerState {
+  match res {
+    TwoProbeRes(_, _, next) => next
+  }
+}
+
+pub fn prefix_events(r: PrefixResult): List(Nat) {
+  match r {
+    PrefixRes(p, _) => p
+  }
+}
+
+pub fn prefix_hole(r: PrefixResult): Hole {
+  match r {
+    PrefixRes(_, h) => h
+  }
+}
+
+pub fn choose_abandon(hole: Hole, prev_c: Nat, lt_cond: Bool): AbandonOutcome {
+  match lt_cond {
+    true => AbandonRes(false, Watching(hole, prev_c))
+    false => AbandonRes(true, EmptyTracker)
+  }
+}
+
+pub fn watch_step(
+  prev_hole: Hole,
+  prev_c: Nat,
+  hole: Hole,
+  c: Nat,
+  xmin: Nat,
+  same: Bool
+): AbandonOutcome {
+  match same {
+    false => AbandonRes(false, Watching(hole, c))
+    true => choose_abandon(prev_hole, prev_c, Nat::lt(xmin, prev_c))
+  }
+}
+
+// Tracker.MayAbandon semantics (usecase/projection_gap/gap.go).
+pub fn may_abandon(tracker: TrackerState, hole: Hole, frontier: Frontier): AbandonOutcome {
+  match frontier {
+    MkFrontier(c, xmin, open) => match open {
+      false => AbandonRes(false, EmptyTracker)
+      true => match tracker {
+        EmptyTracker => AbandonRes(false, Watching(hole, c))
+        Watching(prev_hole, prev_c) => watch_step(
+          prev_hole,
+          prev_c,
+          hole,
+          c,
+          xmin,
+          hole_eq(prev_hole, hole)
+        )
+      }
+    }
+  }
+}
+
+pub fn wrap_second_probe(res: AbandonOutcome): TwoProbeOutcome {
+  match res {
+    AbandonRes(ab2, t2) => TwoProbeRes(ab2, 2, t2)
+  }
+}
+
+pub fn same_tick_continue(
+  t1: TrackerState,
+  hole: Hole,
+  f2: Frontier,
+  reprobe: Bool
+): TwoProbeOutcome {
+  match reprobe {
+    false => TwoProbeRes(false, 1, t1)
+    true => wrap_second_probe(may_abandon(t1, hole, f2))
+  }
+}
+
+pub fn wrap_first_probe(
+  res: AbandonOutcome,
+  hole: Hole,
+  f1: Frontier,
+  f2: Frontier
+): TwoProbeOutcome {
+  match res {
+    AbandonRes(ab1, t1) => match ab1 {
+      true => TwoProbeRes(true, 1, t1)
+      false => same_tick_continue(
+        t1,
+        hole,
+        f2,
+        frontier_hole_open(f1) && not(Nat::lt(frontier_xmin(f1), frontier_ceiling(f1)))
+      )
+    }
+  }
+}
+
+// PM-2026-064 same-tick double-probe semantics:
+// Probe once with f1; if not yet abandoned, hole is still open, and no older
+// transaction is running (xmin >= ceiling, i.e., not(xmin < ceiling)), re-probe
+// once in the same tick with f2.
+pub fn same_tick_probe(
+  tracker: TrackerState,
+  hole: Hole,
+  f1: Frontier,
+  f2: Frontier
+): TwoProbeOutcome {
+  wrap_first_probe(may_abandon(tracker, hole, f1), hole, f1, f2)
+}
+
+pub fn prefix_cons(seq: Nat, r: PrefixResult): PrefixResult {
+  match r {
+    PrefixRes(p, h) => PrefixRes(Cons(seq, p), h)
+  }
+}
+
+pub fn prefix_step(eq_cond: Bool, seq: Nat, next: Nat, tail_res: PrefixResult): PrefixResult {
+  match eq_cond {
+    false => PrefixRes(Nil, OpenHole(next, Nat::pred(seq)))
+    true => prefix_cons(seq, tail_res)
+  }
+}
+
+// ContiguousPrefix semantics (usecase/projection_gap/gap.go).
+pub fn contiguous_prefix_from(events: List(Nat), next: Nat): PrefixResult {
+  match events {
+    Nil => PrefixRes(Nil, NoHole)
+    Cons(seq, rest) => prefix_step(
+      Nat::eq(seq, next),
+      seq,
+      next,
+      contiguous_prefix_from(rest, Succ(next))
+    )
+  }
+}
+
+pub fn contiguous_prefix(events: List(Nat), after_seq: Nat): PrefixResult {
+  contiguous_prefix_from(events, Succ(after_seq))
+}
+
+pub fn all_lt(xs: List(Nat), bound: Nat): Bool {
+  match xs {
+    Nil => true
+    Cons(x, rest) => Nat::lt(x, bound) && all_lt(rest, bound)
+  }
+}
+
+pub fn all_gt(xs: List(Nat), bound: Nat): Bool {
+  match xs {
+    Nil => true
+    Cons(x, rest) => Nat::lt(bound, x) && all_gt(rest, bound)
+  }
+}
+
+pub fn hole_first_ge(h: Hole, bound: Nat): Bool {
+  match h {
+    NoHole => true
+    OpenHole(first, _) => nat_le(bound, first)
+  }
+}
+
+pub fn prefix_safe_for_hole(r: PrefixResult): Bool {
+  match r {
+    PrefixRes(p, h) => match h {
+      NoHole => true
+      OpenHole(first, _) => all_lt(p, first)
+    }
+  }
+}
+
+// ── Helper lemmas ──
+
+pub theorem hole_eq_refl(h: Hole): hole_eq(h, h) = true {
+  match h {
+    NoHole => Refl
+    OpenHole(f, l) => Eq::trans(Eq::congr(⟦□ && Nat::eq(l, l)⟧, Nat::eq_refl(f)), Nat::eq_refl(l))
+  }
+}
+
+pub theorem hole_first_ge_step(
+  h: Hole,
+  n: Nat,
+  h_ge: hole_first_ge(h, Succ(n)) = true
+): hole_first_ge(h, n) = true {
+  match h {
+    NoHole => Refl
+    OpenHole(first, _) => nat_le_trans(n, Succ(n), first, nat_le_succ(n), h_ge)
+  }
+}
+
+pub theorem all_lt_implies_nth_lt(
+  xs: List(Nat),
+  bound: Nat,
+  i: Nat,
+  x: Nat,
+  h_all: all_lt(xs, bound) = true,
+  h_nth: list_nth(xs, i) = Some(x)
+): Nat::lt(x, bound) = true {
+  match xs {
+    Nil => ⊢ Nat::lt(x, bound) = true from match h_nth {
+    }
+    Cons(h, t) => ⊢ Nat::lt(x, bound) = true from match i {
+      Zero => ⊢ Nat::lt(x, bound) = true from match Nat::lt(h, bound) eqn e_lt {
+        false => False::elim(
+          false_ne_true(Eq::trans(Eq::sym(Eq::congr(⟦□ && all_lt(t, bound)⟧, e_lt)), h_all))
+        )
+        true => ⊢ Nat::lt(x, bound) = true from match h_nth {
+          Refl => e_lt
+        }
+      }
+      Succ(j) => ⊢ Nat::lt(x, bound) = true from match Nat::lt(h, bound) eqn e_lt {
+        false => False::elim(
+          false_ne_true(Eq::trans(Eq::sym(Eq::congr(⟦□ && all_lt(t, bound)⟧, e_lt)), h_all))
+        )
+        true => all_lt_implies_nth_lt(
+          t,
+          bound,
+          j,
+          x,
+          Eq::trans(Eq::sym(Eq::congr(⟦□ && all_lt(t, bound)⟧, e_lt)), h_all),
+          h_nth
+        )
+      }
+    }
+  }
+}
+
+// ── Part B.1: Five safety properties of MayAbandon ──
+
+pub theorem may_abandon_closed_never_abandons_and_resets(
+  tracker: TrackerState,
+  hole: Hole,
+  c: Nat,
+  xmin: Nat
+): may_abandon(tracker, hole, MkFrontier(c, xmin, false)) = AbandonRes(false, EmptyTracker) {
+  Refl
+}
+
+pub theorem may_abandon_first_sight_never_abandons(
+  hole: Hole,
+  c: Nat,
+  xmin: Nat
+): may_abandon(
+  EmptyTracker,
+  hole,
+  MkFrontier(c, xmin, true)
+) = AbandonRes(false, Watching(hole, c)) {
+  Refl
+}
+
+pub theorem may_abandon_changed_hole_never_inherits(
+  h1: Hole,
+  h2: Hole,
+  prev_c: Nat,
+  c: Nat,
+  xmin: Nat,
+  h_diff: hole_eq(h1, h2) = false
+): may_abandon(
+  Watching(h1, prev_c),
+  h2,
+  MkFrontier(c, xmin, true)
+) = AbandonRes(false, Watching(h2, c)) {
+  Eq::congr(⟦watch_step(h1, prev_c, h2, c, xmin, □)⟧, h_diff)
+}
+
+pub theorem may_abandon_inflight_tx_never_abandons(
+  hole: Hole,
+  prev_c: Nat,
+  c: Nat,
+  xmin: Nat,
+  h_lt: Nat::lt(xmin, prev_c) = true
+): may_abandon(
+  Watching(hole, prev_c),
+  hole,
+  MkFrontier(c, xmin, true)
+) = AbandonRes(false, Watching(hole, prev_c)) {
+  Eq::trans(
+    Eq::congr(⟦watch_step(hole, prev_c, hole, c, xmin, □)⟧, hole_eq_refl(hole)),
+    Eq::congr(⟦choose_abandon(hole, prev_c, □)⟧, h_lt)
+  )
+}
+
+pub theorem may_abandon_confirmed_resets_tracker(
+  hole: Hole,
+  prev_c: Nat,
+  c: Nat,
+  xmin: Nat,
+  h_ge: Nat::lt(xmin, prev_c) = false
+): may_abandon(
+  Watching(hole, prev_c),
+  hole,
+  MkFrontier(c, xmin, true)
+) = AbandonRes(true, EmptyTracker) {
+  Eq::trans(
+    Eq::congr(⟦watch_step(hole, prev_c, hole, c, xmin, □)⟧, hole_eq_refl(hole)),
+    Eq::congr(⟦choose_abandon(hole, prev_c, □)⟧, h_ge)
+  )
+}
+
+pub theorem may_abandon_reappearing_hole_starts_fresh(
+  hole: Hole,
+  prev_c: Nat,
+  c1: Nat,
+  xmin1: Nat,
+  c2: Nat,
+  xmin2: Nat,
+  h_ge: Nat::lt(xmin1, prev_c) = false
+): may_abandon(
+  abandon_next(may_abandon(Watching(hole, prev_c), hole, MkFrontier(c1, xmin1, true))),
+  hole,
+  MkFrontier(c2, xmin2, true)
+) = AbandonRes(false, Watching(hole, c2)) {
+  Eq::congr(
+    ⟦may_abandon(abandon_next(□), hole, MkFrontier(c2, xmin2, true))⟧,
+    may_abandon_confirmed_resets_tracker(hole, prev_c, c1, xmin1, h_ge)
+  )
+}
+
+pub theorem may_abandon_judges_against_first_sighting_ceiling(
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  c2: Nat,
+  xmin2: Nat,
+  h_ge: Nat::lt(xmin2, c1) = false
+): may_abandon(
+  abandon_next(may_abandon(EmptyTracker, hole, MkFrontier(c1, xmin1, true))),
+  hole,
+  MkFrontier(c2, xmin2, true)
+) = AbandonRes(true, EmptyTracker) {
+  may_abandon_confirmed_resets_tracker(hole, c1, c2, xmin2, h_ge)
+}
+
+// ── Part B.2: PM-2026-064 same-tick double-probe safety ──
+
+pub theorem same_tick_waits_on_inflight_tx(
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  f2: Frontier,
+  h_lt: Nat::lt(xmin1, c1) = true
+): same_tick_probe(
+  EmptyTracker,
+  hole,
+  MkFrontier(c1, xmin1, true),
+  f2
+) = TwoProbeRes(false, 1, Watching(hole, c1)) {
+  Eq::congr(⟦same_tick_continue(Watching(hole, c1), hole, f2, not(□))⟧, h_lt)
+}
+
+pub theorem same_tick_does_not_abandon_if_filled_before_second_probe(
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  c2: Nat,
+  xmin2: Nat,
+  h_ge1: Nat::lt(xmin1, c1) = false
+): same_tick_probe(
+  EmptyTracker,
+  hole,
+  MkFrontier(c1, xmin1, true),
+  MkFrontier(c2, xmin2, false)
+) = TwoProbeRes(false, 2, EmptyTracker) {
+  Eq::congr(
+    ⟦same_tick_continue(Watching(hole, c1), hole, MkFrontier(c2, xmin2, false), not(□))⟧,
+    h_ge1
+  )
+}
+
+pub theorem same_tick_does_not_abandon_if_filled_on_first_probe(
+  tracker: TrackerState,
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  f2: Frontier
+): same_tick_probe(
+  tracker,
+  hole,
+  MkFrontier(c1, xmin1, false),
+  f2
+) = TwoProbeRes(false, 1, EmptyTracker) {
+  Refl
+}
+
+pub theorem same_tick_abandons_burned_hole_in_one_tick(
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  c2: Nat,
+  xmin2: Nat,
+  h_ge1: Nat::lt(xmin1, c1) = false,
+  h_ge2: Nat::lt(xmin2, c1) = false
+): same_tick_probe(
+  EmptyTracker,
+  hole,
+  MkFrontier(c1, xmin1, true),
+  MkFrontier(c2, xmin2, true)
+) = TwoProbeRes(true, 2, EmptyTracker) {
+  let h_step1 := Eq::congr(
+    ⟦same_tick_continue(Watching(hole, c1), hole, MkFrontier(c2, xmin2, true), not(□))⟧,
+    h_ge1
+  )
+  let h_step2 := Eq::congr(
+    ⟦wrap_second_probe(□)⟧,
+    may_abandon_confirmed_resets_tracker(hole, c1, c2, xmin2, h_ge2)
+  )
+  Eq::trans(h_step1, h_step2)
+}
+
+pub theorem same_tick_waits_if_second_probe_sees_inflight(
+  hole: Hole,
+  c1: Nat,
+  xmin1: Nat,
+  c2: Nat,
+  xmin2: Nat,
+  h_ge1: Nat::lt(xmin1, c1) = false,
+  h_lt2: Nat::lt(xmin2, c1) = true
+): same_tick_probe(
+  EmptyTracker,
+  hole,
+  MkFrontier(c1, xmin1, true),
+  MkFrontier(c2, xmin2, true)
+) = TwoProbeRes(false, 2, Watching(hole, c1)) {
+  let h_step1 := Eq::congr(
+    ⟦same_tick_continue(Watching(hole, c1), hole, MkFrontier(c2, xmin2, true), not(□))⟧,
+    h_ge1
+  )
+  let h_step2 := Eq::congr(
+    ⟦wrap_second_probe(□)⟧,
+    may_abandon_inflight_tx_never_abandons(hole, c1, c2, xmin2, h_lt2)
+  )
+  Eq::trans(h_step1, h_step2)
+}
+
+pub theorem same_tick_abandons_previously_watched_hole_in_one_probe(
+  hole: Hole,
+  prev_c: Nat,
+  c1: Nat,
+  xmin1: Nat,
+  f2: Frontier,
+  h_ge: Nat::lt(xmin1, prev_c) = false
+): same_tick_probe(
+  Watching(hole, prev_c),
+  hole,
+  MkFrontier(c1, xmin1, true),
+  f2
+) = TwoProbeRes(true, 1, EmptyTracker) {
+  Eq::congr(
+    ⟦wrap_first_probe(□, hole, MkFrontier(c1, xmin1, true), f2)⟧,
+    may_abandon_confirmed_resets_tracker(hole, prev_c, c1, xmin1, h_ge)
+  )
+}
+
+pub theorem same_tick_fresh_abandon_requires_both_open_and_drained(
+  hole: Hole,
+  f1: Frontier,
+  f2: Frontier,
+  h_ab: two_probe_abandon(same_tick_probe(EmptyTracker, hole, f1, f2)) = true
+): (
+  frontier_hole_open(f1) = true ∧ Nat::lt(frontier_xmin(f1), frontier_ceiling(f1)) = false
+) ∧ (frontier_hole_open(f2) = true ∧ Nat::lt(frontier_xmin(f2), frontier_ceiling(f1)) = false) {
+  match f1 {
+    MkFrontier(c1, xmin1, open1) => ⊢ (
+      open1 = true ∧ Nat::lt(xmin1, c1) = false
+    ) ∧ (frontier_hole_open(f2) = true ∧ Nat::lt(frontier_xmin(f2), c1) = false) from match open1 {
+      false => False::elim(false_ne_true(h_ab))
+      true => ⊢ (
+        true = true ∧ Nat::lt(xmin1, c1) = false
+      ) ∧ (
+        frontier_hole_open(f2) = true ∧ Nat::lt(frontier_xmin(f2), c1) = false
+      ) from match Nat::lt(xmin1, c1) eqn e1 {
+        true => False::elim(
+          false_ne_true(
+            Eq::trans(
+              Eq::sym(
+                Eq::congr(
+                  ⟦two_probe_abandon(same_tick_continue(Watching(hole, c1), hole, f2, not(□)))⟧,
+                  e1
+                )
+              ),
+              h_ab
+            )
+          )
+        )
+        false => ⊢ (true = true ∧ false = false) ∧ (
+          frontier_hole_open(f2) = true ∧ Nat::lt(frontier_xmin(f2), c1) = false
+        ) from match f2 {
+          MkFrontier(c2, xmin2, open2) => ⊢ (true = true ∧ false = false) ∧ (
+            open2 = true ∧ Nat::lt(xmin2, c1) = false
+          ) from match open2 {
+            false => False::elim(
+              false_ne_true(
+                Eq::trans(
+                  Eq::sym(
+                    Eq::congr(
+                      ⟦two_probe_abandon(
+                        same_tick_continue(
+                          Watching(hole, c1),
+                          hole,
+                          MkFrontier(c2, xmin2, false),
+                          not(□)
+                        )
+                      )⟧,
+                      e1
+                    )
+                  ),
+                  h_ab
+                )
+              )
+            )
+            true => ⊢ (true = true ∧ false = false) ∧ (
+              true = true ∧ Nat::lt(xmin2, c1) = false
+            ) from match Nat::lt(xmin2, c1) eqn e2 {
+              true => False::elim(
+                false_ne_true(
+                  Eq::trans(
+                    Eq::sym(
+                      Eq::congr(
+                        ⟦two_probe_abandon(□)⟧,
+                        same_tick_waits_if_second_probe_sees_inflight(
+                          hole,
+                          c1,
+                          xmin1,
+                          c2,
+                          xmin2,
+                          e1,
+                          e2
+                        )
+                      )
+                    ),
+                    h_ab
+                  )
+                )
+              )
+              false => AndIntro(AndIntro(Refl, Refl), AndIntro(Refl, Refl))
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Part B.3: ContiguousPrefix inductive safety over arbitrary List(Nat) and Nat ──
+
+pub theorem contiguous_prefix_empty_has_no_hole(after_seq: Nat): contiguous_prefix(
+  Nil,
+  after_seq
+) = PrefixRes(Nil, NoHole) {
+  Refl
+}
+
+pub theorem contiguous_prefix_head_gap(
+  seq: Nat,
+  rest: List(Nat),
+  after_seq: Nat,
+  h_ne: Nat::eq(seq, Succ(after_seq)) = false
+): contiguous_prefix(
+  Cons(seq, rest),
+  after_seq
+) = PrefixRes(Nil, OpenHole(Succ(after_seq), Nat::pred(seq))) {
+  Eq::congr(
+    ⟦prefix_step(□, seq, Succ(after_seq), contiguous_prefix_from(rest, Succ(Succ(after_seq))))⟧,
+    h_ne
+  )
+}
+
+pub theorem contiguous_prefix_from_hole_ge(
+  events: List(Nat),
+  next: Nat
+): hole_first_ge(prefix_hole(contiguous_prefix_from(events, next)), next) = true {
+  match events {
+    Nil => Refl
+    Cons(seq, rest) => ⊢ hole_first_ge(
+      prefix_hole(
+        prefix_step(Nat::eq(seq, next), seq, next, contiguous_prefix_from(rest, Succ(next)))
+      ),
+      next
+    ) = true from match Nat::eq(seq, next) eqn e_eq {
+      false => nat_le_refl(next)
+      true => ⊢ hole_first_ge(
+        prefix_hole(prefix_cons(seq, contiguous_prefix_from(rest, Succ(next)))),
+        next
+      ) = true from match contiguous_prefix_from(rest, Succ(next)) eqn er {
+        PrefixRes(p, h) => hole_first_ge_step(
+          h,
+          next,
+          Eq::trans(
+            Eq::sym(Eq::congr(⟦hole_first_ge(prefix_hole(□), Succ(next))⟧, er)),
+            contiguous_prefix_from_hole_ge(rest, Succ(next))
+          )
+        )
+      }
+    }
+  }
+}
+
+pub theorem contiguous_prefix_from_safe(
+  events: List(Nat),
+  next: Nat
+): prefix_safe_for_hole(contiguous_prefix_from(events, next)) = true {
+  match events {
+    Nil => Refl
+    Cons(seq, rest) => ⊢ prefix_safe_for_hole(
+      prefix_step(Nat::eq(seq, next), seq, next, contiguous_prefix_from(rest, Succ(next)))
+    ) = true from match Nat::eq(seq, next) eqn e_eq {
+      false => Refl
+      true => ⊢ prefix_safe_for_hole(
+        prefix_cons(seq, contiguous_prefix_from(rest, Succ(next)))
+      ) = true from match contiguous_prefix_from(rest, Succ(next)) eqn er {
+        PrefixRes(p, h) => ⊢ prefix_safe_for_hole(PrefixRes(Cons(seq, p), h)) = true from match h {
+          NoHole => Refl
+          OpenHole(first, last) => {
+            let h_seq_eq := Nat::eq_sound(seq, next, e_eq)
+            let h_next_lt := Eq::trans(
+              Eq::sym(Eq::congr(⟦hole_first_ge(prefix_hole(□), Succ(next))⟧, er)),
+              contiguous_prefix_from_hole_ge(rest, Succ(next))
+            )
+            let h_seq_lt := Eq::trans(Eq::congr(⟦Nat::lt(□, first)⟧, h_seq_eq), h_next_lt)
+            let h_rest_all := Eq::trans(
+              Eq::sym(Eq::congr(⟦prefix_safe_for_hole(□)⟧, er)),
+              contiguous_prefix_from_safe(rest, Succ(next))
+            )
+            Eq::trans(Eq::congr(⟦□ && all_lt(p, first)⟧, h_seq_lt), h_rest_all)
+          }
+        }
+      }
+    }
+  }
+}
+
+// Main inductive theorem over ALL events: List(Nat) and after_seq: Nat:
+// whenever ContiguousPrefix stops at OpenHole(first, last), EVERY element x in
+// the returned prefix satisfies x < first.
+pub theorem contiguous_prefix_all_lt_hole_first(
+  events: List(Nat),
+  after_seq: Nat,
+  first: Nat,
+  last: Nat,
+  h_hole: prefix_hole(contiguous_prefix(events, after_seq)) = OpenHole(first, last)
+): all_lt(prefix_events(contiguous_prefix(events, after_seq)), first) = true {
+  let h_safe := contiguous_prefix_from_safe(events, Succ(after_seq))
+  match contiguous_prefix_from(events, Succ(after_seq)) eqn er {
+    PrefixRes(p, h) => {
+      let h_h := Eq::trans(Eq::sym(Eq::congr(⟦prefix_hole(□)⟧, er)), h_hole)
+      let h_all_p := Eq::trans(
+        Eq::sym(Eq::congr(⟦prefix_safe_for_hole(PrefixRes(p, □))⟧, h_h)),
+        Eq::trans(Eq::sym(Eq::congr(⟦prefix_safe_for_hole(□)⟧, er)), h_safe)
+      )
+      Eq::trans(Eq::congr(⟦all_lt(prefix_events(□), first)⟧, er), h_all_p)
+    }
+  }
+}
+
+pub theorem contiguous_prefix_member_lt_hole_first(
+  events: List(Nat),
+  after_seq: Nat,
+  first: Nat,
+  last: Nat,
+  i: Nat,
+  x: Nat,
+  h_hole: prefix_hole(contiguous_prefix(events, after_seq)) = OpenHole(first, last),
+  h_nth: list_nth(prefix_events(contiguous_prefix(events, after_seq)), i) = Some(x)
+): Nat::lt(x, first) = true {
+  all_lt_implies_nth_lt(
+    prefix_events(contiguous_prefix(events, after_seq)),
+    first,
+    i,
+    x,
+    contiguous_prefix_all_lt_hole_first(events, after_seq, first, last, h_hole),
+    h_nth
+  )
+}
+
+pub theorem contiguous_prefix_from_no_hole_returns_all(
+  events: List(Nat),
+  next: Nat,
+  h_no: prefix_hole(contiguous_prefix_from(events, next)) = NoHole
+): prefix_events(contiguous_prefix_from(events, next)) = events {
+  match events {
+    Nil => Refl
+    Cons(seq, rest) => ⊢ prefix_events(
+      prefix_step(Nat::eq(seq, next), seq, next, contiguous_prefix_from(rest, Succ(next)))
+    ) = Cons(seq, rest) from match Nat::eq(seq, next) eqn e_eq {
+      false => {
+        let h_bad := Eq::trans(
+          Eq::sym(
+            Eq::congr(
+              ⟦prefix_hole(prefix_step(□, seq, next, contiguous_prefix_from(rest, Succ(next))))⟧,
+              e_eq
+            )
+          ),
+          h_no
+        )
+        ⊢ Nil = Cons(seq, rest) from match h_bad {
+        }
+      }
+      true => ⊢ prefix_events(
+        prefix_cons(seq, contiguous_prefix_from(rest, Succ(next)))
+      ) = Cons(seq, rest) from match contiguous_prefix_from(rest, Succ(next)) eqn er {
+        PrefixRes(p, h) => {
+          let h_sub_no := Eq::trans(
+            Eq::congr(⟦prefix_hole(□)⟧, er),
+            Eq::trans(
+              Eq::sym(Eq::congr(⟦prefix_hole(prefix_cons(seq, □))⟧, er)),
+              Eq::trans(
+                Eq::sym(
+                  Eq::congr(
+                    ⟦prefix_hole(
+                      prefix_step(□, seq, next, contiguous_prefix_from(rest, Succ(next)))
+                    )⟧,
+                    e_eq
+                  )
+                ),
+                h_no
+              )
+            )
+          )
+          Eq::congr(
+            ⟦Cons(seq, □)⟧,
+            Eq::trans(
+              Eq::sym(Eq::congr(⟦prefix_events(□)⟧, er)),
+              contiguous_prefix_from_no_hole_returns_all(rest, Succ(next), h_sub_no)
+            )
+          )
+        }
+      }
+    }
+  }
+}
+
+pub theorem contiguous_prefix_no_hole_returns_all(
+  events: List(Nat),
+  after_seq: Nat,
+  h_no: prefix_hole(contiguous_prefix(events, after_seq)) = NoHole
+): prefix_events(contiguous_prefix(events, after_seq)) = events {
+  contiguous_prefix_from_no_hole_returns_all(events, Succ(after_seq), h_no)
+}
+
+pub theorem contiguous_prefix_from_all_gt(
+  events: List(Nat),
+  bound: Nat,
+  next: Nat,
+  h_lt: Nat::lt(bound, next) = true
+): all_gt(prefix_events(contiguous_prefix_from(events, next)), bound) = true {
+  match events {
+    Nil => Refl
+    Cons(seq, rest) => ⊢ all_gt(
+      prefix_events(
+        prefix_step(Nat::eq(seq, next), seq, next, contiguous_prefix_from(rest, Succ(next)))
+      ),
+      bound
+    ) = true from match Nat::eq(seq, next) eqn e_eq {
+      false => Refl
+      true => ⊢ all_gt(
+        prefix_events(prefix_cons(seq, contiguous_prefix_from(rest, Succ(next)))),
+        bound
+      ) = true from match contiguous_prefix_from(rest, Succ(next)) eqn er {
+        PrefixRes(p, h) => {
+          let h_seq_gt := Eq::trans(
+            Eq::congr(⟦Nat::lt(bound, □)⟧, Nat::eq_sound(seq, next, e_eq)),
+            h_lt
+          )
+          let h_step := nat_le_trans(Succ(bound), next, Succ(next), h_lt, nat_le_succ(next))
+          let h_rest := Eq::trans(
+            Eq::sym(Eq::congr(⟦all_gt(prefix_events(□), bound)⟧, er)),
+            contiguous_prefix_from_all_gt(rest, bound, Succ(next), h_step)
+          )
+          Eq::trans(Eq::congr(⟦□ && all_gt(p, bound)⟧, h_seq_gt), h_rest)
+        }
+      }
+    }
+  }
+}
+
+pub theorem contiguous_prefix_all_gt_after_seq(
+  events: List(Nat),
+  after_seq: Nat
+): all_gt(prefix_events(contiguous_prefix(events, after_seq)), after_seq) = true {
+  contiguous_prefix_from_all_gt(events, after_seq, Succ(after_seq), nat_le_refl(Succ(after_seq)))
+}

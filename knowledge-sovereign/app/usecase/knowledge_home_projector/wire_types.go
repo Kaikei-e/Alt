@@ -11,7 +11,7 @@ import (
 const (
 	projectorName    = "knowledge-home-projector"
 	defaultBatchSize = 100
-	defaultMaxTick   = 4
+	defaultMaxTick   = 40
 
 	itemTypeArticle = "article"
 

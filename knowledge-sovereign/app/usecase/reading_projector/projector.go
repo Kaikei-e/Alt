@@ -170,26 +170,12 @@ func (p *Projector) markCaughtUp(ctx context.Context, lastEventSeq int64) {
 		slog.Int64("last_event_seq", lastEventSeq))
 }
 
-func (p *Projector) probeHole(ctx context.Context, hole projection_gap.Hole) (bool, sovereign_db.SequenceGapFrontier, error) {
-	frontier, err := p.repo.ReadSequenceGapFrontier(ctx, hole.First, hole.Last)
-	if err != nil {
-		return false, sovereign_db.SequenceGapFrontier{}, fmt.Errorf("read sequence gap frontier: %w", err)
-	}
-	return p.gaps.MayAbandon(hole, frontier), frontier, nil
-}
-
 func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {
-	abandon, frontier, err := p.probeHole(ctx, hole)
+	abandon, frontier, err := p.gaps.ProbeAndEvaluate(hole, func(firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error) {
+		return p.repo.ReadSequenceGapFrontier(ctx, firstSeq, lastSeq)
+	})
 	if err != nil {
-		return false, err
-	}
-	if !abandon && frontier.HoleOpen && frontier.Xmin >= frontier.Ceiling {
-		// No older transaction is running, so a second snapshot in the same tick
-		// can confirm the hole is burned without waiting for the next tick.
-		abandon, frontier, err = p.probeHole(ctx, hole)
-		if err != nil {
-			return false, err
-		}
+		return false, fmt.Errorf("read sequence gap frontier: %w", err)
 	}
 	if !abandon {
 		p.logger.InfoContext(ctx, "reading_projector.sequence_gap_waiting",

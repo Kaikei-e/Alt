@@ -22,6 +22,7 @@ var (
 	validCanaryCommands = map[string]struct{}{
 		"go-canary": {}, "go-verify-govulncheck": {}, "python-canary": {}, "rust-canary": {},
 		"frontend-canary": {}, "deno-canary": {}, "proto-canary": {}, "actionlint-canary": {},
+		"tauto-canary": {},
 	}
 	requiredCanaryScannersByKind = map[string][]string{
 		"go":       {"golangci-lint", "gosec", "govulncheck"},

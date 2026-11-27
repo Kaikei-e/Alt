@@ -94,3 +94,33 @@ func (t *Tracker) MayAbandon(hole Hole, frontier sovereign_db.SequenceGapFrontie
 	t.hole, t.ceiling = Hole{}, 0
 	return true
 }
+
+// ProbeAndEvaluate reads a sequence-gap frontier and applies MayAbandon. When
+// the first probe leaves the hole open with no older transaction running
+// (Xmin >= Ceiling), it issues a second probe in the same tick to confirm a
+// burned hole without stalling for an extra tick per hole (PM-2026-064).
+// It returns whether the hole may be abandoned, the final frontier observed,
+// and any error returned by readFrontier.
+func (t *Tracker) ProbeAndEvaluate(
+	hole Hole,
+	readFrontier func(firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error),
+) (bool, sovereign_db.SequenceGapFrontier, error) {
+	if readFrontier == nil {
+		panic("projection_gap: readFrontier is required")
+	}
+	frontier, err := readFrontier(hole.First, hole.Last)
+	if err != nil {
+		return false, sovereign_db.SequenceGapFrontier{}, err
+	}
+	abandon := t.MayAbandon(hole, frontier)
+	if !abandon && frontier.HoleOpen && frontier.Xmin >= frontier.Ceiling {
+		// No older transaction is running, so a second snapshot in the same tick
+		// can confirm the hole is burned without waiting for the next tick.
+		frontier, err = readFrontier(hole.First, hole.Last)
+		if err != nil {
+			return false, sovereign_db.SequenceGapFrontier{}, err
+		}
+		abandon = t.MayAbandon(hole, frontier)
+	}
+	return abandon, frontier, nil
+}

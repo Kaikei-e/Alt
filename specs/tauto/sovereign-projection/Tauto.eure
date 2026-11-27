@@ -1,0 +1,4 @@
+package {
+  name = "sovereign-projection"
+  version = "0.1.0"
+}

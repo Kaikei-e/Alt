@@ -181,7 +181,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 func runLang(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: alt-harness lang <go|python|rust|deno|frontend|adr|proto|compose|observability|apparmor|e2e|registry> [args]")
+		fmt.Fprintln(stderr, "usage: alt-harness lang <go|python|rust|deno|frontend|adr|proto|compose|observability|apparmor|e2e|registry|tauto> [args]")
 		return 2
 	}
 	rest := args[1:]
@@ -210,6 +210,8 @@ func runLang(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return lang.RunE2E(ctx, rest, stdout, stderr)
 	case "registry":
 		return lang.RunRegistry(ctx, rest, stdout, stderr)
+	case "tauto":
+		return lang.RunTauto(ctx, rest, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown language runner %q\n", args[0])
 		return 2

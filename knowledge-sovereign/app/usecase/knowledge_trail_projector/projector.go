@@ -21,7 +21,7 @@ import (
 const (
 	projectorName    = "knowledge-trail-projector"
 	defaultBatchSize = 500
-	defaultMaxTick   = 4
+	defaultMaxTick   = 40
 
 	// trailProjectionVersion stamps every projected row. Bumped to 2 when the
 	// act-outcome side table joined the projection (D22; docs/runbooks/knowledge-trail-reproject.md).
@@ -83,6 +83,9 @@ type Projector struct {
 }
 
 func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
+	if repo == nil {
+		panic("knowledge_trail_projector: repository is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -201,7 +204,7 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return nil
 		}
 		if hole.Open() {
-			return nil
+			continue
 		}
 		if len(events) < p.cfg.BatchSize {
 			return nil
@@ -214,11 +217,13 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 // treated as burned by rolled-back transactions rather than as ones writers
 // still in flight are about to commit.
 func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {
-	frontier, err := p.repo.ReadSequenceGapFrontier(ctx, hole.First, hole.Last)
+	abandon, frontier, err := p.gaps.ProbeAndEvaluate(hole, func(firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error) {
+		return p.repo.ReadSequenceGapFrontier(ctx, firstSeq, lastSeq)
+	})
 	if err != nil {
 		return false, fmt.Errorf("read sequence gap frontier: %w", err)
 	}
-	if !p.gaps.MayAbandon(hole, frontier) {
+	if !abandon {
 		p.logger.InfoContext(ctx, "trail.sequence_gap_waiting",
 			slog.String("projector", projectorName),
 			slog.Int64("gap_seq", hole.First),

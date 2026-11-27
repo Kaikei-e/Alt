@@ -38,6 +38,8 @@ func dispatchKind(ctx context.Context, kind, target string, stdout, stderr io.Wr
 		return RunE2E(ctx, args, stdout, stderr), true
 	case "registry":
 		return RunRegistry(ctx, args, stdout, stderr), true
+	case "tauto":
+		return RunTauto(ctx, args, stdout, stderr), true
 	default:
 		return 0, false
 	}

@@ -143,7 +143,7 @@ func Run(ctx context.Context, repo string, args []string, stdout, stderr io.Writ
 	}
 	switch target {
 	case "run", "go", "python", "rust", "deno", "frontend", "check-link-vs-url-naming":
-		fmt.Fprintf(stderr, "invalid lint target '%s': must be a project directory or named target (adr, apparmor, compose, e2e, harness, observability, proto, registry, repo)\n", target)
+		fmt.Fprintf(stderr, "invalid lint target '%s': must be a project directory or named target (adr, apparmor, compose, e2e, harness, observability, proto, registry, repo, tauto)\n", target)
 		return 2
 	}
 	if target == "repo" || target == "harness" || target == "both" {

@@ -16,6 +16,9 @@ backups/
 **/docs/
 **/documentation/
 
+# Offline formal specifications (never needed in production images)
+specs/
+
 # IDE and editor files
 .vscode/
 .idea/

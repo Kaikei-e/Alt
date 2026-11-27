@@ -1,0 +1,573 @@
+import std::base { Nat }
+
+pub(open) inductive Priority: Type { Rt: Priority, Be: Priority }
+
+pub(open) inductive Pool: Type { PoolRt: Pool, PoolBe: Pool }
+
+pub(open) inductive Config: Type {
+  SemConfig(rt_reserved: Nat, be_slots: Nat, max_queue_depth: Nat, guaranteed_be_ratio: Nat): Config
+}
+
+pub(open) inductive State: Type {
+  SemState(
+    rt_avail: Nat,
+    held_rt: Nat,
+    in_transit_rt: Nat,
+    be_avail: Nat,
+    held_be: Nat,
+    in_transit_be: Nat,
+    rt_queued: Nat,
+    be_queued: Nat,
+    consecutive_rt_releases: Nat
+  ): State
+}
+
+pub(open) inductive Event: Type {
+  Acquire(prio: Priority): Event
+  Release(caller_prio: Priority, home_pool: Pool): Event
+  CompleteTransfer(home_pool: Pool): Event
+  CancelQueued(prio: Priority): Event
+  CancelInTransit(home_pool: Pool): Event
+  PromoteBeToRt: Event
+}
+
+pub(open) inductive Outcome: Type {
+  AcquiredImmediate(home_pool: Pool): Outcome
+  AcquiredFallback(home_pool: Pool): Outcome
+  Enqueued(prio: Priority): Outcome
+  RejectedQueueFull: Outcome
+  ReleasedToWaiter(woken_prio: Priority, home_pool: Pool): Outcome
+  ReleasedToBeGuaranteed(home_pool: Pool): Outcome
+  ReleasedToPool(home_pool: Pool): Outcome
+  RejectedInvalidRelease: Outcome
+  TransferCompleted(home_pool: Pool): Outcome
+  RejectedNoInTransit: Outcome
+  CancelledQueued(prio: Priority): Outcome
+  RecoveredToWaiter(woken_prio: Priority, home_pool: Pool): Outcome
+  RecoveredToPool(home_pool: Pool): Outcome
+  PromotedBeToRt: Outcome
+  NoOp: Outcome
+}
+
+pub(open) inductive StepResult: Type {
+  StepOut(state: State, outcome: Outcome): StepResult
+}
+
+pub fn cfg_rt_reserved(cfg: Config): Nat {
+  match cfg {
+    SemConfig(rt, _, _, _) => rt
+  }
+}
+
+pub fn cfg_be_slots(cfg: Config): Nat {
+  match cfg {
+    SemConfig(_, be, _, _) => be
+  }
+}
+
+pub fn cfg_max_queue_depth(cfg: Config): Nat {
+  match cfg {
+    SemConfig(_, _, depth, _) => depth
+  }
+}
+
+pub fn cfg_guaranteed_be_ratio(cfg: Config): Nat {
+  match cfg {
+    SemConfig(_, _, _, ratio) => ratio
+  }
+}
+
+pub fn cfg_total_slots(cfg: Config): Nat {
+  cfg_rt_reserved(cfg) + cfg_be_slots(cfg)
+}
+
+pub fn st_rt_avail(s: State): Nat {
+  match s {
+    SemState(ra, _, _, _, _, _, _, _, _) => ra
+  }
+}
+
+pub fn st_held_rt(s: State): Nat {
+  match s {
+    SemState(_, hr, _, _, _, _, _, _, _) => hr
+  }
+}
+
+pub fn st_in_transit_rt(s: State): Nat {
+  match s {
+    SemState(_, _, tr, _, _, _, _, _, _) => tr
+  }
+}
+
+pub fn st_be_avail(s: State): Nat {
+  match s {
+    SemState(_, _, _, ba, _, _, _, _, _) => ba
+  }
+}
+
+pub fn st_held_be(s: State): Nat {
+  match s {
+    SemState(_, _, _, _, hb, _, _, _, _) => hb
+  }
+}
+
+pub fn st_in_transit_be(s: State): Nat {
+  match s {
+    SemState(_, _, _, _, _, tb, _, _, _) => tb
+  }
+}
+
+pub fn st_rt_queued(s: State): Nat {
+  match s {
+    SemState(_, _, _, _, _, _, rq, _, _) => rq
+  }
+}
+
+pub fn st_be_queued(s: State): Nat {
+  match s {
+    SemState(_, _, _, _, _, _, _, bq, _) => bq
+  }
+}
+
+pub fn st_consecutive_rt_releases(s: State): Nat {
+  match s {
+    SemState(_, _, _, _, _, _, _, _, cr) => cr
+  }
+}
+
+pub fn st_total_avail(s: State): Nat {
+  st_rt_avail(s) + st_be_avail(s)
+}
+
+pub fn st_total_held(s: State): Nat {
+  st_held_rt(s) + st_held_be(s)
+}
+
+pub fn st_total_in_transit(s: State): Nat {
+  st_in_transit_rt(s) + st_in_transit_be(s)
+}
+
+pub fn st_queue_depth(s: State): Nat {
+  st_rt_queued(s) + st_be_queued(s)
+}
+
+pub fn step_result_state(res: StepResult): State {
+  match res {
+    StepOut(s, _) => s
+  }
+}
+
+pub fn step_result_outcome(res: StepResult): Outcome {
+  match res {
+    StepOut(_, out) => out
+  }
+}
+
+pub fn init_state(cfg: Config): State {
+  match cfg {
+    SemConfig(rt, be, _, _) => SemState(rt, Zero, Zero, be, Zero, Zero, Zero, Zero, Zero)
+  }
+}
+
+pub fn queue_is_full(cfg: Config, s: State): Bool {
+  match cfg_max_queue_depth(cfg) {
+    Zero => false
+    Succ(m) => Nat::le(Succ(m), st_queue_depth(s))
+  }
+}
+
+pub fn enqueue_or_reject_if(is_full: Bool, s: State, prio: Priority): StepResult {
+  match is_full {
+    true => StepOut(s, RejectedQueueFull)
+    false => ⊢ StepResult from match s {
+      SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match prio {
+        Rt => StepOut(SemState(ra, hr, tr, ba, hb, tb, Succ(rq), bq, cr), Enqueued(Rt))
+        Be => StepOut(SemState(ra, hr, tr, ba, hb, tb, rq, Succ(bq), cr), Enqueued(Be))
+      }
+    }
+  }
+}
+
+pub fn enqueue_or_reject(cfg: Config, s: State, prio: Priority): StepResult {
+  enqueue_or_reject_if(queue_is_full(cfg, s), s, prio)
+}
+
+pub fn step_acquire(cfg: Config, s: State, prio: Priority): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match prio {
+      Rt => ⊢ StepResult from match ra {
+        Succ(r2) => StepOut(
+          SemState(r2, Succ(hr), tr, ba, hb, tb, rq, bq, cr),
+          AcquiredImmediate(PoolRt)
+        )
+        Zero => ⊢ StepResult from match cfg_rt_reserved(cfg) {
+          Zero => ⊢ StepResult from match ba {
+            Succ(b2) => StepOut(
+              SemState(Zero, hr, tr, b2, Succ(hb), tb, rq, bq, cr),
+              AcquiredFallback(PoolBe)
+            )
+            Zero => enqueue_or_reject(cfg, SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr), Rt)
+          }
+          Succ(_) => enqueue_or_reject(cfg, SemState(Zero, hr, tr, ba, hb, tb, rq, bq, cr), Rt)
+        }
+      }
+      Be => ⊢ StepResult from match ba {
+        Succ(b2) => StepOut(
+          SemState(ra, hr, tr, b2, Succ(hb), tb, rq, bq, cr),
+          AcquiredImmediate(PoolBe)
+        )
+        Zero => ⊢ StepResult from match cfg_be_slots(cfg) {
+          Zero => ⊢ StepResult from match ra {
+            Succ(r2) => StepOut(
+              SemState(r2, Succ(hr), tr, Zero, hb, tb, rq, bq, cr),
+              AcquiredFallback(PoolRt)
+            )
+            Zero => enqueue_or_reject(cfg, SemState(Zero, hr, tr, Zero, hb, tb, rq, bq, cr), Be)
+          }
+          Succ(_) => enqueue_or_reject(cfg, SemState(ra, hr, tr, Zero, hb, tb, rq, bq, cr), Be)
+        }
+      }
+    }
+  }
+}
+
+pub fn dispatch_freed_rt_force(
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat
+): StepResult {
+  match force_be {
+    true => StepOut(
+      SemState(ra, hr, Succ(tr), ba, hb, tb, rq, bq2, Zero),
+      ReleasedToBeGuaranteed(PoolRt)
+    )
+    false => ⊢ StepResult from match rq {
+      Succ(rq2) => StepOut(
+        SemState(ra, hr, Succ(tr), ba, hb, tb, rq2, Succ(bq2), Succ(cr)),
+        ReleasedToWaiter(Rt, PoolRt)
+      )
+      Zero => StepOut(
+        SemState(ra, hr, Succ(tr), ba, hb, tb, Zero, bq2, Zero),
+        ReleasedToWaiter(Be, PoolRt)
+      )
+    }
+  }
+}
+
+pub fn dispatch_freed_rt(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat
+): StepResult {
+  match cfg_guaranteed_be_ratio(cfg) {
+    Succ(rm) => ⊢ StepResult from match caller_prio {
+      Rt => ⊢ StepResult from match bq {
+        Succ(bq2) => dispatch_freed_rt_force(
+          Nat::le(Succ(rm), Succ(cr)),
+          ra,
+          hr,
+          tr,
+          ba,
+          hb,
+          tb,
+          rq,
+          bq2,
+          cr
+        )
+        Zero => ⊢ StepResult from match rq {
+          Succ(rq2) => StepOut(
+            SemState(ra, hr, Succ(tr), ba, hb, tb, rq2, Zero, cr),
+            ReleasedToWaiter(Rt, PoolRt)
+          )
+          Zero => StepOut(
+            SemState(Succ(ra), hr, tr, ba, hb, tb, Zero, Zero, cr),
+            ReleasedToPool(PoolRt)
+          )
+        }
+      }
+      Be => ⊢ StepResult from match rq {
+        Succ(rq2) => StepOut(
+          SemState(ra, hr, Succ(tr), ba, hb, tb, rq2, bq, cr),
+          ReleasedToWaiter(Rt, PoolRt)
+        )
+        Zero => ⊢ StepResult from match bq {
+          Succ(bq2) => StepOut(
+            SemState(ra, hr, Succ(tr), ba, hb, tb, Zero, bq2, Zero),
+            ReleasedToWaiter(Be, PoolRt)
+          )
+          Zero => StepOut(
+            SemState(Succ(ra), hr, tr, ba, hb, tb, Zero, Zero, cr),
+            ReleasedToPool(PoolRt)
+          )
+        }
+      }
+    }
+    Zero => ⊢ StepResult from match rq {
+      Succ(rq2) => StepOut(
+        SemState(ra, hr, Succ(tr), ba, hb, tb, rq2, bq, cr),
+        ReleasedToWaiter(Rt, PoolRt)
+      )
+      Zero => ⊢ StepResult from match bq {
+        Succ(bq2) => StepOut(
+          SemState(ra, hr, Succ(tr), ba, hb, tb, Zero, bq2, Zero),
+          ReleasedToWaiter(Be, PoolRt)
+        )
+        Zero => StepOut(
+          SemState(Succ(ra), hr, tr, ba, hb, tb, Zero, Zero, cr),
+          ReleasedToPool(PoolRt)
+        )
+      }
+    }
+  }
+}
+
+pub fn dispatch_freed_be_force(
+  force_be: Bool,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq2: Nat,
+  cr: Nat
+): StepResult {
+  match force_be {
+    true => StepOut(
+      SemState(ra, hr, tr, ba, hb, Succ(tb), rq, bq2, Zero),
+      ReleasedToBeGuaranteed(PoolBe)
+    )
+    false => ⊢ StepResult from match rq {
+      Succ(rq2) => StepOut(
+        SemState(ra, hr, tr, ba, hb, Succ(tb), rq2, Succ(bq2), Succ(cr)),
+        ReleasedToWaiter(Rt, PoolBe)
+      )
+      Zero => StepOut(
+        SemState(ra, hr, tr, ba, hb, Succ(tb), Zero, bq2, Zero),
+        ReleasedToWaiter(Be, PoolBe)
+      )
+    }
+  }
+}
+
+pub fn dispatch_freed_be(
+  cfg: Config,
+  caller_prio: Priority,
+  ra: Nat,
+  hr: Nat,
+  tr: Nat,
+  ba: Nat,
+  hb: Nat,
+  tb: Nat,
+  rq: Nat,
+  bq: Nat,
+  cr: Nat
+): StepResult {
+  match cfg_guaranteed_be_ratio(cfg) {
+    Succ(rm) => ⊢ StepResult from match caller_prio {
+      Rt => ⊢ StepResult from match bq {
+        Succ(bq2) => dispatch_freed_be_force(
+          Nat::le(Succ(rm), Succ(cr)),
+          ra,
+          hr,
+          tr,
+          ba,
+          hb,
+          tb,
+          rq,
+          bq2,
+          cr
+        )
+        Zero => ⊢ StepResult from match rq {
+          Succ(rq2) => StepOut(
+            SemState(ra, hr, tr, ba, hb, Succ(tb), rq2, Zero, cr),
+            ReleasedToWaiter(Rt, PoolBe)
+          )
+          Zero => StepOut(
+            SemState(ra, hr, tr, Succ(ba), hb, tb, Zero, Zero, cr),
+            ReleasedToPool(PoolBe)
+          )
+        }
+      }
+      Be => ⊢ StepResult from match rq {
+        Succ(rq2) => StepOut(
+          SemState(ra, hr, tr, ba, hb, Succ(tb), rq2, bq, cr),
+          ReleasedToWaiter(Rt, PoolBe)
+        )
+        Zero => ⊢ StepResult from match bq {
+          Succ(bq2) => StepOut(
+            SemState(ra, hr, tr, ba, hb, Succ(tb), Zero, bq2, Zero),
+            ReleasedToWaiter(Be, PoolBe)
+          )
+          Zero => StepOut(
+            SemState(ra, hr, tr, Succ(ba), hb, tb, Zero, Zero, cr),
+            ReleasedToPool(PoolBe)
+          )
+        }
+      }
+    }
+    Zero => ⊢ StepResult from match rq {
+      Succ(rq2) => StepOut(
+        SemState(ra, hr, tr, ba, hb, Succ(tb), rq2, bq, cr),
+        ReleasedToWaiter(Rt, PoolBe)
+      )
+      Zero => ⊢ StepResult from match bq {
+        Succ(bq2) => StepOut(
+          SemState(ra, hr, tr, ba, hb, Succ(tb), Zero, bq2, Zero),
+          ReleasedToWaiter(Be, PoolBe)
+        )
+        Zero => StepOut(
+          SemState(ra, hr, tr, Succ(ba), hb, tb, Zero, Zero, cr),
+          ReleasedToPool(PoolBe)
+        )
+      }
+    }
+  }
+}
+
+pub fn step_release(cfg: Config, s: State, caller_prio: Priority, home_pool: Pool): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match home_pool {
+      PoolRt => ⊢ StepResult from match hr {
+        Zero => StepOut(SemState(ra, Zero, tr, ba, hb, tb, rq, bq, cr), RejectedInvalidRelease)
+        Succ(hr2) => dispatch_freed_rt(cfg, caller_prio, ra, hr2, tr, ba, hb, tb, rq, bq, cr)
+      }
+      PoolBe => ⊢ StepResult from match hb {
+        Zero => StepOut(SemState(ra, hr, tr, ba, Zero, tb, rq, bq, cr), RejectedInvalidRelease)
+        Succ(hb2) => dispatch_freed_be(cfg, caller_prio, ra, hr, tr, ba, hb2, tb, rq, bq, cr)
+      }
+    }
+  }
+}
+
+pub fn step_complete_transfer(s: State, home_pool: Pool): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match home_pool {
+      PoolRt => ⊢ StepResult from match tr {
+        Zero => StepOut(SemState(ra, hr, Zero, ba, hb, tb, rq, bq, cr), RejectedNoInTransit)
+        Succ(tr2) => StepOut(
+          SemState(ra, Succ(hr), tr2, ba, hb, tb, rq, bq, cr),
+          TransferCompleted(PoolRt)
+        )
+      }
+      PoolBe => ⊢ StepResult from match tb {
+        Zero => StepOut(SemState(ra, hr, tr, ba, hb, Zero, rq, bq, cr), RejectedNoInTransit)
+        Succ(tb2) => StepOut(
+          SemState(ra, hr, tr, ba, Succ(hb), tb2, rq, bq, cr),
+          TransferCompleted(PoolBe)
+        )
+      }
+    }
+  }
+}
+
+pub fn step_cancel_queued(s: State, prio: Priority): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match prio {
+      Rt => ⊢ StepResult from match rq {
+        Zero => StepOut(SemState(ra, hr, tr, ba, hb, tb, Zero, bq, cr), NoOp)
+        Succ(rq2) => StepOut(SemState(ra, hr, tr, ba, hb, tb, rq2, bq, cr), CancelledQueued(Rt))
+      }
+      Be => ⊢ StepResult from match bq {
+        Zero => StepOut(SemState(ra, hr, tr, ba, hb, tb, rq, Zero, cr), NoOp)
+        Succ(bq2) => StepOut(SemState(ra, hr, tr, ba, hb, tb, rq, bq2, cr), CancelledQueued(Be))
+      }
+    }
+  }
+}
+
+pub fn step_cancel_in_transit(s: State, home_pool: Pool): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match home_pool {
+      PoolRt => ⊢ StepResult from match tr {
+        Zero => StepOut(SemState(ra, hr, Zero, ba, hb, tb, rq, bq, cr), RejectedNoInTransit)
+        Succ(tr2) => ⊢ StepResult from match rq {
+          Succ(rq2) => StepOut(
+            SemState(ra, hr, Succ(tr2), ba, hb, tb, rq2, bq, cr),
+            RecoveredToWaiter(Rt, PoolRt)
+          )
+          Zero => ⊢ StepResult from match bq {
+            Succ(bq2) => StepOut(
+              SemState(ra, hr, Succ(tr2), ba, hb, tb, Zero, bq2, Zero),
+              RecoveredToWaiter(Be, PoolRt)
+            )
+            Zero => StepOut(
+              SemState(Succ(ra), hr, tr2, ba, hb, tb, Zero, Zero, cr),
+              RecoveredToPool(PoolRt)
+            )
+          }
+        }
+      }
+      PoolBe => ⊢ StepResult from match tb {
+        Zero => StepOut(SemState(ra, hr, tr, ba, hb, Zero, rq, bq, cr), RejectedNoInTransit)
+        Succ(tb2) => ⊢ StepResult from match rq {
+          Succ(rq2) => StepOut(
+            SemState(ra, hr, tr, ba, hb, Succ(tb2), rq2, bq, cr),
+            RecoveredToWaiter(Rt, PoolBe)
+          )
+          Zero => ⊢ StepResult from match bq {
+            Succ(bq2) => StepOut(
+              SemState(ra, hr, tr, ba, hb, Succ(tb2), Zero, bq2, Zero),
+              RecoveredToWaiter(Be, PoolBe)
+            )
+            Zero => StepOut(
+              SemState(ra, hr, tr, Succ(ba), hb, tb2, Zero, Zero, cr),
+              RecoveredToPool(PoolBe)
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+pub fn step_promote_be_to_rt(s: State): StepResult {
+  match s {
+    SemState(ra, hr, tr, ba, hb, tb, rq, bq, cr) => ⊢ StepResult from match bq {
+      Zero => StepOut(SemState(ra, hr, tr, ba, hb, tb, rq, Zero, cr), NoOp)
+      Succ(bq2) => StepOut(SemState(ra, hr, tr, ba, hb, tb, Succ(rq), bq2, cr), PromotedBeToRt)
+    }
+  }
+}
+
+pub fn step(cfg: Config, s: State, ev: Event): StepResult {
+  match ev {
+    Acquire(prio) => step_acquire(cfg, s, prio)
+    Release(caller_prio, home_pool) => step_release(cfg, s, caller_prio, home_pool)
+    CompleteTransfer(home_pool) => step_complete_transfer(s, home_pool)
+    CancelQueued(prio) => step_cancel_queued(s, prio)
+    CancelInTransit(home_pool) => step_cancel_in_transit(s, home_pool)
+    PromoteBeToRt => step_promote_be_to_rt(s)
+  }
+}
+
+pub fn step_state(cfg: Config, s: State, ev: Event): State {
+  step_result_state(step(cfg, s, ev))
+}
+
+pub fn run_trace(cfg: Config, s: State, events: List(Event)): State {
+  match events {
+    Nil => s
+    Cons(ev, rest) => run_trace(cfg, step_state(cfg, s, ev), rest)
+  }
+}
+
+pub fn run_from_init(cfg: Config, events: List(Event)): State {
+  run_trace(cfg, init_state(cfg), events)
+}

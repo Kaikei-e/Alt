@@ -105,8 +105,17 @@ class HybridPrioritySemaphore:
         if total_slots < 1:
             msg = "total_slots must be >= 1"
             raise ValueError(msg)
+        if rt_reserved_slots < 0:
+            msg = "rt_reserved_slots must be >= 0"
+            raise ValueError(msg)
         if rt_reserved_slots > total_slots:
             msg = "rt_reserved_slots cannot exceed total_slots"
+            raise ValueError(msg)
+        if max_queue_depth < 0:
+            msg = "max_queue_depth must be >= 0"
+            raise ValueError(msg)
+        if guaranteed_be_ratio < 0:
+            msg = "guaranteed_be_ratio must be >= 0"
             raise ValueError(msg)
 
         self._total_slots = total_slots
@@ -115,10 +124,12 @@ class HybridPrioritySemaphore:
         self._max_queue_depth = max_queue_depth
         self._rt_scheduling_mode = rt_scheduling_mode
 
-        # Slot counters
+        # Slot counters (conserved per pool: avail + held + in_transit == cap)
         self._rt_available = rt_reserved_slots
         # BE slots are the non-RT slots; when all slots are RT reserved, BE must queue
         self._be_available = self._be_slots
+        self._in_transit_rt: int = 0
+        self._in_transit_be: int = 0
 
         # Priority queues (min-heap by priority_score)
         self._rt_queue: list[QueuedRequest] = []
@@ -374,13 +385,14 @@ class HybridPrioritySemaphore:
                     "Recovering slot from cancelled waiter",
                     extra={"home_pool": home_pool, "high_priority": high_priority},
                 )
+                self._decrement_in_transit(home_pool)
                 self._release_slot_to_pool_or_waiter(home_pool)
             elif not future.done():
                 future.cancel()
             # Purge this (and any other) cancelled futures from queues
-            # so they don't occupy queue slots or get popped by release()
-            async with self._lock:
-                self._purge_cancelled_from_queues()
+            # synchronously so double-cancellation cannot interrupt cleanup
+            # and leave stale entries occupying max_queue_depth slots.
+            self._purge_cancelled_from_queues()
             raise
         else:
             return wait_time, sid
@@ -509,6 +521,42 @@ class HybridPrioritySemaphore:
             return result
         return "rt" if high_priority else "be"
 
+    def _increment_in_transit(self, home_pool: str) -> None:
+        """Record a slot entering in-transit state after waiter future.set_result()."""
+        if home_pool == "rt":
+            self._in_transit_rt += 1
+        elif home_pool == "be":
+            self._in_transit_be += 1
+        else:
+            logger.error(
+                "SLOT INVARIANT VIOLATION: invalid home_pool on transfer start",
+                extra={"home_pool": home_pool},
+            )
+
+    def _decrement_in_transit(self, home_pool: str) -> None:
+        """Record a slot leaving in-transit state upon acquire completion or recovery."""
+        if home_pool == "rt":
+            if self._in_transit_rt > 0:
+                self._in_transit_rt -= 1
+            else:
+                logger.error(
+                    "SLOT INVARIANT VIOLATION: in_transit_rt underflow",
+                    extra={"home_pool": home_pool},
+                )
+        elif home_pool == "be":
+            if self._in_transit_be > 0:
+                self._in_transit_be -= 1
+            else:
+                logger.error(
+                    "SLOT INVARIANT VIOLATION: in_transit_be underflow",
+                    extra={"home_pool": home_pool},
+                )
+        else:
+            logger.error(
+                "SLOT INVARIANT VIOLATION: invalid home_pool on transfer end",
+                extra={"home_pool": home_pool},
+            )
+
     def _record_queued_acquire(
         self, result: object, start_time: float, high_priority: bool
     ) -> tuple[float, int]:
@@ -516,6 +564,7 @@ class HybridPrioritySemaphore:
         wait_time = time.monotonic() - start_time
         self._last_wait_time = wait_time
         inherited_pool = self._resolve_transferred_pool(result, high_priority)
+        self._decrement_in_transit(inherited_pool)
         sid = self._track_acquire(
             is_high_priority=high_priority,
             context="queued",
@@ -532,9 +581,7 @@ class HybridPrioritySemaphore:
             )
         return wait_time, sid
 
-    def release(
-        self, was_high_priority: bool = False, slot_id: int | None = None
-    ) -> None:
+    def release(self, was_high_priority: bool = False, *, slot_id: int) -> None:
         """
         Release a slot and wake up next waiter.
 
@@ -542,12 +589,18 @@ class HybridPrioritySemaphore:
         originally acquired from), not based on the caller's priority. This prevents
         slot migration across pools during preemption → release chains.
 
+        Unknown or already-released ``slot_id`` calls are strictly rejected as a
+        no-op (no waiter wake, no pool increment) to preserve mutual exclusion
+        and per-pool slot conservation (ADR-001030).
+
         Args:
             was_high_priority: Whether the caller was high priority (used for
                 guaranteed bandwidth tracking; NOT used for pool return)
-            slot_id: Optional slot_id from acquire tracking (for precise ownership)
+            slot_id: Required slot_id returned by acquire()
         """
         home_pool = self._resolve_release_home_pool(was_high_priority, slot_id)
+        if home_pool is None:
+            return
 
         # Recompute priorities with aging and handle promotions (throttled --
         # see _should_run_aging_sweep()).
@@ -570,43 +623,44 @@ class HybridPrioritySemaphore:
         if not woke_up:
             self._return_slot_to_pool(home_pool)
 
-        self._check_slot_invariant(home_pool, woke_up=woke_up)
+        self._check_slot_invariant(home_pool)
 
     def _resolve_release_home_pool(
-        self, was_high_priority: bool, slot_id: int | None
-    ) -> str:
-        """Determine home_pool from tracked slot ownership and untrack the slot."""
-        home_pool = ""
-        if slot_id is not None:
-            slot_info = self._acquired_slots.get(slot_id)
-            if slot_info:
-                home_pool = slot_info.home_pool
-            self._track_release(slot_id)
-        else:
-            # Legacy fallback for callers that haven't migrated to (wait_time, slot_id).
-            # Find oldest matching slot to determine home_pool.
-            matching = [
-                s
-                for s in self._acquired_slots.values()
-                if s.is_high_priority == was_high_priority
-            ]
-            if matching:
-                oldest = min(matching, key=lambda s: s.acquired_at)
-                home_pool = oldest.home_pool
-                self._track_release(oldest.slot_id)
-            else:
-                logger.warning(
-                    "release() called without slot_id and no matching tracked slots",
-                    extra={
-                        "was_high_priority": was_high_priority,
-                        "acquired_slots": len(self._acquired_slots),
-                    },
-                )
+        self, was_high_priority: bool, slot_id: int
+    ) -> str | None:
+        """Determine home_pool from tracked slot ownership and untrack the slot.
 
-        # Last resort: infer from caller priority (only if no tracking data at all)
-        if not home_pool:
-            home_pool = "rt" if was_high_priority else "be"
-        return home_pool
+        Returns None (rejecting the release) if slot_id is unknown, already
+        released, or carries an invalid home_pool.
+        """
+        slot_info = self._acquired_slots.pop(slot_id, None)
+        if slot_info is None:
+            logger.error(
+                "Rejecting release() for unknown or already-released slot_id",
+                extra={
+                    "slot_id": slot_id,
+                    "was_high_priority": was_high_priority,
+                    "acquired_slots": len(self._acquired_slots),
+                    "rt_available": self._rt_available,
+                    "be_available": self._be_available,
+                    "in_transit_rt": self._in_transit_rt,
+                    "in_transit_be": self._in_transit_be,
+                },
+            )
+            return None
+
+        if slot_info.home_pool not in {"rt", "be"}:
+            logger.error(
+                "Rejecting release() for tracked slot with invalid home_pool",
+                extra={
+                    "slot_id": slot_id,
+                    "home_pool": slot_info.home_pool,
+                    "was_high_priority": was_high_priority,
+                },
+            )
+            return None
+
+        return slot_info.home_pool
 
     def _should_force_be(self, was_high_priority: bool) -> bool:
         """Check guaranteed bandwidth and update consecutive RT release count."""
@@ -647,32 +701,75 @@ class HybridPrioritySemaphore:
         return False
 
     def _return_slot_to_pool(self, home_pool: str) -> None:
-        """Return an unconsumed slot back to its home pool counter."""
+        """Return an unconsumed slot back to its home pool counter.
+
+        Under valid ownership conservation `avail + 1 <= cap` always holds
+        without clamping. If a bug ever attempts to over-return, log a loud
+        SLOT INVARIANT VIOLATION instead of silently clamping with min().
+        """
         if home_pool == "rt":
-            self._rt_available = min(self._rt_available + 1, self._rt_reserved)
+            if self._rt_available >= self._rt_reserved:
+                logger.error(
+                    "SLOT INVARIANT VIOLATION: rt_available would exceed rt_reserved",
+                    extra={
+                        "rt_available": self._rt_available,
+                        "rt_reserved": self._rt_reserved,
+                        "acquired_count": len(self._acquired_slots),
+                        "in_transit_rt": self._in_transit_rt,
+                    },
+                )
+                return
+            self._rt_available += 1
+        elif home_pool == "be":
+            if self._be_available >= self._be_slots:
+                logger.error(
+                    "SLOT INVARIANT VIOLATION: be_available would exceed be_slots",
+                    extra={
+                        "be_available": self._be_available,
+                        "be_slots": self._be_slots,
+                        "acquired_count": len(self._acquired_slots),
+                        "in_transit_be": self._in_transit_be,
+                    },
+                )
+                return
+            self._be_available += 1
         else:
-            self._be_available = min(self._be_available + 1, self._be_slots)
-
-    def _check_slot_invariant(self, home_pool: str, *, woke_up: bool) -> None:
-        """Verify available + acquired equals total_slots (accounting for in-transit wake)."""
-        expected_total = self._total_slots
-        if woke_up:
-            expected_total -= 1
-
-        total_tracked = (
-            self._rt_available + self._be_available + len(self._acquired_slots)
-        )
-        if total_tracked != expected_total:
             logger.error(
-                "SLOT INVARIANT VIOLATION: available + acquired != total_slots",
+                "SLOT INVARIANT VIOLATION: invalid home_pool on return",
+                extra={"home_pool": home_pool},
+            )
+
+    def _check_slot_invariant(self, home_pool: str) -> None:
+        """Verify per-pool and total conservation: avail + held + in_transit == cap."""
+        held_rt = sum(
+            1 for slot in self._acquired_slots.values() if slot.home_pool == "rt"
+        )
+        held_be = sum(
+            1 for slot in self._acquired_slots.values() if slot.home_pool == "be"
+        )
+        rt_total = self._rt_available + held_rt + self._in_transit_rt
+        be_total = self._be_available + held_be + self._in_transit_be
+        total_tracked = rt_total + be_total
+        if (
+            rt_total != self._rt_reserved
+            or be_total != self._be_slots
+            or total_tracked != self._total_slots
+        ):
+            logger.error(
+                "SLOT INVARIANT VIOLATION: available + acquired + in_transit != total_slots",
                 extra={
                     "rt_available": self._rt_available,
+                    "held_rt": held_rt,
+                    "in_transit_rt": self._in_transit_rt,
+                    "rt_reserved": self._rt_reserved,
                     "be_available": self._be_available,
+                    "held_be": held_be,
+                    "in_transit_be": self._in_transit_be,
+                    "be_slots": self._be_slots,
                     "acquired_count": len(self._acquired_slots),
+                    "in_transit_count": self._in_transit_rt + self._in_transit_be,
                     "total_tracked": total_tracked,
-                    "expected_total": expected_total,
                     "total_slots": self._total_slots,
-                    "in_transit": woke_up,
                     "rt_queue_size": len(self._rt_queue),
                     "be_queue_size": len(self._be_queue),
                     "home_pool": home_pool,
@@ -682,30 +779,16 @@ class HybridPrioritySemaphore:
     def _release_slot_to_pool_or_waiter(self, home_pool: str) -> None:
         """Return a slot to its home pool or transfer to the next queued waiter.
 
-        Used by release() and by the CancelledError recovery path in acquire()
-        when a waiter's task is cancelled after receiving a slot via set_result().
+        Used by the CancelledError recovery path in acquire() when a waiter's
+        task is cancelled after receiving a slot via set_result().
         """
-        woke_up = False
-
-        # Try RT queue first, then BE queue
-        while self._rt_queue and not woke_up:
-            request = heapq.heappop(self._rt_queue)
-            if self._try_wake_waiter(request, home_pool):
-                woke_up = True
-
+        woke_up = self._try_wake_from_rt_queue(home_pool)
         if not woke_up:
-            while self._be_queue:
-                request = heapq.heappop(self._be_queue)
-                if self._try_wake_waiter(request, home_pool):
-                    woke_up = True
-                    break
-
-        # No waiters — return slot to its home pool
+            woke_up = self._try_wake_from_be_queue(home_pool, guaranteed=False)
         if not woke_up:
-            if home_pool == "rt":
-                self._rt_available = min(self._rt_available + 1, self._rt_reserved)
-            else:
-                self._be_available = min(self._be_available + 1, self._be_slots)
+            self._return_slot_to_pool(home_pool)
+
+        self._check_slot_invariant(home_pool)
 
     def _try_wake_waiter(self, request: QueuedRequest, home_pool: str) -> bool:
         """Try to wake a queued waiter by setting its future result.
@@ -735,6 +818,7 @@ class HybridPrioritySemaphore:
             )
             return False
         else:
+            self._increment_in_transit(home_pool)
             return True
 
     def _purge_cancelled_from_queues(self) -> None:
@@ -822,6 +906,12 @@ class HybridPrioritySemaphore:
                 # Promote to RT queue
                 request.priority_score = 0.0  # RT priority
                 request.is_high_priority = True  # Mark as promoted
+                if self._rt_scheduling_mode == "lifo":
+                    # LIFO RT entries use negated monotonic timestamps (-start_time)
+                    # so newer entries compare smaller in the min-heap. Use
+                    # -current_time so promoted BE entries enter with negative
+                    # LIFO priority and are not permanently starved behind RT arrivals.
+                    request.enqueue_time = -current_time
                 heapq.heappush(self._rt_queue, request)
                 promoted_count += 1
                 logger.warning(
@@ -868,21 +958,28 @@ class HybridPrioritySemaphore:
         """Get the wait time from the last acquire operation."""
         return self._last_wait_time
 
-    def queue_status(self) -> dict:
+    def queue_status(self) -> dict[str, int | bool]:
         """Get current queue status for monitoring."""
         available = self._rt_available + self._be_available
+        in_transit = self._in_transit_rt + self._in_transit_be
         current_depth = len(self._rt_queue) + len(self._be_queue)
-        accepting = (
-            self._max_queue_depth == 0
-            or current_depth < self._max_queue_depth
-            or available > 0
+        has_queue_room = (
+            self._max_queue_depth == 0 or current_depth < self._max_queue_depth
         )
+        accepting_rt = has_queue_room or self._has_immediate_slot(True)
+        accepting_be = has_queue_room or self._has_immediate_slot(False)
+        accepting = accepting_rt and accepting_be
         return {
             "rt_queue": len(self._rt_queue),
             "be_queue": len(self._be_queue),
             "total_slots": self._total_slots,
             "available_slots": available,
+            "in_transit_slots": in_transit,
+            "in_transit_rt": self._in_transit_rt,
+            "in_transit_be": self._in_transit_be,
             "accepting": accepting,
+            "accepting_rt": accepting_rt,
+            "accepting_be": accepting_be,
             "max_queue_depth": self._max_queue_depth,
             "acquired_slots": len(self._acquired_slots),
         }

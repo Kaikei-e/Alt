@@ -20,10 +20,10 @@ _LONG_WAIT_MONOTONIC_TIME = 115.0
 
 
 @pytest.mark.asyncio
-async def test_release_unknown_slot_id_infers_pool_from_priority(
+async def test_release_unknown_slot_id_is_rejected_without_corrupting_pools(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Releasing an unknown slot_id skips tracked lookup and infers home_pool from priority."""
+    """Releasing an unknown slot_id is strictly rejected as a no-op with ERROR log."""
     caplog.set_level(logging.ERROR)
     sem = HybridPrioritySemaphore(
         total_slots=_TWO_SLOTS,
@@ -39,12 +39,14 @@ async def test_release_unknown_slot_id_infers_pool_from_priority(
 
     sem.release(was_high_priority=False, slot_id=_UNKNOWN_SLOT_ID)
     assert sem._be_available == _SINGLE_SLOT
+    assert sem._rt_available == _SINGLE_SLOT
+    assert any("unknown or already-released" in rec.message for rec in caplog.records)
     assert not any("SLOT INVARIANT VIOLATION" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.asyncio
-async def test_release_without_slot_id_uses_oldest_matching_tracked_slot() -> None:
-    """Legacy release(slot_id=None) resolves home_pool from the oldest matching acquired slot."""
+async def test_release_without_slot_id_raises_type_error() -> None:
+    """Legacy release(slot_id=None) fallback is removed; slot_id is required."""
     sem = HybridPrioritySemaphore(
         total_slots=_SINGLE_SLOT,
         rt_reserved_slots=_SINGLE_SLOT,
@@ -52,12 +54,15 @@ async def test_release_without_slot_id_uses_oldest_matching_tracked_slot() -> No
         guaranteed_be_ratio=0,
     )
     # BE falls back to the RT pool because be_slots == 0.
-    _, _be_sid = await sem.acquire(high_priority=False)
+    _, be_sid = await sem.acquire(high_priority=False)
     assert sem._rt_available == 0
     assert len(sem._acquired_slots) == _SINGLE_SLOT
 
-    # Release without slot_id; should find the tracked BE slot (home_pool='rt') and return to RT.
-    sem.release(was_high_priority=False)
+    with pytest.raises(TypeError):
+        sem.release(was_high_priority=False)  # type: ignore[call-arg]
+
+    # Explicit slot_id releases cleanly back to RT pool.
+    sem.release(was_high_priority=False, slot_id=be_sid)
     assert sem._rt_available == _SINGLE_SLOT
     assert sem._be_available == 0
     assert len(sem._acquired_slots) == 0
