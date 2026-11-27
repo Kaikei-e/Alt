@@ -4,6 +4,7 @@ import (
 	"alt/scripts/altharness/internal/fsperm"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -315,46 +316,148 @@ func writeMeasuredToPacket(path string, doc *Document, measured map[string]any, 
 }
 
 func appendMeasureDecision(repoRoot, runsDir, packetPath string, packetID any, duration float64, budget int64, turnLimit *int64, exitCode int) error {
+	if isSymlink(runsDir) {
+		return pErr("runs_dir must not be a symlink: %s", runsDir)
+	}
+	runsAbs, err := filepath.Abs(runsDir)
+	if err != nil {
+		return err
+	}
+	if isSymlink(runsAbs) {
+		return pErr("runs_dir must not be a symlink: %s", runsDir)
+	}
+	repoResolved := resolveExisting(repoRoot)
+	defaultHarness := filepath.Join(repoResolved, ".harness")
+	defaultRuns := filepath.Join(defaultHarness, "runs")
+	if filepath.Clean(runsAbs) == filepath.Clean(defaultRuns) {
+		if isSymlink(defaultHarness) || isSymlink(defaultRuns) {
+			return pErr("default .harness/runs path must not traverse a symlink: %s", runsDir)
+		}
+		if !withinDir(defaultRuns, repoResolved) {
+			return pErr("default runs_dir escapes repo_root: %s", runsDir)
+		}
+	}
 	branch := currentBranchSanitized(repoRoot)
-	branchDir := filepath.Join(runsDir, branch)
+	branchDir := filepath.Join(runsAbs, branch)
 	decisionsPath := filepath.Join(branchDir, "decisions.tsv")
-	if isSymlink(branchDir) || isSymlink(decisionsPath) || !withinDir(decisionsPath, runsDir) {
+	if isSymlink(branchDir) || isSymlink(decisionsPath) || !withinDir(branchDir, runsAbs) || !withinDir(decisionsPath, runsAbs) {
 		return pErr("decisions.tsv path escapes runs_dir or hits symlink: %s", decisionsPath)
 	}
 	if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
 		return err
 	}
-	if _, err := os.Stat(decisionsPath); os.IsNotExist(err) {
-		if err := os.WriteFile(decisionsPath, []byte("ts\tphase\tdecision\twhy\tevidence\tresult\n"), fsperm.File); err != nil {
-			return err
+	if isSymlink(branchDir) || !withinDir(branchDir, runsAbs) {
+		return pErr("branch runs directory is a symlink or escapes runs_dir: %s", branchDir)
+	}
+	root, err := os.OpenRoot(branchDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	if st, statErr := root.Lstat("decisions.tsv"); statErr == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return pErr("decisions.tsv must not be a symlink: %s", decisionsPath)
 		}
+		if !st.Mode().IsRegular() {
+			return pErr("decisions.tsv is not a regular file: %s", decisionsPath)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return statErr
 	}
-	evidence := filepath.ToSlash(packetPath)
-	if rel, err := filepath.Rel(resolveExisting(repoRoot), resolveExisting(packetPath)); err == nil && rel != "" && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		evidence = filepath.ToSlash(rel)
-	}
+	evidence := safeMeasureEvidence(repoRoot, packetPath)
 	decision := fmt.Sprintf("measure %s: duration_s=%s budget_s=%d exit_code=%d", formatPacketID(packetID), strconvFormat(duration), budget, exitCode)
 	why := fmt.Sprintf("LOOP-02 command budget check (max_command_budget_s=%d)", budget)
 	if turnLimit != nil {
 		why = fmt.Sprintf("LOOP-02 command budget check (turn_limit_s=%d -> max_command_budget_s=%d)", *turnLimit, budget)
 	}
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	row := strings.Join([]string{
-		time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		now,
 		"measure",
-		sanitizeSingleLineTSV(decision),
-		sanitizeSingleLineTSV(why),
+		sanitizeMeasureTSVCell(decision),
+		sanitizeMeasureTSVCell(why),
 		sanitizeSingleLineTSV(evidence),
 		"info",
 	}, "\t") + "\n"
-	f, err := os.OpenFile(decisionsPath, os.O_APPEND|os.O_WRONLY, fsperm.File)
+	f, err := root.OpenFile("decisions.tsv", os.O_CREATE|os.O_APPEND|os.O_WRONLY, fsperm.File)
 	if err != nil {
 		return err
 	}
-	if _, err := f.WriteString(row); err != nil {
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	if !st.Mode().IsRegular() {
+		_ = f.Close()
+		return pErr("decisions.tsv is not a regular file: %s", decisionsPath)
+	}
+	var payload strings.Builder
+	if st.Size() == 0 {
+		payload.WriteString("ts\tphase\tdecision\twhy\tevidence\tresult\n")
+		payload.WriteString(strings.Join([]string{
+			now,
+			"init",
+			"policy=fix-existing; goal=auto-initialized harness run; completion=./scripts/lint/run.sh <target> exit 0",
+			"auto-initialized LOOP-03 decision log (override via harness-run init --force)",
+			"docs/ADR/001038.md",
+			"info",
+		}, "\t") + "\n")
+	}
+	payload.WriteString(row)
+	if _, err := f.WriteString(payload.String()); err != nil {
 		_ = f.Close()
 		return err
 	}
 	return f.Close()
+}
+
+func safeMeasureEvidence(repoRoot, packetPath string) string {
+	resolvedPkt := resolveExisting(packetPath)
+	evidence := filepath.ToSlash(packetPath)
+	if rel, err := filepath.Rel(resolveExisting(repoRoot), resolvedPkt); err == nil && rel != "" && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		evidence = filepath.ToSlash(rel)
+	}
+	evidence = sanitizeSingleLineTSV(evidence)
+	if evidence != "" && !strings.ContainsAny(evidence, " \t\r\n") && !isFormulaTriggerTSV(evidence) && strings.Contains(evidence, "/") {
+		return evidence
+	}
+	absPath := resolvedPkt
+	if absPath == "" {
+		if a, err := filepath.Abs(packetPath); err == nil {
+			absPath = a
+		} else {
+			absPath = packetPath
+		}
+	}
+	u := &url.URL{Scheme: "file", Path: filepath.ToSlash(absPath)}
+	return u.String()
+}
+
+func isFormulaTriggerTSV(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch s[0] {
+	case '=', '+', '@':
+		return true
+	case '-':
+		if len(s) >= 2 {
+			switch s[1] {
+			case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '=', '+', '@', '(':
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func sanitizeMeasureTSVCell(s string) string {
+	s = sanitizeSingleLineTSV(s)
+	if isFormulaTriggerTSV(s) {
+		return "'" + s
+	}
+	return s
 }
 
 func sanitizeSingleLineTSV(s string) string {

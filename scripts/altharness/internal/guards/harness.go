@@ -47,10 +47,14 @@ var (
 		"": {}, "tbd": {}, "n/a": {}, "na": {}, "-": {}, "--": {}, "—": {}, "todo": {}, "none": {},
 		"null": {}, "done": {}, "ok": {}, "なし": {}, "無し": {}, "未記入": {}, "未定": {}, "xxx": {}, "...": {},
 	}
-	pointerRE          = regexp.MustCompile(`(?i)^(?:#\d+|(?:ADR-\d{6}|PM-\d{4}-\d{3}|C-\d{2,})(?:\b|$)|commit:[0-9a-fA-F]{4,40}|cmd:\S.*|https?://\S+|file://\S+|[^\s]+/[^\s]+|[^\s]+\.(?:py|go|rs|ts|tsx|js|jsx|svelte|sh|md|json|jsonl|tsv|toml|yaml|yml|txt|log|sql|proto))$`)
+	placeholderInitValues = map[string]struct{}{
+		"": {}, "tbd": {}, "n/a": {}, "na": {}, "-": {}, "--": {}, "—": {}, "todo": {}, "none": {},
+		"null": {}, "なし": {}, "無し": {}, "未記入": {}, "未定": {}, "xxx": {}, "...": {},
+	}
+	pointerRE          = regexp.MustCompile(`(?i)^(?:#\d+|(?:ADR-\d{6}|PM-\d{4}-\d{3}|C-\d{2,})(?:\b|$)|commit:[0-9a-fA-F]{4,40}|cmd:\S[^\t\r\n]*|https?://\S+|file://\S+|[^\s=+@][^\s]*/[^\s]+|[^\s=+@][^\s]*\.(?:py|go|rs|ts|tsx|js|jsx|svelte|sh|md|json|jsonl|tsv|toml|yaml|yml|txt|log|sql|proto))$`)
 	packetIDRE         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`)
 	initPolicyRE       = regexp.MustCompile(`(?:^|[\s;])policy=([^\s;]+)`)
-	initCompletionRE   = regexp.MustCompile(`(?:^|[\s;])completion=([^;]+)`)
+	initCompletionRE   = regexp.MustCompile(`(?:^|[\s;])completion=(.+)$`)
 	parallelismArrowRE = regexp.MustCompile(`parallelism\s+\d+\s*->\s*(\d+)`)
 	parallelismEqRE    = regexp.MustCompile(`parallelism=(\d+)`)
 )
@@ -179,16 +183,44 @@ func ResolveGitBranch(repoRoot, override string) string {
 
 // RunDirForBranch returns <repo>/.harness/runs/<sanitized-branch>.
 func RunDirForBranch(repoRoot, branch string) (string, error) {
-	runsBase := resolveExisting(filepath.Join(repoRoot, ".harness", "runs"))
-	safe := SanitizeBranchName(ResolveGitBranch(repoRoot, branch))
-	target := resolveExisting(filepath.Join(runsBase, safe))
-	if !pathWithin(target, runsBase) && target != runsBase {
-		rel, err := filepath.Rel(runsBase, filepath.Join(filepath.Join(repoRoot, ".harness", "runs"), safe))
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return "", fmt.Errorf("resolved run directory escapes .harness/runs: %s", target)
+	repoResolved := resolveExisting(repoRoot)
+	if repoResolved == "" {
+		return "", fmt.Errorf("empty repository root")
+	}
+	harnessDir := filepath.Join(repoResolved, ".harness")
+	runsDir := filepath.Join(harnessDir, "runs")
+	safe := SanitizeBranchName(ResolveGitBranch(repoResolved, branch))
+	branchDir := filepath.Join(runsDir, safe)
+	for _, component := range []string{harnessDir, runsDir, branchDir} {
+		info, err := os.Lstat(component)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return "", fmt.Errorf("inspect run directory component %s: %w", component, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("run directory component must not be a symlink: %s", component)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("run directory component is not a directory: %s", component)
 		}
 	}
-	return filepath.Join(repoRoot, ".harness", "runs", safe), nil
+	resolvedRunsBase, err := resolveNonStrict(runsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve .harness/runs: %w", err)
+	}
+	if !pathWithin(resolvedRunsBase, repoResolved) || resolvedRunsBase == repoResolved {
+		return "", fmt.Errorf("resolved .harness/runs escapes repository root: %s", resolvedRunsBase)
+	}
+	resolvedTarget, err := resolveNonStrict(branchDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve run directory: %w", err)
+	}
+	if !pathWithin(resolvedTarget, resolvedRunsBase) || resolvedTarget == resolvedRunsBase {
+		return "", fmt.Errorf("resolved run directory escapes .harness/runs: %s", resolvedTarget)
+	}
+	return branchDir, nil
 }
 
 // LoadActivePacket loads active-packet.json when active=true.
@@ -251,8 +283,14 @@ func validateTSVField(name, value string) (string, error) {
 
 // IsValidEvidencePointer reports whether evidence is a concrete pointer.
 func IsValidEvidencePointer(evidence string) bool {
+	if strings.ContainsAny(evidence, "\t\r\n") {
+		return false
+	}
 	cleaned := strings.TrimSpace(evidence)
 	if _, ok := placeholderEvidence[strings.ToLower(cleaned)]; ok {
+		return false
+	}
+	if isFormulaTrigger(cleaned) {
 		return false
 	}
 	return pointerRE.MatchString(cleaned)
@@ -343,16 +381,159 @@ func appendDecision(runDir, phase, decision, why, evidence, result string) (stri
 	return path, nil
 }
 
-func sanitizeTSVFormula(value string) string {
+func isFormulaTrigger(value string) bool {
 	if value == "" {
-		return value
+		return false
 	}
 	switch value[0] {
 	case '=', '+', '@':
-		return "'" + value
-	default:
-		return value
+		return true
+	case '-':
+		if len(value) >= 2 {
+			switch value[1] {
+			case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '=', '+', '@', '(':
+				return true
+			}
+		}
 	}
+	return false
+}
+
+func sanitizeTSVFormula(value string) string {
+	if isFormulaTrigger(value) {
+		return "'" + value
+	}
+	return value
+}
+
+func isInvalidInitValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if strings.Trim(trimmed, "; \t") == "" {
+		return true
+	}
+	_, isPlaceholder := placeholderInitValues[strings.ToLower(trimmed)]
+	return isPlaceholder
+}
+
+func checkHarnessPrefixSymlinks(absPath string) error {
+	slash := filepath.ToSlash(absPath)
+	idx := strings.Index(slash, "/.harness/")
+	if idx < 0 {
+		return nil
+	}
+	prefix := filepath.FromSlash(slash[:idx])
+	harnessDir := filepath.Join(prefix, ".harness")
+	runsDir := filepath.Join(harnessDir, "runs")
+	for _, p := range []string{harnessDir, runsDir} {
+		if st, err := os.Lstat(p); err == nil {
+			if st.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("harness directory component must not be a symlink: %s", p)
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureNoSymlinkParent(parentDir string) error {
+	cur := filepath.Clean(parentDir)
+	for {
+		st, err := os.Lstat(cur)
+		if err == nil {
+			if st.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("parent directory must not be a symlink: %s", cur)
+			}
+			if !st.IsDir() {
+				return fmt.Errorf("parent path is not a directory: %s", cur)
+			}
+			return nil
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+		next := filepath.Dir(cur)
+		if next == cur {
+			return nil
+		}
+		cur = next
+	}
+}
+
+func readRegularFileNoSymlink(path string) ([]byte, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHarnessPrefixSymlinks(absPath); err != nil {
+		return nil, err
+	}
+	parentDir := filepath.Dir(absPath)
+	if st, err := os.Lstat(parentDir); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("parent directory must not be a symlink: %s", parentDir)
+	}
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("file must not be a symlink: %s", path)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file: %s", path)
+	}
+	root, err := os.OpenRoot(parentDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(absPath))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(f)
+}
+
+func writeFileInDirRoot(dir, filename string, data []byte) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if err := checkHarnessPrefixSymlinks(filepath.Join(absDir, filename)); err != nil {
+		return err
+	}
+	if st, err := os.Lstat(absDir); err != nil {
+		return err
+	} else if st.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("directory must not be a symlink: %s", dir)
+	} else if !st.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", dir)
+	}
+	root, err := os.OpenRoot(absDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	if st, err := root.Lstat(filename); err == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("target file must not be a symlink: %s", filepath.Join(dir, filename))
+		}
+		if !st.Mode().IsRegular() {
+			return fmt.Errorf("target file is not a regular file: %s", filepath.Join(dir, filename))
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	f, err := root.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fsperm.File)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // DecisionFinding is one LOOP-03 integrity issue found in decisions.tsv.
@@ -367,14 +548,7 @@ type DecisionFinding struct {
 // 6-column schema, Row 1 init invariant, RFC3339 timestamps, concrete evidence
 // pointers, and canonical result vocabulary.
 func ValidateDecisionsFile(path string) (int, []DecisionFinding, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return 0, nil, fmt.Errorf("not a regular file: %s", path)
-	}
-	raw, err := os.ReadFile(path)
+	raw, err := readRegularFileNoSymlink(path)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -448,12 +622,24 @@ func ValidateDecisionsFile(path string) (int, []DecisionFinding, error) {
 			{"decision", decision},
 			{"why", why},
 		} {
-			if strings.TrimSpace(field.val) == "" {
+			trimmed := strings.TrimSpace(field.val)
+			if trimmed == "" {
 				findings = append(findings, DecisionFinding{
 					Line: lineNo, Column: field.name, Code: "EMPTY_FIELD",
 					Message: fmt.Sprintf("field %q must not be empty", field.name),
 				})
+			} else if isFormulaTrigger(trimmed) {
+				findings = append(findings, DecisionFinding{
+					Line: lineNo, Column: field.name, Code: "FORMULA_INJECTION",
+					Message: fmt.Sprintf("field %q contains unescaped spreadsheet formula trigger", field.name),
+				})
 			}
+		}
+		if isFormulaTrigger(strings.TrimSpace(evidence)) {
+			findings = append(findings, DecisionFinding{
+				Line: lineNo, Column: "evidence", Code: "FORMULA_INJECTION",
+				Message: fmt.Sprintf("evidence %q contains unescaped spreadsheet formula trigger", evidence),
+			})
 		}
 		if !IsValidEvidencePointer(evidence) {
 			findings = append(findings, DecisionFinding{
@@ -487,7 +673,7 @@ func ValidateDecisionsFile(path string) (int, []DecisionFinding, error) {
 				})
 			}
 			compMatch := initCompletionRE.FindStringSubmatch(decision)
-			if len(compMatch) < 2 || strings.TrimSpace(compMatch[1]) == "" {
+			if len(compMatch) < 2 || strings.Trim(strings.TrimSpace(compMatch[1]), "; \t") == "" {
 				findings = append(findings, DecisionFinding{
 					Line: lineNo, Column: "decision", Code: "MISSING_INIT_COMPLETION",
 					Message: "Row 1 decision must specify non-empty completion=<criteria>",
@@ -500,13 +686,14 @@ func ValidateDecisionsFile(path string) (int, []DecisionFinding, error) {
 
 // AppendDecisionToFile validates fields against the canonical LOOP-03/LOOP-06
 // decisions.tsv schema and appends one row to decisionsPath (creating the
-// header if the file does not exist yet).
+// header and canonical Row 1 init if the file does not exist yet or is empty).
 func AppendDecisionToFile(decisionsPath, phase, decision, why, evidence, result string) error {
 	var err error
 	phase, err = validateTSVField("phase", phase)
 	if err != nil {
 		return err
 	}
+	phase = sanitizeTSVFormula(phase)
 	decision, err = validateTSVField("decision", decision)
 	if err != nil {
 		return err
@@ -527,23 +714,83 @@ func AppendDecisionToFile(decisionsPath, phase, decision, why, evidence, result 
 	if _, ok := validResults[result]; !ok {
 		return fmt.Errorf("invalid result '%s'", result)
 	}
-	if err := os.MkdirAll(filepath.Dir(decisionsPath), fsperm.Dir); err != nil {
-		return err
-	}
-	if _, err := os.Stat(decisionsPath); os.IsNotExist(err) {
-		header := strings.Join(tsvColumns, "\t") + "\n"
-		if err := os.WriteFile(decisionsPath, []byte(header), fsperm.File); err != nil {
-			return err
-		}
-	}
-	row := strings.Join([]string{utcNow(), phase, decision, why, evidence, result}, "\t") + "\n"
-	f, err := os.OpenFile(decisionsPath, os.O_APPEND|os.O_WRONLY, fsperm.File)
+	absPath, err := filepath.Abs(decisionsPath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.WriteString(row)
-	return err
+	if err := checkHarnessPrefixSymlinks(absPath); err != nil {
+		return err
+	}
+	if info, lerr := os.Lstat(absPath); lerr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("decisions file must not be a symlink: %s", decisionsPath)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("decisions file is not a regular file: %s", decisionsPath)
+		}
+	} else if !os.IsNotExist(lerr) {
+		return lerr
+	}
+	parentDir := filepath.Dir(absPath)
+	if err := ensureNoSymlinkParent(parentDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(parentDir, fsperm.Dir); err != nil {
+		return err
+	}
+	if err := ensureNoSymlinkParent(parentDir); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(parentDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	baseName := filepath.Base(absPath)
+	if info, lerr := root.Lstat(baseName); lerr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("decisions file must not be a symlink: %s", decisionsPath)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("decisions file is not a regular file: %s", decisionsPath)
+		}
+	} else if !os.IsNotExist(lerr) {
+		return lerr
+	}
+	f, err := root.OpenFile(baseName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, fsperm.File)
+	if err != nil {
+		return err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	if !st.Mode().IsRegular() {
+		_ = f.Close()
+		return fmt.Errorf("decisions file is not a regular file: %s", decisionsPath)
+	}
+	now := utcNow()
+	var buf strings.Builder
+	if st.Size() == 0 {
+		buf.WriteString(strings.Join(tsvColumns, "\t") + "\n")
+		if phase != "init" {
+			buf.WriteString(strings.Join([]string{
+				now,
+				"init",
+				"policy=fix-existing; goal=auto-initialized harness run; completion=./scripts/lint/run.sh <target> exit 0",
+				"auto-initialized LOOP-03 decision log (override via harness-run init --force)",
+				"docs/ADR/001038.md",
+				"info",
+			}, "\t") + "\n")
+		}
+	}
+	buf.WriteString(strings.Join([]string{now, phase, decision, why, evidence, result}, "\t") + "\n")
+	if _, err := f.WriteString(buf.String()); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func readDecisions(runDir string) []map[string]string {
@@ -746,33 +993,59 @@ func cmdInit(repo, branch string, args []string, stdout, stderr io.Writer) int {
 		return harnessExitError
 	}
 	decisions := filepath.Join(runDir, decisionsFilename)
-	if _, err := os.Stat(decisions); err == nil && !p.bools["--force"] {
-		fmt.Fprintf(stderr, "error: run already initialized at %s (pass --force to reinitialize)\n", decisions)
+	if info, lerr := os.Lstat(decisions); lerr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			_, _ = fmt.Fprintf(stderr, "error: decisions file must not be a symlink: %s\n", decisions)
+			return harnessExitError
+		}
+		if !p.bools["--force"] {
+			_, _ = fmt.Fprintf(stderr, "error: run already initialized at %s (pass --force to reinitialize)\n", decisions)
+			return harnessExitError
+		}
+	} else if !os.IsNotExist(lerr) {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", lerr)
 		return harnessExitError
 	}
 	goal, err = validateTSVField("goal", goal)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if strings.Contains(goal, ";") {
+		_, _ = fmt.Fprintln(stderr, "error: field 'goal' must not contain ';'")
+		return harnessExitUsage
+	}
+	if isInvalidInitValue(goal) {
+		_, _ = fmt.Fprintf(stderr, "error: field 'goal' must not be empty, placeholder, or punctuation-only (%q)\n", goal)
 		return harnessExitUsage
 	}
 	completion, err = validateTSVField("completion", completion)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return harnessExitUsage
+	}
+	if isInvalidInitValue(completion) {
+		_, _ = fmt.Fprintf(stderr, "error: field 'completion' must not be empty, placeholder, or punctuation-only (%q)\n", completion)
 		return harnessExitUsage
 	}
 	if err := os.MkdirAll(runDir, fsperm.Dir); err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitError
 	}
 	for _, sub := range []string{"packets", "handoffs", "verify", "evidence"} {
-		if err := os.MkdirAll(filepath.Join(runDir, sub), fsperm.Dir); err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+		subDir := filepath.Join(runDir, sub)
+		if info, lerr := os.Lstat(subDir); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+			_, _ = fmt.Fprintf(stderr, "error: run subdirectory must not be a symlink: %s\n", subDir)
+			return harnessExitError
+		}
+		if err := os.MkdirAll(subDir, fsperm.Dir); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
 	}
 	header := strings.Join(tsvColumns, "\t") + "\n"
-	if err := os.WriteFile(decisions, []byte(header), fsperm.File); err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+	if err := writeFileInDirRoot(runDir, decisionsFilename, []byte(header)); err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitError
 	}
 	rel, err := filepath.Rel(resolveExisting(repo), decisions)
@@ -781,10 +1054,10 @@ func cmdInit(repo, branch string, args []string, stdout, stderr io.Writer) int {
 	}
 	rel = filepath.ToSlash(rel)
 	if _, err := appendDecision(runDir, "init", "policy="+policy+"; goal="+goal+"; completion="+completion, "LOOP-03 run initialization: record policy and completion criteria", rel, "info"); err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitUsage
 	}
-	fmt.Fprintf(stdout, "initialized harness run at %s\n", runDir)
+	_, _ = fmt.Fprintf(stdout, "initialized harness run at %s\n", runDir)
 	return harnessExitOK
 }
 
@@ -834,21 +1107,21 @@ func cmdValidate(repo, branch string, args []string, stdout, stderr io.Writer) i
 		nil,
 	)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitUsage
 	}
 	if p.help {
-		fmt.Fprint(stdout, harnessUsage())
+		_, _ = fmt.Fprint(stdout, harnessUsage())
 		return harnessExitOK
 	}
 	if len(p.positionals) > 0 {
-		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		_, _ = fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
 		return harnessExitUsage
 	}
 	format := "text"
 	if f, ok := p.values["--format"]; ok {
 		if f != "text" && f != "json" {
-			fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
+			_, _ = fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
 			return harnessExitUsage
 		}
 		format = f
@@ -857,14 +1130,14 @@ func cmdValidate(repo, branch string, args []string, stdout, stderr io.Writer) i
 	if strings.TrimSpace(decisionsPath) == "" {
 		runDir, err := RunDirForBranch(repo, branch)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitUsage
 		}
 		decisionsPath = filepath.Join(runDir, decisionsFilename)
 	}
 	rowCount, findings, err := ValidateDecisionsFile(decisionsPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: unable to read decisions file %s: %v\n", decisionsPath, err)
+		_, _ = fmt.Fprintf(stderr, "error: unable to read decisions file %s: %v\n", decisionsPath, err)
 		return harnessExitUsage
 	}
 	valid := len(findings) == 0
@@ -881,23 +1154,23 @@ func cmdValidate(repo, branch string, args []string, stdout, stderr io.Writer) i
 		}
 		enc, encErr := json.MarshalIndent(payload, "", "  ")
 		if encErr != nil {
-			fmt.Fprintf(stderr, "error: %v\n", encErr)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", encErr)
 			return harnessExitError
 		}
-		fmt.Fprintln(stdout, string(enc))
+		_, _ = fmt.Fprintln(stdout, string(enc))
 		if valid {
 			return harnessExitOK
 		}
 		return harnessExitError
 	}
 	if valid {
-		fmt.Fprintf(stdout, "OK: decisions.tsv valid (%d row(s)) -> %s\n", rowCount, decisionsPath)
+		_, _ = fmt.Fprintf(stdout, "OK: decisions.tsv valid (%d row(s)) -> %s\n", rowCount, decisionsPath)
 		return harnessExitOK
 	}
 	for _, f := range findings {
-		fmt.Fprintf(stderr, "ERROR [%s] line %d (%s): %s\n", f.Code, f.Line, f.Column, f.Message)
+		_, _ = fmt.Fprintf(stderr, "ERROR [%s] line %d (%s): %s\n", f.Code, f.Line, f.Column, f.Message)
 	}
-	fmt.Fprintf(stderr, "INVALID: %d finding(s) in %s\n", len(findings), decisionsPath)
+	_, _ = fmt.Fprintf(stderr, "INVALID: %d finding(s) in %s\n", len(findings), decisionsPath)
 	return harnessExitError
 }
 
@@ -931,27 +1204,42 @@ func lastRecordedParallelism(rows []map[string]string) (int, bool) {
 	return 0, false
 }
 
+func outcomesSinceLastParallelism(rows []map[string]string) []string {
+	start := 0
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i]["phase"] == "parallelism" {
+			start = i + 1
+			break
+		}
+	}
+	outcomes := make([]string, 0, len(rows)-start)
+	for _, row := range rows[start:] {
+		outcomes = append(outcomes, row["result"])
+	}
+	return outcomes
+}
+
 func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer) int {
 	p, err := parseSubFlags(args,
 		map[string]bool{"--current": true, "--base-parallelism": true, "--format": true},
 		map[string]bool{"--apply": true, "--record-hold": true},
 	)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitUsage
 	}
 	if p.help {
-		fmt.Fprint(stdout, harnessUsage())
+		_, _ = fmt.Fprint(stdout, harnessUsage())
 		return harnessExitOK
 	}
 	if len(p.positionals) > 0 {
-		fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
+		_, _ = fmt.Fprintf(stderr, "error: unrecognized arguments: %s\n", strings.Join(p.positionals, " "))
 		return harnessExitUsage
 	}
 	format := "text"
 	if f, ok := p.values["--format"]; ok {
 		if f != "text" && f != "json" {
-			fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
+			_, _ = fmt.Fprintf(stderr, "error: argument --format: invalid choice: '%s' (choose from 'text', 'json')\n", f)
 			return harnessExitUsage
 		}
 		format = f
@@ -959,8 +1247,8 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 	base := parallelismBaseDefault
 	if raw, ok := p.values["--base-parallelism"]; ok {
 		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
-		if convErr != nil || n < parallelismMin {
-			fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s\n", raw)
+		if convErr != nil || n < parallelismMin || n > parallelismMax {
+			_, _ = fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s (must be %d..%d)\n", raw, parallelismMin, parallelismMax)
 			return harnessExitUsage
 		}
 		base = clampParallelism(n)
@@ -969,8 +1257,8 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 	explicitCurrent := 0
 	if raw, ok := p.values["--current"]; ok {
 		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
-		if convErr != nil || n < parallelismMin {
-			fmt.Fprintf(stderr, "error: invalid --current: %s\n", raw)
+		if convErr != nil || n < parallelismMin || n > parallelismMax {
+			_, _ = fmt.Fprintf(stderr, "error: invalid --current: %s (must be %d..%d)\n", raw, parallelismMin, parallelismMax)
 			return harnessExitUsage
 		}
 		explicitCurrent = clampParallelism(n)
@@ -978,7 +1266,7 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 	}
 	runDir, err := RunDirForBranch(repo, branch)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return harnessExitError
 	}
 	rows := readDecisions(runDir)
@@ -988,10 +1276,7 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 	} else if recorded, ok := lastRecordedParallelism(rows); ok {
 		effectiveCurrent = recorded
 	}
-	outcomes := make([]string, 0, len(rows))
-	for _, row := range rows {
-		outcomes = append(outcomes, row["result"])
-	}
+	outcomes := outcomesSinceLastParallelism(rows)
 	par := ComputeRecommendedParallelism(outcomes, effectiveCurrent)
 	changed := par.Recommended != effectiveCurrent
 	actualDelta := par.Recommended - effectiveCurrent
@@ -1011,8 +1296,17 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 		"changed":     changed,
 	}
 	if shouldRecord {
+		for _, target := range []string{decisionsPath, statePath} {
+			if info, lerr := os.Lstat(target); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+				_, _ = fmt.Fprintf(stderr, "error: target file must not be a symlink: %s\n", target)
+				return harnessExitError
+			} else if lerr != nil && !os.IsNotExist(lerr) {
+				_, _ = fmt.Fprintf(stderr, "error: %v\n", lerr)
+				return harnessExitError
+			}
+		}
 		if err := os.MkdirAll(runDir, fsperm.Dir); err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
 		rel, relErr := filepath.Rel(resolveExisting(repo), decisionsPath)
@@ -1022,29 +1316,29 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 		rel = filepath.ToSlash(rel)
 		decisionText := fmt.Sprintf("parallelism %d -> %d", effectiveCurrent, par.Recommended)
 		if _, err := appendDecision(runDir, "parallelism", decisionText, par.Reason, rel, "info"); err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
 		encState, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
-		if err := os.WriteFile(statePath, append(encState, '\n'), fsperm.File); err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+		if err := writeFileInDirRoot(runDir, parallelismFilename, append(encState, '\n')); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
 	}
 	if format == "json" {
 		enc, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return harnessExitError
 		}
-		fmt.Fprintln(stdout, string(enc))
+		_, _ = fmt.Fprintln(stdout, string(enc))
 		return harnessExitOK
 	}
-	fmt.Fprintf(stdout,
+	_, _ = fmt.Fprintf(stdout,
 		"Parallelism (branch=%s): current=%d recommended=%d delta=%+d changed=%t recorded=%t\n"+
 			"  window_size : %d (adopted=%d, reverted=%d, mismatch=%d, cancelled=%d)\n"+
 			"  reason      : %s\n",
@@ -1062,7 +1356,7 @@ func cmdParallelism(repo, branch string, args []string, stdout, stderr io.Writer
 		par.Reason,
 	)
 	if shouldRecord {
-		fmt.Fprintf(stdout, "  state       : %s\n", statePath)
+		_, _ = fmt.Fprintf(stdout, "  state       : %s\n", statePath)
 	}
 	return harnessExitOK
 }
@@ -1129,11 +1423,12 @@ func listRegularFileNames(dir string) []string {
 
 func summarizeRunDir(runDir string, baseParallelism int) map[string]any {
 	rows := readDecisions(runDir)
-	outcomes := make([]string, 0, len(rows))
-	for _, row := range rows {
-		outcomes = append(outcomes, row["result"])
+	effectiveBase := clampParallelism(baseParallelism)
+	if recorded, ok := lastRecordedParallelism(rows); ok {
+		effectiveBase = recorded
 	}
-	par := ComputeRecommendedParallelism(outcomes, baseParallelism)
+	outcomes := outcomesSinceLastParallelism(rows)
+	par := ComputeRecommendedParallelism(outcomes, effectiveBase)
 
 	var activePacket any
 	activeFile := filepath.Join(runDir, activePacketFilename)
@@ -1212,8 +1507,8 @@ func cmdStatus(repo, branch string, args []string, stdout, stderr io.Writer) int
 	base := parallelismBaseDefault
 	if raw, ok := p.values["--base-parallelism"]; ok {
 		n, convErr := strconv.Atoi(strings.TrimSpace(raw))
-		if convErr != nil {
-			fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s\n", raw)
+		if convErr != nil || n < parallelismMin || n > parallelismMax {
+			_, _ = fmt.Fprintf(stderr, "error: invalid --base-parallelism: %s (must be %d..%d)\n", raw, parallelismMin, parallelismMax)
 			return harnessExitUsage
 		}
 		base = n

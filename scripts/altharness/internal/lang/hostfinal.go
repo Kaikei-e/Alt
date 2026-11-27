@@ -84,7 +84,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	for _, rawDir := range opt.goTestDirs {
 		resolved, err := resolveRepoSubdir(root, rawDir, "--go-test-dir")
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
 		goDirs = append(goDirs, resolved)
@@ -93,7 +93,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	for _, rawDir := range opt.pyTestDirs {
 		resolved, err := resolveRepoSubdir(root, rawDir, "--py-test-dir")
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
 		pyDirs = append(pyDirs, resolved)
@@ -148,11 +148,11 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	hasRandTests := len(goDirs) > 0 || len(pyDirs) > 0
 	if opt.testCmd != "" || hasRandTests {
-		fmt.Fprintln(stdout, "==> [host-final-check] 4/5 host test command")
+		_, _ = fmt.Fprintln(stdout, "==> [host-final-check] 4/5 host test command")
 		if opt.testCmd != "" {
 			if code, err := run(ctx, stdout, stderr, root, nil, "bash", "-c", opt.testCmd); err != nil || code != 0 {
 				if err != nil {
-					fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: bash")
+					_, _ = fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: bash")
 					return 1
 				}
 				return code
@@ -167,16 +167,16 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				}
 			}
 			seedStr := strconv.FormatInt(seed, 10)
-			fmt.Fprintf(stdout, "random_seed=%s\n", seedStr)
+			_, _ = fmt.Fprintf(stdout, "random_seed=%s\n", seedStr)
 			for _, dir := range goDirs {
 				rel := dir
 				if r, err := filepath.Rel(root, dir); err == nil {
 					rel = filepath.ToSlash(r)
 				}
-				fmt.Fprintf(stdout, "--> go test -shuffle=%s -race -count=1 ./... (dir=%s, random_seed=%s)\n", seedStr, rel, seedStr)
+				_, _ = fmt.Fprintf(stdout, "--> go test -shuffle=%s -race -count=1 ./... (dir=%s, random_seed=%s)\n", seedStr, rel, seedStr)
 				if code, err := run(ctx, stdout, stderr, dir, nil, "go", "test", "-shuffle="+seedStr, "-race", "-count=1", "./..."); err != nil || code != 0 {
 					if err != nil {
-						fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: go")
+						_, _ = fmt.Fprintln(stderr, "ERROR: Required command not found in PATH: go")
 						return 1
 					}
 					return code
@@ -187,7 +187,7 @@ func RunHostFinal(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				if r, err := filepath.Rel(root, dir); err == nil {
 					rel = filepath.ToSlash(r)
 				}
-				fmt.Fprintf(stdout, "--> pytest-rand --seed %s %s (random_seed=%s)\n", seedStr, rel, seedStr)
+				_, _ = fmt.Fprintf(stdout, "--> pytest-rand --seed %s %s (random_seed=%s)\n", seedStr, rel, seedStr)
 				if code := pytestrand.Run(ctx, []string{"--seed", seedStr, dir}, stdout, stderr); code != 0 {
 					return code
 				}
@@ -440,7 +440,6 @@ func pathWithinDir(target, base string) bool {
 }
 
 var (
-	nohupRe = regexp.MustCompile("(?:^|[\\s`('\"])nohup\\s+")
 	autofix = []struct {
 		label string
 		re    *regexp.Regexp
@@ -454,54 +453,7 @@ var (
 )
 
 func hasBackgroundAmpersand(command string) bool {
-	if nohupRe.MatchString(command) {
-		return true
-	}
-	var quote byte
-	escaped := false
-	for i := 0; i < len(command); i++ {
-		ch := command[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if quote == '"' && ch == '\\' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			continue
-		}
-		if ch == '#' && (i == 0 || command[i-1] == ' ' || command[i-1] == '\t') {
-			break
-		}
-		if ch == '&' {
-			var prev byte
-			if i > 0 {
-				prev = command[i-1]
-			}
-			var next byte
-			if i+1 < len(command) {
-				next = command[i+1]
-			}
-			if prev == '>' || prev == '<' {
-				continue
-			}
-			if next == '&' || next == '>' {
-				i++
-				continue
-			}
-			return true
-		}
-	}
-	return false
+	return packet.HasBackgroundAmpersand(command)
 }
 
 func matchForbiddenAutofix(text string) string {

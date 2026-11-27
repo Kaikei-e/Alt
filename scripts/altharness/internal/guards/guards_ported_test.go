@@ -107,6 +107,7 @@ func samplePacketWithScope(id string, allowed, forbidden []string, allowGen, inc
 		"packet_version: \"1.0\"\n" +
 		"packet_id: \"" + id + "\"\n" +
 		"title: \"Test packet\"\n" +
+		"base_commit: \"1111111111111111111111111111111111111111\"\n" +
 		"scope:\n" +
 		"  target: \"scripts\"\n" +
 		"  allowed_paths:\n" + allowB.String() +

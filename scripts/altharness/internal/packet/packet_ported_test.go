@@ -30,6 +30,7 @@ func basePacketMap() map[string]any {
 	return map[string]any{
 		"packet_version": "1.0",
 		"packet_id":      "SPEC-04-SAMPLE",
+		"base_commit":    "0123456",
 		"scope": map[string]any{
 			"target":          "scripts",
 			"allowed_paths":   []any{"scripts/agent-harness/**", "scripts/lint/{harness,other}.sh"},
@@ -135,6 +136,7 @@ func validPacketMD(extraBody string) string {
 	return "---\n" +
 		"packet_version: \"1.0\"\n" +
 		"packet_id: \"MD-PKT-01\"\n" +
+		"base_commit: \"0123456\"\n" +
 		"scope:\n" +
 		"  target: \"scripts\"\n" +
 		"  allowed_paths:\n    - \"scripts/agent-harness/**\"\n" +
@@ -499,7 +501,7 @@ func TestTemplatesMeasureAndGeneratedProtectionParallel(t *testing.T) {
 
 		// Flow-mapping YAML measure + fenced JSON with \d backslash.
 		flowMD := filepath.Join(tmp, "flow.md")
-		_ = os.WriteFile(flowMD, []byte("---\npacket_version: \"1.0\"\npacket_id: \"FLOW-001\"\nscope: { target: \"scripts\", allowed_paths: [\"scripts/**\"], max_files: 5, max_functions: 3, allowed_rules: [\"S101\"], stop_condition: \"done\" }\nexecution_policy: { policy: \"fix-existing\", foreground_only: true, forbid_repo_wide_test_build: true, forbid_bulk_autofix: true, verification_command: \"./scripts/lint/run.sh scripts\" }\nhandoff_requirements: { require_modified_files_and_lines: true, require_runtime_behavior_impact: true, require_change_rationale: true }\n---\n\n## 1. 範囲と作業量制約\n\n## 2. 実行・検証手順\n\n## 3. Hand-off 記述必須項目\n"), fsperm.File)
+		_ = os.WriteFile(flowMD, []byte("---\npacket_version: \"1.0\"\npacket_id: \"FLOW-001\"\nbase_commit: \"0123456\"\nscope: { target: \"scripts\", allowed_paths: [\"scripts/**\"], max_files: 5, max_functions: 3, allowed_rules: [\"S101\"], stop_condition: \"done\" }\nexecution_policy: { policy: \"fix-existing\", foreground_only: true, forbid_repo_wide_test_build: true, forbid_bulk_autofix: true, verification_command: \"./scripts/lint/run.sh scripts\" }\nhandoff_requirements: { require_modified_files_and_lines: true, require_runtime_behavior_impact: true, require_change_rationale: true }\n---\n\n## 1. 範囲と作業量制約\n\n## 2. 実行・検証手順\n\n## 3. Hand-off 記述必須項目\n"), fsperm.File)
 		if rc, _, errB := runPacketCLI("measure", flowMD, "--repo-root", repo); rc != exitOK {
 			t.Fatalf("flow measure rc=%d err=%s", rc, errB)
 		}

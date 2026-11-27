@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,29 @@ import (
 	"testing"
 	"time"
 )
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	root, err := os.OpenRoot(filepath.Dir(abs))
+	if err != nil {
+		t.Fatalf("open root %s: %v", filepath.Dir(abs), err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(abs))
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
+}
 
 func TestCheckTemplates(t *testing.T) {
 	ctx := context.Background()
@@ -34,6 +58,7 @@ func TestUnmeasuredPacketRejected(t *testing.T) {
 	body := `{
   "packet_version": "1.0",
   "packet_id": "UNMEAS-1",
+  "base_commit": "0123456",
   "scope": {
     "target": "scripts",
     "allowed_paths": ["scripts/agent-harness/**"],
@@ -106,6 +131,7 @@ func TestBulkAutofixRejected(t *testing.T) {
 const unmeasuredPacket = `{
   "packet_version": "1.0",
   "packet_id": "UNMEAS-1",
+  "base_commit": "0123456",
   "scope": {
     "target": "scripts",
     "allowed_paths": ["scripts/agent-harness/**"],
@@ -968,6 +994,7 @@ func TestVerifySequencePacketAutoLoadsBaseCommitAndMode(t *testing.T) {
 
 		pktMissing := basePacketMap()
 		pktMissing["packet_id"] = "V01-NO-BASE"
+		delete(pktMissing, "base_commit")
 		missingPath := writeJSONFile(t, tmp, "missing_base.json", pktMissing)
 		rc, _, errB := runPacketCLI("verify-sequence", "--packet", missingPath, "--test-command", "true", "--repo-root", repo)
 		if rc != exitInvalid || !strings.Contains(errB, "MISSING_BASE_COMMIT") {
@@ -1259,10 +1286,7 @@ func TestMeasureTurnLimitBudgetAndLogRun(t *testing.T) {
 		if rc, _, errB := runPacketCLI("validate-packet", pktJSON); rc != exitOK {
 			t.Fatalf("validate-packet after turn-limit measure failed: rc=%d err=%q", rc, errB)
 		}
-		decisionsRaw, err := os.ReadFile(filepath.Join(runsDir, "feat-measure-loop02", "decisions.tsv"))
-		if err != nil {
-			t.Fatalf("expected --log-run to write decisions.tsv: %v", err)
-		}
+		decisionsRaw := readTestFile(t, filepath.Join(runsDir, "feat-measure-loop02", "decisions.tsv"))
 		if !strings.Contains(string(decisionsRaw), "\tmeasure\t") || !strings.Contains(string(decisionsRaw), "turn_limit_s=300") {
 			t.Fatalf("unexpected decisions.tsv from --log-run:\n%s", string(decisionsRaw))
 		}
@@ -1332,4 +1356,137 @@ func TestMeasureTurnLimitBudgetAndLogRun(t *testing.T) {
 			t.Fatalf("validate-packet expected VERIFICATION_BUDGET_EXCEEDED, rc=%d err=%q", rc, errB)
 		}
 	})
+}
+
+func TestTaskPacketRequiresBaseCommitAndRenderTemplateEmitsIt(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+
+	// Missing base_commit MUST be rejected by validate-packet (SPEC-07).
+	pkt := basePacketMap()
+	delete(pkt, "base_commit")
+	missingPath := writeJSONFile(t, tmp, "no_base_commit.json", pkt)
+	rc, out, errB := runPacketCLI("validate-packet", missingPath, "--format", "json")
+	if rc != exitInvalid || !strings.Contains(out, "base_commit") {
+		t.Fatalf("expected validate-packet to reject missing base_commit, rc=%d out=%q err=%q", rc, out, errB)
+	}
+
+	// render-template --kind packet emits default base_commit in both markdown and json.
+	rc, mdOut, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-1")
+	if rc != exitOK || !strings.Contains(mdOut, `base_commit: "1111111111111111111111111111111111111111"`) {
+		t.Fatalf("render-template md rc=%d out=%q err=%q", rc, mdOut, errB)
+	}
+	rc, jsonOut, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-1", "--format", "json")
+	if rc != exitOK {
+		t.Fatalf("render-template json rc=%d err=%q", rc, errB)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(jsonOut), &parsed); err != nil {
+		t.Fatalf("invalid json: %v (%s)", err, jsonOut)
+	}
+	if parsed["base_commit"] != "1111111111111111111111111111111111111111" {
+		t.Fatalf("render-template json base_commit=%v want default 40-char 1s", parsed["base_commit"])
+	}
+
+	// Custom --base-commit overrides default in both markdown and json; invalid SHA exits 2.
+	rc, customJSON, errB := runPacketCLI("render-template", "--kind", "packet", "--packet-id", "SPEC07-2", "--base-commit", "deadbeef1234", "--format", "json")
+	if rc != exitOK || !strings.Contains(customJSON, `"base_commit": "deadbeef1234"`) {
+		t.Fatalf("render-template custom --base-commit rc=%d out=%q err=%q", rc, customJSON, errB)
+	}
+	if rc, _, _ := runPacketCLI("render-template", "--kind", "packet", "--base-commit", "not-a-sha!"); rc != exitUsage {
+		t.Fatalf("invalid --base-commit rc=%d want 2", rc)
+	}
+}
+
+func TestBackgroundAmpersandEscapeAndSubshellBypass(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		cmd  string
+		want bool
+	}{
+		{`echo \" ; echo BG &`, true},
+		{`echo \' ; echo BG &`, true},
+		{`echo "$(sleep 1 &)"`, true},
+		{"echo \"`sleep 1 &`\"", true},
+		{`echo \\&`, true},
+		{"# comment\nsleep 1 &", true},
+		{`echo "a & b"`, false},
+		{`echo 'a & b'`, false},
+		{`echo a \& b`, false},
+		{`echo '$(sleep 1 &)'`, false},
+		{`echo "$(echo "a & b")"`, false},
+		{"./scripts/lint/run.sh scripts && echo ok", false},
+		{"./scripts/lint/run.sh scripts 2>&1", false},
+	}
+	for _, tc := range cases {
+		if got := HasBackgroundAmpersand(tc.cmd); got != tc.want {
+			t.Errorf("HasBackgroundAmpersand(%q) = %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+}
+
+func TestMeasureLogRunAutoInitSymlinkAndSpaceEvidence(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	repo := initGitRepo(t)
+	runGitCmd(t, repo, "checkout", "-q", "-b", "feat/sec01-measure")
+	writeStubRunSh(t, repo, 0, "")
+	runGitCmd(t, repo, "add", ".")
+	runGitCmd(t, repo, "commit", "-q", "-m", "stub")
+
+	// 1. Packet path with spaces outside repo writes valid Row 1 init + valid pointer evidence (no unencoded spaces).
+	spaceDir := filepath.Join(tmp, "dir with spaces")
+	if err := os.MkdirAll(spaceDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	pktMap := basePacketMap()
+	delete(pktMap["execution_policy"].(map[string]any), "measured")
+	pktPath := writeJSONFile(t, spaceDir, "pkt with space.json", pktMap)
+	runsDir := filepath.Join(tmp, "runs")
+
+	rc, out, errB := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", runsDir)
+	if rc != exitOK {
+		t.Fatalf("measure --log-run rc=%d out=%q err=%q", rc, out, errB)
+	}
+	decPath := filepath.Join(runsDir, "feat-sec01-measure", "decisions.tsv")
+	raw := readTestFile(t, decPath)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + Row 1 init + measure row (3 lines), got %d:\n%s", len(lines), string(raw))
+	}
+	row1 := strings.Split(lines[1], "\t")
+	if len(row1) != 6 || row1[1] != "init" || !strings.Contains(row1[2], "policy=") || !strings.Contains(row1[2], "completion=") {
+		t.Fatalf("unexpected Row 1 init: %q", lines[1])
+	}
+	row2 := strings.Split(lines[2], "\t")
+	if len(row2) != 6 || row2[1] != "measure" || strings.Contains(row2[4], " ") || !strings.HasPrefix(row2[4], "file://") {
+		t.Fatalf("expected encoded file:// evidence pointer without spaces, got %q (line=%q)", row2[4], lines[2])
+	}
+
+	// 2. Symlinked --runs-dir MUST be rejected.
+	outside := t.TempDir()
+	symRuns := filepath.Join(tmp, "sym-runs")
+	if err := os.Symlink(outside, symRuns); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", symRuns); rc == exitOK {
+		t.Fatal("measure --log-run accepted symlinked --runs-dir")
+	}
+
+	// 3. Dangling symlink decisions.tsv MUST be rejected without creating target.
+	runsDangling := filepath.Join(tmp, "runs-dangling")
+	branchDir := filepath.Join(runsDangling, "feat-sec01-measure")
+	if err := os.MkdirAll(branchDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(outside, "victim-measure.tsv")
+	if err := os.Symlink(victim, filepath.Join(branchDir, "decisions.tsv")); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := runPacketCLI("measure", pktPath, "--repo-root", repo, "--log-run", "--runs-dir", runsDangling); rc == exitOK {
+		t.Fatal("measure --log-run followed dangling decisions.tsv symlink")
+	}
+	if _, err := os.Stat(victim); !os.IsNotExist(err) {
+		t.Fatal("measure --log-run created victim file through dangling symlink!")
+	}
 }

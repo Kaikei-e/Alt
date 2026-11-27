@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,29 @@ import (
 	"strings"
 	"testing"
 )
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	root, err := os.OpenRoot(filepath.Dir(abs))
+	if err != nil {
+		t.Fatalf("open root %s: %v", filepath.Dir(abs), err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(abs))
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
+}
 
 func TestRunGoUsage(t *testing.T) {
 	cases := []struct {
@@ -82,6 +106,9 @@ func TestHostFinalRejectsBackground(t *testing.T) {
 		tok  string
 	}{
 		{"ampersand", "echo hi &", "foreground"},
+		{"escaped quote bypass", `echo \" ; echo BG &`, "foreground"},
+		{"escaped single quote bypass", `echo \' ; echo BG &`, "foreground"},
+		{"subshell inside double quotes", `echo "$(sleep 1 &)"`, "foreground"},
 		{"nohup", "nohup echo hi", "nohup"},
 		{"autofix", "golangci-lint run --fix", "GUARD-01"},
 	}
@@ -109,10 +136,19 @@ func TestBackgroundPredicate(t *testing.T) {
 	}{
 		{"echo hi &", true},
 		{"nohup sleep 1", true},
+		{`echo \" ; echo BG &`, true},
+		{`echo \' ; echo BG &`, true},
+		{`echo "$(sleep 1 &)"`, true},
+		{"echo \"`sleep 1 &`\"", true},
+		{`echo \\&`, true},
 		{"echo hi && echo there", false},
 		{"echo hi > out.txt", false},
 		{"echo hi 2>&1", false},
 		{"echo 'a & b'", false},
+		{`echo "a & b"`, false},
+		{`echo a \& b`, false},
+		{`echo '$(sleep 1 &)'`, false},
+		{`echo "$(echo "a & b")"`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.cmd, func(t *testing.T) {
@@ -497,18 +533,19 @@ func initHostFinalFixtureRepo(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	gitExec := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	ctx := t.Context()
+	for _, cmd := range []*exec.Cmd{
+		exec.CommandContext(ctx, "git", "init", "-b", "main", "-q"),
+		exec.CommandContext(ctx, "git", "config", "user.email", "t@example.com"),
+		exec.CommandContext(ctx, "git", "config", "user.name", "t"),
+		exec.CommandContext(ctx, "git", "add", "."),
+		exec.CommandContext(ctx, "git", "commit", "-q", "-m", "init"),
+	} {
+		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, string(out))
+			t.Fatalf("git %v: %v\n%s", cmd.Args, err, string(out))
 		}
 	}
-	gitExec("init", "-b", "main", "-q")
-	gitExec("config", "user.email", "t@example.com")
-	gitExec("config", "user.name", "t")
-	gitExec("add", ".")
-	gitExec("commit", "-q", "-m", "init")
 	return repo
 }
 
@@ -598,10 +635,7 @@ func TestHostFinalRandomizedTestsAndValidation(t *testing.T) {
 		if !strings.Contains(out.String(), "PYTEST_RANDOM_SEED=424242") {
 			t.Fatalf("missing PYTEST_RANDOM_SEED=424242 in stdout:\n%s", out.String())
 		}
-		goData, err := os.ReadFile(goLog)
-		if err != nil {
-			t.Fatalf("read go log: %v", err)
-		}
+		goData := readTestFile(t, goLog)
 		goLines := strings.Split(strings.TrimSpace(string(goData)), "\n")
 		if len(goLines) != 2 {
 			t.Fatalf("expected 2 go test invocations, got %d:\n%s", len(goLines), string(goData))
@@ -614,10 +648,7 @@ func TestHostFinalRandomizedTestsAndValidation(t *testing.T) {
 		if !strings.Contains(string(goData), "args=test -shuffle=424242 -race -count=1 ./...") {
 			t.Fatalf("go log missing shuffle/race/count args:\n%s", string(goData))
 		}
-		uvData, err := os.ReadFile(uvLog)
-		if err != nil {
-			t.Fatalf("read uv log: %v", err)
-		}
+		uvData := readTestFile(t, uvLog)
 		if !strings.Contains(string(uvData), "seed=424242") || !strings.Contains(string(uvData), "_alt_pytest_random_order_plugin") {
 			t.Fatalf("uv log missing seed/plugin:\n%s", string(uvData))
 		}
@@ -647,17 +678,11 @@ func TestHostFinalRandomizedTestsAndValidation(t *testing.T) {
 		if err != nil || seed <= 0 {
 			t.Fatalf("invalid auto-generated seed %q: %v", m[1], err)
 		}
-		goData, err := os.ReadFile(goLog)
-		if err != nil {
-			t.Fatal(err)
-		}
+		goData := readTestFile(t, goLog)
 		if !strings.Contains(string(goData), "-shuffle="+m[1]) {
 			t.Fatalf("go test did not use logged seed %s:\n%s", m[1], string(goData))
 		}
-		uvData, err := os.ReadFile(uvLog)
-		if err != nil {
-			t.Fatal(err)
-		}
+		uvData := readTestFile(t, uvLog)
 		if !strings.Contains(string(uvData), "seed="+m[1]) {
 			t.Fatalf("pytest-rand did not use logged seed %s:\n%s", m[1], string(uvData))
 		}

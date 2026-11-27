@@ -67,8 +67,32 @@ func hasBackgroundAmpersand(command string) bool {
 			escaped = false
 			continue
 		}
-		if quote == '"' && ch == '\\' {
+		if (quote == 0 || quote == '"') && ch == '\\' {
 			escaped = true
+			continue
+		}
+		if quote == '"' {
+			if ch == '"' {
+				quote = 0
+				continue
+			}
+			if ch == '$' && i+1 < len(command) && command[i+1] == '(' {
+				subEnd := findCmdSubEnd(command, i+2)
+				inner := command[i+2 : subEnd]
+				if hasBackgroundAmpersand(inner) {
+					return true
+				}
+				i = subEnd
+				continue
+			}
+			if ch == '`' {
+				inner, nextIdx := extractDoubleQuotedBacktick(command, i+1)
+				if hasBackgroundAmpersand(inner) {
+					return true
+				}
+				i = nextIdx
+				continue
+			}
 			continue
 		}
 		if quote != 0 {
@@ -81,8 +105,11 @@ func hasBackgroundAmpersand(command string) bool {
 			quote = ch
 			continue
 		}
-		if ch == '#' && (i == 0 || isASCIISpace(command[i-1])) {
-			break
+		if ch == '#' && (i == 0 || isASCIISpace(command[i-1]) || command[i-1] == ';') {
+			for i < len(command) && command[i] != '\n' {
+				i++
+			}
+			continue
 		}
 		if ch == '&' {
 			var prev byte
@@ -104,6 +131,76 @@ func hasBackgroundAmpersand(command string) bool {
 		}
 	}
 	return false
+}
+
+// findCmdSubEnd returns the index of the matching ')' for a $( starting at
+// start (immediately after "$("), or len(s) if unclosed.
+func findCmdSubEnd(s string, start int) int {
+	depth := 1
+	var quote byte
+	escaped := false
+	for i := start; i < len(s); i++ {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if (quote == 0 || quote == '"') && ch == '\\' {
+			escaped = true
+			continue
+		}
+		if quote == '"' {
+			if ch == '"' {
+				quote = 0
+				continue
+			}
+			if ch == '$' && i+1 < len(s) && s[i+1] == '(' {
+				i = findCmdSubEnd(s, i+2)
+			}
+			continue
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			quote = ch
+			continue
+		}
+		if ch == '(' {
+			depth++
+			continue
+		}
+		if ch == ')' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return len(s)
+}
+
+func extractDoubleQuotedBacktick(s string, start int) (string, int) {
+	var b strings.Builder
+	for i := start; i < len(s); i++ {
+		ch := s[i]
+		if ch == '\\' && i+1 < len(s) {
+			nxt := s[i+1]
+			if nxt == '`' || nxt == '$' || nxt == '\\' || nxt == '"' {
+				b.WriteByte(nxt)
+				i++
+				continue
+			}
+		}
+		if ch == '`' {
+			return b.String(), i
+		}
+		b.WriteByte(ch)
+	}
+	return b.String(), len(s) - 1
 }
 
 func matchForbiddenAutofix(text string) string {
