@@ -17,10 +17,11 @@ let {
 <style>
 	.banner {
 		display: grid;
-		grid-template-columns: 2px 1fr;
+		grid-template-columns: 2px minmax(0, 1fr);
 		grid-template-areas: "rule msg" "rule hint";
 		column-gap: 0.75rem;
 		row-gap: 0.15rem;
+		min-width: 0;
 		padding: 0.45rem 0 0.45rem 0.5rem;
 		font-size: 0.78rem;
 		border-top: 1px solid var(--obs-rule, var(--surface-border));
@@ -37,10 +38,14 @@ let {
 		grid-area: msg;
 		color: var(--alt-charcoal);
 		font-weight: 500;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.hint {
 		grid-area: hint;
 		color: var(--obs-muted, var(--alt-ash));
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 </style>

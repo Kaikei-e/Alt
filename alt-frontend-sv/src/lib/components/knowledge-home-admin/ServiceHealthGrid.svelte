@@ -39,7 +39,7 @@ const formatTime = (iso: string) => {
 	<h3 class="section-heading">Service Health</h3>
 	<div class="heading-rule"></div>
 
-	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+	<div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
 		{#each services as service (service.serviceName)}
 			{@const info = statusInfo(service.status)}
 			<div class="service-card" data-status={info.status}>
@@ -67,6 +67,7 @@ const formatTime = (iso: string) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -86,6 +87,7 @@ const formatTime = (iso: string) => {
 
 	.service-card {
 		display: flex;
+		min-width: 0;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
 	}
@@ -101,12 +103,15 @@ const formatTime = (iso: string) => {
 		gap: 0.35rem;
 		padding: 0.6rem 0.75rem;
 		flex: 1;
+		min-width: 0;
 	}
 
 	.service-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.25rem 0.5rem;
 	}
 
 	.service-name {
@@ -114,6 +119,8 @@ const formatTime = (iso: string) => {
 		font-size: 0.8rem;
 		font-weight: 700;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.service-status {
@@ -123,12 +130,14 @@ const formatTime = (iso: string) => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		flex-shrink: 0;
 	}
 
 	.service-meta {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.35rem 0.75rem;
 	}
 
 	.service-latency {
@@ -150,5 +159,6 @@ const formatTime = (iso: string) => {
 		margin: 0;
 		padding: 0.25rem 0.5rem;
 		border-left: 2px solid var(--alt-terracotta);
+		overflow-wrap: anywhere;
 	}
 </style>

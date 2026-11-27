@@ -33,6 +33,8 @@ let {
 	.metric-card {
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
+		overflow: hidden;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
 	}
@@ -60,17 +62,22 @@ let {
 		flex-direction: column;
 		gap: 0.25rem;
 		padding: 0.75rem 1rem;
+		min-width: 0;
 	}
 
 	.metric-label {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.35rem;
+		gap: 0.25rem 0.35rem;
+		min-width: 0;
 		font-size: 0.65rem;
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 
 	.metric-value {
@@ -79,5 +86,18 @@ let {
 		font-weight: 700;
 		line-height: 1.2;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	@media (max-width: 48rem) {
+		.metric-body {
+			padding: 0.65rem 0.75rem;
+		}
+
+		.metric-value {
+			font-size: 1.05rem;
+		}
 	}
 </style>

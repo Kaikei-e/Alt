@@ -83,10 +83,12 @@ const statusColor = (status: string) => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.panel-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
 	}
@@ -129,6 +131,7 @@ const statusColor = (status: string) => {
 		font-family: var(--font-body);
 		font-size: 0.8rem;
 		color: var(--alt-terracotta);
+		overflow-wrap: anywhere;
 	}
 
 	.empty-text {
@@ -139,7 +142,11 @@ const statusColor = (status: string) => {
 	}
 
 	.table-container {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 		border: 1px solid var(--surface-border);
 	}
 
@@ -161,6 +168,7 @@ const statusColor = (status: string) => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		white-space: nowrap;
 	}
 
 	.th-left { text-align: left; }
@@ -173,6 +181,7 @@ const statusColor = (status: string) => {
 	.data-table td {
 		padding: 0.5rem 0.75rem;
 		color: var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.td-mono {

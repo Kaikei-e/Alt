@@ -65,7 +65,7 @@ const formatSliName = (name: string) =>
 			status={overallHealthColor(sloStatus.overallHealth)}
 		/>
 
-		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each sloStatus.slis as sli (sli.name)}
 				<div class="sli-card" data-status={sliStatusLabel(sli.status)}>
 					<div class="sli-stripe"></div>
@@ -94,12 +94,15 @@ const formatSliName = (name: string) =>
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.panel-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		justify-content: space-between;
+		gap: 0.25rem 0.75rem;
 	}
 
 	.section-heading {
@@ -126,6 +129,7 @@ const formatSliName = (name: string) =>
 	.sli-card {
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
 	}
@@ -145,12 +149,15 @@ const formatSliName = (name: string) =>
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 0.75rem;
+		min-width: 0;
 	}
 
 	.sli-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.25rem 0.5rem;
 	}
 
 	.sli-name {
@@ -160,6 +167,8 @@ const formatSliName = (name: string) =>
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: var(--alt-charcoal);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.sli-status {
@@ -169,10 +178,12 @@ const formatSliName = (name: string) =>
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		flex-shrink: 0;
 	}
 
 	.sli-value-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 0.25rem;
 	}

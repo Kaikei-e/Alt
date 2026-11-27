@@ -39,7 +39,7 @@ let parsedDetails = $derived.by(() => {
 		<h3 class="section-heading">Audit Result</h3>
 		<div class="heading-rule"></div>
 
-		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+		<div class="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
 			<AdminMetricCard
 				label="Projection"
 				value="{audit.projectionName} v{audit.projectionVersion}"
@@ -81,6 +81,7 @@ let parsedDetails = $derived.by(() => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -100,10 +101,12 @@ let parsedDetails = $derived.by(() => {
 
 	.audit-meta {
 		display: flex;
-		gap: 1rem;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
 		color: var(--alt-ash);
+		overflow-wrap: anywhere;
 	}
 
 	.audit-id {
@@ -114,6 +117,7 @@ let parsedDetails = $derived.by(() => {
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
+		min-width: 0;
 	}
 
 	.details-label {
@@ -126,6 +130,7 @@ let parsedDetails = $derived.by(() => {
 	}
 
 	.details-pre {
+		max-width: 100%;
 		max-height: 12rem;
 		overflow: auto;
 		padding: 0.75rem;
@@ -135,5 +140,6 @@ let parsedDetails = $derived.by(() => {
 		font-size: 0.65rem;
 		color: var(--alt-charcoal);
 		margin: 0;
+		overflow-wrap: anywhere;
 	}
 </style>

@@ -174,12 +174,15 @@ const totalEligiblePartitions = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.panel-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem 0.75rem;
 	}
 
 	.section-heading {
@@ -199,6 +202,7 @@ const totalEligiblePartitions = $derived(
 
 	.action-buttons {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 
@@ -240,6 +244,7 @@ const totalEligiblePartitions = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		min-width: 0;
 	}
 
 	.sub-label {
@@ -259,7 +264,11 @@ const totalEligiblePartitions = $derived(
 	}
 
 	.table-container {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 		border: 1px solid var(--surface-border);
 	}
 
@@ -281,6 +290,7 @@ const totalEligiblePartitions = $derived(
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		white-space: nowrap;
 	}
 
 	.th-left { text-align: left; }
@@ -294,6 +304,7 @@ const totalEligiblePartitions = $derived(
 	.data-table td {
 		padding: 0.5rem 0.75rem;
 		color: var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.td-mono {
@@ -323,5 +334,12 @@ const totalEligiblePartitions = $derived(
 		font-weight: 600;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
+	}
+
+	@media (max-width: 48rem) {
+		.action-btn {
+			min-height: 2.5rem;
+			padding: 0.45rem 0.75rem;
+		}
 	}
 </style>

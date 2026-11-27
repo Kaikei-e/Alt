@@ -39,6 +39,7 @@ const maxValue = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -73,6 +74,7 @@ const maxValue = $derived(
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		min-width: 0;
 	}
 
 	.funnel-label {
@@ -88,6 +90,7 @@ const maxValue = $derived(
 
 	.funnel-bar-container {
 		flex: 1;
+		min-width: 0;
 		height: 16px;
 	}
 
@@ -104,5 +107,6 @@ const maxValue = $derived(
 		color: var(--alt-charcoal);
 		flex-shrink: 0;
 		min-width: 3rem;
+		text-align: right;
 	}
 </style>

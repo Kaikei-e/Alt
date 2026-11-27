@@ -132,6 +132,7 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.section-heading {
@@ -157,7 +158,11 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 	}
 
 	.table-container {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 		border: 1px solid var(--surface-border);
 	}
 
@@ -179,6 +184,7 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--alt-ash);
+		white-space: nowrap;
 	}
 
 	.th-left { text-align: left; }
@@ -190,6 +196,7 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 	.data-table td {
 		padding: 0.5rem 0.75rem;
 		color: var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.td-mono {
@@ -232,5 +239,12 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 	.action-btn:disabled {
 		opacity: 0.3;
 		cursor: not-allowed;
+	}
+
+	@media (max-width: 48rem) {
+		.action-btn {
+			min-height: 2.25rem;
+			padding: 0.35rem 0.65rem;
+		}
 	}
 </style>
