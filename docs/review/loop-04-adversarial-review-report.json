@@ -1,0 +1,204 @@
+{
+  "review_id": "LOOP04-2026-11-28",
+  "base_commit": "eb978e1377f51cd4e5d2c741a703d882f131e351",
+  "head_commit": "f3ab6fba1d70b34b64c3e80adce6b7cbc06e5649",
+  "author_model": "gemini-4-neon-xhigh",
+  "reviewers": [
+    "gemini-4-carbon-high"
+  ],
+  "auto_applied": false,
+  "focus_verdicts": [
+    {
+      "focus_id": "F-01",
+      "title": "errorlint が書き換えた条件式",
+      "status": "safe",
+      "summary": "Verified all 4 errorlint rewrite sites (dos_protection_middleware.go:169, error_handler.go:25, summarization/helpers.go:29, altctl/internal/config/config.go:106) against CORPUS C-01 and C-02; >= 500 server-error predicate and !errors.As negation semantics are intact.",
+      "evidence": "alt-backend/app/middleware/dos_protection_middleware_test.go",
+      "blast_radius_proof": {
+        "assumption": "All 4 errorlint rewrite sites preserve >= 500 server-error circuit-breaker predicate (C-01) and !errors.As missing-config fallback negation (C-02).",
+        "command": "go -C alt-backend/app test ./middleware/... ./connect/errorhandler/... ./orchestrator/rest/rest_feeds/summarization/... && go -C altctl test ./cmd/...",
+        "exit_code": 0,
+        "evidence": "alt-backend/app/middleware/dos_protection_middleware_test.go"
+      }
+    },
+    {
+      "focus_id": "F-02",
+      "title": "protogetter の nil ガード",
+      "status": "safe",
+      "summary": "Verified all unary Connect-RPC clients across pre-processor, search-indexer, and alt-backend wire connectguard.NewUnaryNilResponseInterceptor() (CORPUS C-04) and pass ast-grep rules go-no-manual-connect-msg-nil-guard and go-no-unguarded-response-proto-getter with 0 violations.",
+      "evidence": "search-indexer/app/internal/connectguard/connectguard_gen_test.go",
+      "blast_radius_proof": {
+        "assumption": "Every unary Connect-RPC client wires connectguard.NewUnaryNilResponseInterceptor() so nil responses fail fast before generated proto Get*() accessors return silent zero values.",
+        "command": "/home/koko/.local/bin/ast-grep scan -c scripts/lint/ast-grep/sgconfig.yml pre-processor/app search-indexer/app alt-backend/app && go -C pre-processor/app test ./driver/mqhub_connect/... ./driver/backend_api/... ./repository/... ./internal/connectguard/... && go -C search-indexer/app test ./driver/backend_api/... ./internal/connectguard/... && go -C alt-backend/app test ./internal/connectguard/... ./orchestrator/driver/preprocessor_connect/... ./orchestrator/driver/search_indexer_connect/... ./shared/driver/datahub_client/... ./shared/driver/sovereign_client/... ./shared/driver/mqhub_connect/...",
+        "exit_code": 0,
+        "evidence": "search-indexer/app/internal/connectguard/connectguard_gen_test.go"
+      }
+    },
+    {
+      "focus_id": "F-03",
+      "title": "auth-hub の設定ファイル読み込み",
+      "status": "safe",
+      "summary": "Verified auth-hub/config/config.go readConfigFile enforces .. rejection and os.OpenRoot containment for BACKEND_TOKEN_SIGNING_KEY_FILE, CSRF_SECRET_FILE, and INTERNAL_AUTH_SECRET_FILE with fail-fast startup validation, and auth-hub/cmd/auth-hub/main.go constructs the plaintext server via httpserver.New with ReadHeaderTimeout=10s and no unsolicited IdleTimeout (CORPUS C-11).",
+      "evidence": "auth-hub/config/config_test.go",
+      "blast_radius_proof": {
+        "assumption": "auth-hub rejects dotdot/symlink secret escapes via os.OpenRoot, fails closed on missing required secrets/CIDRs, and preserves plaintext ReadHeaderTimeout=10s without IdleTimeout (C-11).",
+        "command": "go -C auth-hub test -race ./...",
+        "exit_code": 0,
+        "evidence": "auth-hub/config/config_test.go"
+      }
+    },
+    {
+      "focus_id": "F-04",
+      "title": "altctl のパス封じ込め",
+      "status": "deferred",
+      "summary": "Deferred pending remediation of two reproducible symlink-containment gaps (REV-05, REV-06): resolveUnderBase in altctl/internal/migrate/manifest.go:128 checks lexical filepath.Rel only (allowing symlinks inside backupDir to escape during Verify/Restore despite #nosec G304), and CreateEnvFile in altctl/internal/setup/envfile.go:36 follows dangling/live .env symlinks outside projectRoot while omitting os.Chmod on --force overwrite.",
+      "evidence": "altctl/internal/migrate/manifest.go",
+      "blast_radius_proof": {
+        "assumption": "Existing lexical dotdot/absolute path rejection in Manifest.Verify/Migrator.Restore and new .env 0o600 creation pass race-enabled unit tests while symlink containment requires os.OpenRoot hardening.",
+        "command": "go -C altctl test -race ./...",
+        "exit_code": 0,
+        "evidence": "altctl/internal/migrate/manifest_test.go"
+      }
+    },
+    {
+      "focus_id": "F-05",
+      "title": "nilerr の縮退箇所",
+      "status": "safe",
+      "summary": "Audited all 10 production //nolint:nilerr sites across alt-backend/app (9 sites) and rag-orchestrator (1 site), plus verified 0 nilerr suppressions in pre-processor/app and search-indexer/app; every active site emits structured warning logs and returns an explicit domain degradation value or per-row skip.",
+      "evidence": "alt-backend/app/shared/driver/redis_slot_store/redis_slot_store.go",
+      "blast_radius_proof": {
+        "assumption": "All intentional nilerr degradation paths log structured context and surface typed domain refusals/degraded results without masking fatal errors.",
+        "command": "go -C alt-backend/app test ./utils/html_parser/... ./shared/driver/redis_slot_store/... ./orchestrator/usecase/record_reading_events_usecase/... ./orchestrator/gateway/admin_metrics_gateway/... ./orchestrator/usecase/register_favorite_feed_usecase/... ./orchestrator/gateway/csrf_token_gateway/... ./orchestrator/gateway/og_resolve_gateway/... ./orchestrator/gateway/robots_txt_gateway/... && go -C rag-orchestrator test ./internal/backfill/...",
+        "exit_code": 0,
+        "evidence": "rag-orchestrator/internal/backfill/enqueue.go"
+      }
+    },
+    {
+      "focus_id": "F-06",
+      "title": "news-creator のゲートウェイ",
+      "status": "deferred",
+      "summary": "HybridPrioritySemaphore queued return path (C-06), sse_stream.py aclosing sentinel guarantee (C-07), and QueueFullError map/reduce/plan-query error boundaries (4e6430ec0) pass all 424 targeted tests, but deferred pending REV-08: OllamaGateway.chat_stream (ollama_gateway.py:989) iterates stream_driver.chat_stream without async with aclosing(...), releasing the HIGH PRIORITY semaphore slot on disconnect while the upstream Ollama stream remains open.",
+      "evidence": "news-creator/app/news_creator/gateway/ollama_gateway.py",
+      "blast_radius_proof": {
+        "assumption": "HybridPrioritySemaphore (C-06), SSE stream_sse_with_heartbeat aclosing cleanup (C-07), DistributingGateway fallback, and QueueFullError degradation boundaries pass all gateway/SSE/usecase suites.",
+        "command": "cd news-creator/app && uv run --offline pytest tests/gateway/ tests/handler/test_sse_stream.py tests/handler/test_summarize_handler.py tests/usecase/test_recap_summary_usecase.py tests/usecase/test_plan_query_usecase.py -q",
+        "exit_code": 0,
+        "evidence": "news-creator/app/tests/gateway/test_hybrid_priority_semaphore.py"
+      }
+    },
+    {
+      "focus_id": "F-07",
+      "title": "長大関数の分割",
+      "status": "safe",
+      "summary": "Verified VERIFY-02 clean-tree check (8897 tracked files), all 13 recap-subworker split scripts (650 differential trials in verify-02-differential-evidence.md + 9b820bce5 error-boundary restorations + 21 unit/property suites), and recap-worker split helpers (executor.rs, queue/worker.rs, orchestrator.rs, scheduler/daemon.rs, pipeline/select, eval/metrics) preserve await order, DAO failure logging, cancellation select loops, and output equivalence.",
+      "evidence": "docs/review/verify-02-differential-evidence.md",
+      "blast_radius_proof": {
+        "assumption": "Split helper functions in recap-subworker and recap-worker preserve pre-split behavior, error boundaries, and clean repository state without leftover differential scaffolding.",
+        "command": "./scripts/altharness/alt-harness verify-diff check-clean && (cd recap-subworker && uv run --offline pytest -o addopts=\"\" tests/unit/test_verify02_split_invariants.py tests/unit/test_async_jobs.py -q) && (cd recap-worker/recap-worker && cargo test --offline --lib pipeline::select -q && cargo test --offline --lib eval::metrics -q)",
+        "exit_code": 0,
+        "evidence": "recap-subworker/tests/unit/test_verify02_split_invariants.py"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "id": "REV-01",
+      "focus_id": "F-01",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "note",
+      "summary": "altctl/internal/config has no direct package unit tests pinning C-02 !errors.As negation",
+      "rationale": "altctl/internal/config/config.go:106 correctly preserves !errors.As(err, &configFileNotFoundError), but go test reports [no test files] for internal/config; direct unit tests for missing vs malformed .altctl.yaml would harden C-02 coverage independent of cmd tests.",
+      "evidence": "altctl/internal/config/config.go:106"
+    },
+    {
+      "id": "REV-02",
+      "focus_id": "F-01",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "dismiss",
+      "summary": "echo.StatusCode(err) returning 0 for plain errors in DOSProtectionMiddleware matches pre-v5 semantics",
+      "rationale": "In alt-backend/app/middleware/dos_protection_middleware.go:169, echo.StatusCode(err) returns 0 when err does not implement HTTPStatusCoder, matching Echo v4 err.(*echo.HTTPError) while improving wrapped HTTPError 5xx detection.",
+      "evidence": "alt-backend/app/middleware/dos_protection_middleware.go:169"
+    },
+    {
+      "id": "REV-03",
+      "focus_id": "F-02",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "investigate",
+      "summary": "Unguarded GetDeletedAt().AsTime() and GetCreatedAt().AsTime() in search-indexer coerce nil timestamps to 1970-01-01",
+      "rationale": "Unlike pre-processor/app/repository/backend_api_article.go:191 which checks a.GetCreatedAt() != nil, search-indexer/app/driver/backend_api/client.go:173 and :248 call .AsTime() directly on proto getter results, turning a missing timestamp into non-zero Unix epoch 1970-01-01T00:00:00Z.",
+      "evidence": "search-indexer/app/driver/backend_api/client.go:173"
+    },
+    {
+      "id": "REV-04",
+      "focus_id": "F-03",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "investigate",
+      "summary": "auth-hub getEnv silently falls back when <KEY>_FILE fails readConfigFile and a non-empty fallback or env var exists",
+      "rationale": "auth-hub/config/config.go:316 ignores readConfigFile errors when err != nil; required secrets (CSRF_SECRET_FILE, INTERNAL_AUTH_SECRET_FILE) still fail Validate() when raw env vars are unset, but setting KRATOS_URL_FILE to a missing/escaping path silently boots with default http://kratos:4433 instead of failing fast under CLAUDE.md Rule 9.",
+      "evidence": "auth-hub/config/config.go:316"
+    },
+    {
+      "id": "REV-05",
+      "focus_id": "F-04",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "fix",
+      "summary": "altctl resolveUnderBase allows symlink escape out of backupDir during Manifest.Verify and Migrator.Restore",
+      "rationale": "altctl/internal/migrate/manifest.go:128 validates lexical filepath.Join/filepath.Rel only without os.OpenRoot(backupDir) or EvalSymlinks, contradicting the #nosec G304 containment comments at manifest.go:184 and postgres.go:166; a symlink inside backupDir (e.g. volumes/db.dump -> outside file) passes Verify and streams outside host files into Restore.",
+      "evidence": "altctl/internal/migrate/manifest.go:128",
+      "repro": {
+        "command": "bash -c 'tmp=$(mktemp -d); trap \"rm -rf $tmp\" EXIT; printf \"package migrate\\nimport (\\\"os\\\";\\\"path/filepath\\\";\\\"testing\\\")\\nfunc TestReproSymlinkEscape(t *testing.T){\\n\\tout:=t.TempDir(); sec:=filepath.Join(out,\\\"s.dump\\\"); _=os.WriteFile(sec,[]byte(\\\"x\\\"),0o600); sum,_:=FileChecksum(sec)\\n\\tbak:=t.TempDir(); vd:=filepath.Join(bak,\\\"volumes\\\"); _=os.MkdirAll(vd,0o700); _=os.Symlink(sec,filepath.Join(vd,\\\"db.dump\\\"))\\n\\tm:=NewManifest(\\\"1.0\\\"); m.AddVolume(VolumeBackup{Name:\\\"db\\\",Type:BackupTypePostgreSQL,Filename:\\\"volumes/db.dump\\\",Size:1,Checksum:sum}); m.Finalize()\\n\\tif err:=m.Verify(bak); err==nil { t.Fatal(\\\"symlink escaped backupDir\\\") }\\n}\\n\" > \"$tmp/repro_test.go\"; printf \"{\\\"Replace\\\":{\\\"%s/internal/migrate/repro_overlay_test.go\\\":\\\"%s/repro_test.go\\\"}}\" \"$(cd altctl && pwd)\" \"$tmp\" > \"$tmp/ov.json\"; go -C altctl test -overlay=\"$tmp/ov.json\" -run TestReproSymlinkEscape ./internal/migrate'",
+        "test_name": "TestReproSymlinkEscape",
+        "exit_code": 1,
+        "proof_evidence": "altctl/internal/migrate/manifest.go"
+      }
+    },
+    {
+      "id": "REV-06",
+      "focus_id": "F-04",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "fix",
+      "summary": "altctl CreateEnvFile follows .env symlinks outside projectRoot and skips Chmod(0o600) on force overwrite",
+      "rationale": "altctl/internal/setup/envfile.go:36 uses os.Stat + os.WriteFile instead of os.OpenRoot(projectRoot) + Chmod: a dangling .env symlink bypasses os.Stat (force=false) and writes arbitrary files outside projectRoot, a live .env symlink overwrites outside targets on force=true, and overwriting a pre-existing 0o644 .env leaves its mode at 0o644 instead of 0o600.",
+      "evidence": "altctl/internal/setup/envfile.go:36",
+      "repro": {
+        "command": "bash -c 'tmp=$(mktemp -d); trap \"rm -rf $tmp\" EXIT; printf \"package setup\\nimport (\\\"os\\\";\\\"path/filepath\\\";\\\"testing\\\")\\nfunc TestReproEnvSymlink(t *testing.T){\\n\\tvictim:=filepath.Join(t.TempDir(),\\\"victim\\\"); proj:=t.TempDir()\\n\\t_=os.WriteFile(filepath.Join(proj,\\\".env.example\\\"),[]byte(\\\"A=1\\\"),0o600); _=os.Symlink(victim,filepath.Join(proj,\\\".env\\\"))\\n\\t_,_=CreateEnvFile(proj,false)\\n\\tif _,err:=os.Stat(victim); err==nil { t.Fatal(\\\"CreateEnvFile wrote through dangling symlink outside projectRoot\\\") }\\n}\\n\" > \"$tmp/repro_test.go\"; printf \"{\\\"Replace\\\":{\\\"%s/internal/setup/repro_overlay_test.go\\\":\\\"%s/repro_test.go\\\"}}\" \"$(cd altctl && pwd)\" \"$tmp\" > \"$tmp/ov.json\"; go -C altctl test -overlay=\"$tmp/ov.json\" -run TestReproEnvSymlink ./internal/setup'",
+        "test_name": "TestReproEnvSymlink",
+        "exit_code": 1,
+        "proof_evidence": "altctl/internal/setup/envfile.go"
+      }
+    },
+    {
+      "id": "REV-07",
+      "focus_id": "F-05",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "note",
+      "summary": "Dead nilerr fallback in html_parser.extractPTagsFromReader and missing unit test file in stream_article_tags_usecase",
+      "rationale": "alt-backend/app/utils/html_parser/parser.go:49 suppresses nilerr with 'malformed HTML falls back to plain-text extraction', but bluemonday.SanitizeReader buffers in memory and golang.org/x/net/html.Parse never errors on malformed markup; separately, alt-backend/app/orchestrator/usecase/stream_article_tags_usecase/usecase.go:58 has [no test files] in its own package.",
+      "evidence": "alt-backend/app/utils/html_parser/parser.go:49"
+    },
+    {
+      "id": "REV-08",
+      "focus_id": "F-06",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "fix",
+      "summary": "OllamaGateway.chat_stream omits async with aclosing(...), releasing RT semaphore slot while upstream Ollama stream stays open",
+      "rationale": "Unlike OllamaGateway._build_streaming_generator (ollama_gateway.py:442) which wraps generate_stream in async with aclosing(...), chat_stream (ollama_gateway.py:989) iterates self.stream_driver.chat_stream(payload) bare; when a client disconnects mid-stream and stream_ndjson calls aclose(), _stream catches GeneratorExit and releases the HIGH PRIORITY semaphore slot in finally while stream_driver.chat_stream remains unclosed (driver_closed=False).",
+      "evidence": "news-creator/app/news_creator/gateway/ollama_gateway.py:989",
+      "repro": {
+        "command": "cd news-creator/app && uv run --offline python -c 'import asyncio, contextlib, unittest.mock as um; from news_creator.gateway.ollama_gateway import OllamaGateway; cfg=um.MagicMock(ollama_request_concurrency=2,scheduling_rt_reserved_slots=1,scheduling_aging_threshold_seconds=60.0,scheduling_aging_boost=0.5,scheduling_preemption_enabled=False,scheduling_preemption_wait_threshold_seconds=2.0,scheduling_priority_promotion_threshold_seconds=600.0,scheduling_guaranteed_be_ratio=5,max_queue_depth=10,scheduling_rt_mode=\"fifo\",scheduling_aging_sweep_interval_releases=8,oom_detection_enabled=False); gw=OllamaGateway(cfg); closed=False\nasync def fake_stream(_):\n    global closed\n    try:\n        yield {\"message\":{\"content\":\"a\"},\"done\":False}\n        yield {\"message\":{\"content\":\"b\"},\"done\":True}\n    finally:\n        closed=True\ngw.stream_driver.chat_stream=fake_stream\nasync def run():\n    gen=await gw.chat_stream({\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]})\n    async with contextlib.aclosing(gen) as s:\n        async for _ in s: break\n    assert closed, \"upstream chat_stream still open after aclose() and slot release\"\nasyncio.run(run())'",
+        "test_name": "test_chat_stream_closes_driver_before_releasing_slot",
+        "exit_code": 1,
+        "proof_evidence": "news-creator/app/news_creator/gateway/ollama_gateway.py"
+      }
+    },
+    {
+      "id": "REV-09",
+      "focus_id": "F-07",
+      "reviewer_model": "gemini-4-carbon-high",
+      "bucket": "note",
+      "summary": "Pre-existing unescaped % in pseudo_label.py argparse help string fails on Python 3.14",
+      "rationale": "recap-subworker/recap_subworker/learning_machine/scripts/pseudo_label.py passes unescaped P% to add_argument(help=...), which raises ValueError on Python 3.14; differential testing in verify-02-differential-evidence.md:59 confirmed identical behavior pre- and post-split (1ddd55e73~1 vs HEAD).",
+      "evidence": "recap-subworker/recap_subworker/learning_machine/scripts/pseudo_label.py:130"
+    }
+  ]
+}
