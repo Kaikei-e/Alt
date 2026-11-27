@@ -22,9 +22,8 @@ type RestoreOptions struct {
 
 // Restore performs a full restore from a backup
 func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
-	// Load and validate manifest
-	manifestPath := filepath.Join(opts.BackupDir, ManifestFilename)
-	manifest, err := LoadManifest(manifestPath)
+	// Load and validate manifest strictly inside BackupDir
+	manifest, err := loadManifestInDir(opts.BackupDir)
 	if err != nil {
 		return fmt.Errorf("loading manifest: %w", err)
 	}
@@ -53,6 +52,18 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 	pgSpecs, err := m.postgresRestoreSpecs(targetVolumes)
 	if err != nil {
 		return err
+	}
+
+	// Validate all target backup file paths stay strictly under BackupDir
+	// without symlinks before stopping or starting any containers, even when
+	// Verify is false.
+	for _, vb := range targetVolumes {
+		if _, ok := m.registry.Get(vb.Name); !ok {
+			continue
+		}
+		if _, err := resolveUnderBase(opts.BackupDir, vb.Filename); err != nil {
+			return fmt.Errorf("volume %s: %w", vb.Name, err)
+		}
 	}
 
 	// Check if any containers are running
@@ -355,8 +366,7 @@ func (m *Migrator) buildComposeArgs(args ...string) ([]string, error) {
 
 // VerifyBackup verifies the integrity of a backup
 func VerifyBackup(backupDir string) (*Manifest, error) {
-	manifestPath := filepath.Join(backupDir, ManifestFilename)
-	manifest, err := LoadManifest(manifestPath)
+	manifest, err := loadManifestInDir(backupDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading manifest: %w", err)
 	}
@@ -370,7 +380,7 @@ func VerifyBackup(backupDir string) (*Manifest, error) {
 
 // GetBackupSummary returns a summary of a backup
 func GetBackupSummary(backupDir string) (string, error) {
-	manifest, err := LoadManifest(filepath.Join(backupDir, ManifestFilename))
+	manifest, err := loadManifestInDir(backupDir)
 	if err != nil {
 		return "", err
 	}

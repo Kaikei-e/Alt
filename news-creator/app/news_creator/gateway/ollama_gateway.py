@@ -986,8 +986,10 @@ class OllamaGateway(LLMProviderPort):
 
         async def _stream() -> AsyncGenerator[dict[str, Any]]:
             try:
-                async for chunk in self.stream_driver.chat_stream(payload):
-                    yield chunk
+                stream_iterator = self.stream_driver.chat_stream(payload)
+                async with aclosing(stream_iterator):
+                    async for chunk in stream_iterator:
+                        yield chunk
             except GeneratorExit:
                 logger.info("Chat stream closed by client disconnect")
                 raise

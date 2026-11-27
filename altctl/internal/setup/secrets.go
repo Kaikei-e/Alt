@@ -337,26 +337,43 @@ const secretDirMode = 0o750
 
 // GenerateSecrets provisions the secret files altctl owns in dir: random
 // secrets are generated, operator-provided secrets get an empty placeholder,
-// pki-provisioner secrets are never written. Existing files are skipped;
-// force regenerates existing random secrets only.
+// pki-provisioner secrets are never written. Existing regular files are skipped;
+// force regenerates existing random secrets only. All writes are confined to
+// dir via os.OpenRoot and symlinks or non-regular targets are always rejected.
 func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult, error) {
 	if err := ensureSecretsDir(dir); err != nil {
 		return nil, err
 	}
 
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("opening secrets directory %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	result := &SecretsResult{}
 
 	for _, spec := range specs {
+		if err := validateSecretFilename(spec.Filename); err != nil {
+			return nil, err
+		}
+		if spec.Partner != "" {
+			if err := validateSecretFilename(spec.Partner); err != nil {
+				return nil, fmt.Errorf("secret %s partner: %w", spec.Filename, err)
+			}
+		}
+
 		if spec.Class == SecretClassPKIProvisioner {
 			continue
 		}
-		path := filepath.Join(dir, spec.Filename)
-
 		if spec.Class == SecretClassEd25519VerifyKey {
 			continue
 		}
 		if spec.Class == SecretClassEd25519SigningKey {
-			created, err := ensureEd25519KeyPair(path, filepath.Join(dir, spec.Partner))
+			if spec.Partner == "" {
+				return nil, fmt.Errorf("secret %s missing partner verify key filename", spec.Filename)
+			}
+			created, err := ensureEd25519KeyPair(root, spec.Filename, spec.Partner)
 			if err != nil {
 				return nil, fmt.Errorf("provisioning key pair %s / %s: %w", spec.Filename, spec.Partner, err)
 			}
@@ -368,11 +385,13 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 			continue
 		}
 
-		if !force || spec.Class != SecretClassRandom {
-			if _, err := os.Stat(path); err == nil {
-				result.Skipped = append(result.Skipped, spec.Filename)
-				continue
-			}
+		exists, err := inspectSecretTarget(root, spec.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("checking secret %s: %w", spec.Filename, err)
+		}
+		if exists && (!force || spec.Class != SecretClassRandom) {
+			result.Skipped = append(result.Skipped, spec.Filename)
+			continue
 		}
 
 		var content string
@@ -382,7 +401,6 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 			if length == 0 {
 				length = 32
 			}
-			var err error
 			content, err = generateRandomSecret(length)
 			if err != nil {
 				return nil, fmt.Errorf("generating secret %s: %w", spec.Filename, err)
@@ -395,13 +413,9 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 			return nil, fmt.Errorf("secret %s has unknown provisioning class %q", spec.Filename, spec.Class)
 		}
 
-		if err := os.WriteFile(path, []byte(content), secretFileMode); err != nil {
-			return nil, fmt.Errorf("writing secret %s: %w", spec.Filename, err)
-		}
-		// WriteFile's perm is masked by the process umask, so the mode above is
-		// a request, not a guarantee. Chmod makes it one.
-		if err := os.Chmod(path, secretFileMode); err != nil {
-			return nil, fmt.Errorf("setting mode on secret %s: %w", spec.Filename, err)
+		overwrite := exists && force && spec.Class == SecretClassRandom
+		if err := writeSecretFileInRoot(root, spec.Filename, []byte(content), overwrite); err != nil {
+			return nil, err
 		}
 		result.Created = append(result.Created, spec.Filename)
 	}
@@ -409,15 +423,50 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 	return result, nil
 }
 
+// validateSecretFilename ensures name is a single base filename with no
+// directory separators, traversal segments, or NUL bytes.
+func validateSecretFilename(name string) error {
+	if name == "" || name == "." || name == ".." {
+		return fmt.Errorf("invalid secret filename %q", name)
+	}
+	if strings.ContainsRune(name, '\x00') || strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("invalid secret filename %q: must be a single base filename", name)
+	}
+	if filepath.Base(name) != name || !filepath.IsLocal(name) {
+		return fmt.Errorf("invalid secret filename %q: must be a single base filename", name)
+	}
+	return nil
+}
+
+// inspectSecretTarget checks name inside root via Lstat and rejects any
+// symlink (dangling or live) or non-regular file (e.g. directory, FIFO).
+func inspectSecretTarget(root *os.Root, name string) (bool, error) {
+	info, err := root.Lstat(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspecting %s: %w", name, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return false, fmt.Errorf("refusing to write %s: symlink is not allowed", name)
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("refusing to write %s: existing path is not a regular file", name)
+	}
+	return true, nil
+}
+
 // ensureEd25519KeyPair writes a PKCS#8 private key and its SPKI public key
-// unless both files already exist. Exactly one existing file is an error: a
-// regenerated half would silently stop matching the one that stayed.
-func ensureEd25519KeyPair(privPath, pubPath string) (bool, error) {
-	privExists, err := fileExists(privPath)
+// inside root unless both regular files already exist. Exactly one existing
+// file is an error: a regenerated half would silently stop matching the one
+// that stayed. Symlinks and non-regular files are always rejected.
+func ensureEd25519KeyPair(root *os.Root, privName, pubName string) (bool, error) {
+	privExists, err := inspectSecretTarget(root, privName)
 	if err != nil {
 		return false, err
 	}
-	pubExists, err := fileExists(pubPath)
+	pubExists, err := inspectSecretTarget(root, pubName)
 	if err != nil {
 		return false, err
 	}
@@ -425,7 +474,7 @@ func ensureEd25519KeyPair(privPath, pubPath string) (bool, error) {
 	case privExists && pubExists:
 		return false, nil
 	case privExists != pubExists:
-		return false, fmt.Errorf("only one of %s and %s exists; remove it or restore the other", filepath.Base(privPath), filepath.Base(pubPath))
+		return false, fmt.Errorf("only one of %s and %s exists; remove it or restore the other", privName, pubName)
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -440,44 +489,55 @@ func ensureEd25519KeyPair(privPath, pubPath string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("encoding public key: %w", err)
 	}
-	if err := writeSecretFile(privPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})); err != nil {
+	if err := writeSecretFileInRoot(root, privName, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER}), false); err != nil {
 		return false, err
 	}
-	if err := writeSecretFile(pubPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})); err != nil {
-		_ = os.Remove(privPath)
+	if err := writeSecretFileInRoot(root, pubName, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), false); err != nil {
+		_ = root.Remove(privName)
 		return false, err
 	}
 	return true, nil
 }
 
-func fileExists(path string) (bool, error) {
-	_, err := os.Lstat(path)
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.Is(err, os.ErrNotExist):
-		return false, nil
-	default:
-		return false, fmt.Errorf("checking %s: %w", filepath.Base(path), err)
+// writeSecretFileInRoot writes content to name strictly inside root, enforcing
+// regular-file target semantics and setting secretFileMode on the open file
+// descriptor (avoiding umask narrowing and path-based chmod races).
+func writeSecretFileInRoot(root *os.Root, name string, content []byte, overwrite bool) error {
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if overwrite {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	}
-}
 
-// writeSecretFile creates path exclusively (an existing path, including a
-// symlink, is an error and is left alone) and removes the file again if it
-// cannot finish writing it.
-func writeSecretFile(path string, content []byte) error {
-	// #nosec G304 -- path joins secretsDir with validated base secret filename
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, secretFileMode)
+	f, err := root.OpenFile(name, flags, secretFileMode)
 	if err != nil {
-		return fmt.Errorf("creating secret %s: %w", filepath.Base(path), err)
+		return fmt.Errorf("creating secret %s: %w", name, err)
 	}
-	_, werr := f.Write(content)
+
+	openInfo, statErr := f.Stat()
+	if statErr != nil {
+		_ = f.Close()
+		if !overwrite {
+			_ = root.Remove(name)
+		}
+		return fmt.Errorf("stat secret %s: %w", name, statErr)
+	}
+	if !openInfo.Mode().IsRegular() {
+		_ = f.Close()
+		return fmt.Errorf("refusing to write secret %s: opened path is not a regular file", name)
+	}
+
+	// OpenFile's perm is masked by the process umask; f.Chmod makes it exact on the open fd.
+	merr := f.Chmod(secretFileMode)
+	var werr error
+	if merr == nil {
+		_, werr = f.Write(content)
+	}
 	cerr := f.Close()
-	// OpenFile's perm is masked by the process umask; Chmod makes it exact.
-	merr := os.Chmod(path, secretFileMode)
-	if err := errors.Join(werr, cerr, merr); err != nil {
-		_ = os.Remove(path)
-		return fmt.Errorf("writing secret %s: %w", filepath.Base(path), err)
+	if err := errors.Join(merr, werr, cerr); err != nil {
+		if !overwrite {
+			_ = root.Remove(name)
+		}
+		return fmt.Errorf("writing secret %s: %w", name, err)
 	}
 	return nil
 }

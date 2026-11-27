@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -110,7 +111,7 @@ func (m *Manifest) Save(path string) error {
 
 // LoadManifest reads a manifest from a file
 func LoadManifest(path string) (*Manifest, error) {
-	// #nosec G304 -- path is operator-supplied backup dir joined with ManifestFilename
+	// #nosec G304 -- exported standalone manifest reader for explicit caller-supplied path; backupDir callers use loadManifestInDir
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading manifest: %w", err)
@@ -124,50 +125,158 @@ func LoadManifest(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// resolveUnderBase joins relPath onto baseDir and rejects any path that escapes baseDir.
-func resolveUnderBase(baseDir, relPath string) (string, error) {
-	if relPath == "" || filepath.IsAbs(relPath) {
+// loadManifestInDir reads ManifestFilename strictly within backupDir via
+// os.OpenRoot, rejecting symlinks and non-regular files.
+func loadManifestInDir(backupDir string) (*Manifest, error) {
+	root, err := os.OpenRoot(backupDir)
+	if err != nil {
+		return nil, fmt.Errorf("opening backup directory %q: %w", backupDir, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	info, err := root.Lstat(ManifestFilename)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("reading manifest: symlink %q is not allowed", ManifestFilename)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("reading manifest: %q is not a regular file", ManifestFilename)
+	}
+
+	f, err := root.Open(ManifestFilename)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	openInfo, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	if !openInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("reading manifest: %q is not a regular file", ManifestFilename)
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	return &m, nil
+}
+
+// validateRelativePath verifies relPath is a non-empty local relative path
+// without traversal components and returns its cleaned relative form.
+func validateRelativePath(relPath string) (string, error) {
+	if relPath == "" || filepath.IsAbs(relPath) || strings.ContainsRune(relPath, '\x00') {
 		return "", fmt.Errorf("invalid relative path %q", relPath)
 	}
+	for _, part := range strings.Split(filepath.ToSlash(relPath), "/") {
+		if part == ".." {
+			return "", fmt.Errorf("path %q escapes base directory", relPath)
+		}
+	}
+	clean := filepath.Clean(relPath)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || !filepath.IsLocal(clean) {
+		return "", fmt.Errorf("path %q escapes base directory", relPath)
+	}
+	return clean, nil
+}
+
+// rejectSymlinksInRoot walks every path component of cleanRel via root.Lstat
+// and rejects any symlink component (including leaf) and any non-regular leaf.
+func rejectSymlinksInRoot(root *os.Root, cleanRel string) (os.FileInfo, error) {
+	parts := strings.Split(filepath.ToSlash(cleanRel), "/")
+	var (
+		prefix string
+		info   os.FileInfo
+		err    error
+	)
+	for i, part := range parts {
+		if i == 0 {
+			prefix = part
+		} else {
+			prefix = filepath.Join(prefix, part)
+		}
+		info, err = root.Lstat(prefix)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("symlink not allowed at %q", prefix)
+		}
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("path %q is not a regular file", cleanRel)
+	}
+	return info, nil
+}
+
+// resolveUnderBase validates relPath lexically, verifies via os.OpenRoot and
+// component-wise Lstat that no component is a symlink and the leaf is a regular
+// file, and confirms via filepath.EvalSymlinks that the canonical target stays
+// strictly under canonical baseDir.
+func resolveUnderBase(baseDir, relPath string) (string, error) {
+	cleanRel, err := validateRelativePath(relPath)
+	if err != nil {
+		return "", err
+	}
+
 	absBase, err := filepath.Abs(baseDir)
 	if err != nil {
 		return "", fmt.Errorf("resolving base directory: %w", err)
 	}
-	target := filepath.Join(absBase, relPath)
-	rel, err := filepath.Rel(absBase, target)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	target := filepath.Join(absBase, cleanRel)
+	lexRel, err := filepath.Rel(absBase, target)
+	if err != nil || lexRel == "." || lexRel == ".." || strings.HasPrefix(lexRel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path %q escapes base directory %q", relPath, baseDir)
 	}
-	return target, nil
+
+	root, err := os.OpenRoot(absBase)
+	if err != nil {
+		return "", fmt.Errorf("opening base directory %q: %w", baseDir, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	if _, err := rejectSymlinksInRoot(root, cleanRel); err != nil {
+		return "", fmt.Errorf("path %q rejected under %q: %w", relPath, baseDir, err)
+	}
+
+	canonicalBase, err := filepath.EvalSymlinks(absBase)
+	if err != nil {
+		return "", fmt.Errorf("resolving canonical base directory %q: %w", baseDir, err)
+	}
+	canonicalTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return "", fmt.Errorf("resolving canonical path %q: %w", relPath, err)
+	}
+	canonRel, err := filepath.Rel(canonicalBase, canonicalTarget)
+	if err != nil || canonRel == "." || canonRel == ".." || strings.HasPrefix(canonRel, ".."+string(filepath.Separator)) || filepath.IsAbs(canonRel) {
+		return "", fmt.Errorf("canonical path %q escapes base directory %q", relPath, baseDir)
+	}
+
+	return canonicalTarget, nil
 }
 
-// Verify checks that all backup files exist and have correct checksums
+// Verify checks that all backup files exist inside backupDir without symlink
+// traversal, are regular files, and have correct sizes and checksums.
 func (m *Manifest) Verify(backupDir string) error {
+	root, err := os.OpenRoot(backupDir)
+	if err != nil {
+		return fmt.Errorf("opening backup directory %q: %w", backupDir, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	for _, v := range m.Volumes {
-		filePath, err := resolveUnderBase(backupDir, v.Filename)
-		if err != nil {
-			return fmt.Errorf("volume %s: %w", v.Name, err)
-		}
-
-		// Check file exists
-		info, err := os.Stat(filePath)
-		if err != nil {
-			return fmt.Errorf("volume %s: file not found: %w", v.Name, err)
-		}
-
-		// Check file size
-		if info.Size() != v.Size {
-			return fmt.Errorf("volume %s: size mismatch (expected %d, got %d)",
-				v.Name, v.Size, info.Size())
-		}
-
-		// Check checksum
-		checksum, err := FileChecksum(filePath)
-		if err != nil {
-			return fmt.Errorf("volume %s: checksum error: %w", v.Name, err)
-		}
-		if checksum != v.Checksum {
-			return fmt.Errorf("volume %s: checksum mismatch", v.Name)
+		if err := verifyVolumeInRoot(root, v); err != nil {
+			return err
 		}
 	}
 
@@ -179,21 +288,68 @@ func (m *Manifest) Verify(backupDir string) error {
 	return nil
 }
 
+func verifyVolumeInRoot(root *os.Root, v VolumeBackup) error {
+	cleanRel, err := validateRelativePath(v.Filename)
+	if err != nil {
+		return fmt.Errorf("volume %s: %w", v.Name, err)
+	}
+
+	if _, err := rejectSymlinksInRoot(root, cleanRel); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("volume %s: file not found: %w", v.Name, err)
+		}
+		return fmt.Errorf("volume %s: %w", v.Name, err)
+	}
+
+	f, err := root.Open(cleanRel)
+	if err != nil {
+		return fmt.Errorf("volume %s: opening file: %w", v.Name, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("volume %s: stat file: %w", v.Name, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("volume %s: %q is not a regular file", v.Name, v.Filename)
+	}
+
+	if info.Size() != v.Size {
+		return fmt.Errorf("volume %s: size mismatch (expected %d, got %d)",
+			v.Name, v.Size, info.Size())
+	}
+
+	checksum, err := readerChecksum(f)
+	if err != nil {
+		return fmt.Errorf("volume %s: checksum error: %w", v.Name, err)
+	}
+	if checksum != v.Checksum {
+		return fmt.Errorf("volume %s: checksum mismatch", v.Name)
+	}
+
+	return nil
+}
+
+func readerChecksum(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // FileChecksum calculates SHA256 checksum of a file
 func FileChecksum(path string) (string, error) {
-	// #nosec G304 -- path is verified under backupDir by resolveUnderBase or internal backup creation
+	// #nosec G304 -- exported helper for caller-supplied path; Manifest.Verify hashes an os.Root-opened handle directly
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = f.Close() }()
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+	return readerChecksum(f)
 }
 
 // GetVolume returns a volume backup by name

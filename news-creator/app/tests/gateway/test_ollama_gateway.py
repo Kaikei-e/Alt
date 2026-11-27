@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import gc
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -1441,5 +1441,322 @@ async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
                 await gateway.generate_raw(
                     "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
                 )
+        finally:
+            await gateway.cleanup()
+
+
+def _instrument_semaphore_release(
+    gateway: OllamaGateway,
+    events: list[str],
+    released_priorities: list[bool],
+) -> None:
+    """Wrap gateway._semaphore.release to record release ordering and priority."""
+    orig_release = gateway._semaphore.release
+
+    def tracked_release(
+        slot_id: int | None = None,
+        was_high_priority: bool = False,
+    ) -> None:
+        events.append("slot_released")
+        released_priorities.append(was_high_priority)
+        orig_release(slot_id=slot_id, was_high_priority=was_high_priority)
+
+    gateway._semaphore.release = tracked_release  # type: ignore[method-assign]
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_break_with_aclosing_closes_driver_before_releasing_slot(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
+    """Breaking out of aclosing(chat_stream) must close upstream driver before releasing RT slot."""
+    events: list[str] = []
+    released_priorities: list[bool] = []
+    first_chunk = {"message": {"content": "a"}, "done": False}
+    second_chunk = {"message": {"content": "b"}, "done": True}
+
+    async def fake_chat_stream(
+        _payload: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any]]:
+        try:
+            yield first_chunk
+            yield second_chunk
+        finally:
+            events.append("driver_closed")
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.chat_stream = fake_chat_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        _instrument_semaphore_release(gateway, events, released_priorities)
+        initial_rt = gateway._semaphore._rt_available
+
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            gen = await gateway.chat_stream(
+                {"messages": [{"role": "user", "content": "hi"}]}
+            )
+            assert gateway._semaphore._rt_available < initial_rt
+
+            received: list[dict[str, Any]] = []
+            async with contextlib.aclosing(gen) as stream:
+                async for chunk in stream:
+                    received.append(chunk)
+                    break
+
+            assert received == [first_chunk]
+            assert events == ["driver_closed", "slot_released"]
+            assert released_priorities == [True]
+            assert gateway._semaphore._rt_available == initial_rt
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_explicit_aclose_closes_driver_before_releasing_slot(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
+    """Explicit gen.aclose() must close upstream driver before releasing RT slot."""
+    events: list[str] = []
+    released_priorities: list[bool] = []
+    first_chunk = {"message": {"content": "a"}, "done": False}
+    second_chunk = {"message": {"content": "b"}, "done": True}
+
+    async def fake_chat_stream(
+        _payload: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any]]:
+        try:
+            yield first_chunk
+            yield second_chunk
+        finally:
+            events.append("driver_closed")
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.chat_stream = fake_chat_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        _instrument_semaphore_release(gateway, events, released_priorities)
+        initial_rt = gateway._semaphore._rt_available
+
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            gen = await gateway.chat_stream(
+                {"messages": [{"role": "user", "content": "hi"}]}
+            )
+            assert gateway._semaphore._rt_available < initial_rt
+
+            first = await anext(gen)
+            assert first == first_chunk
+            assert events == []
+
+            await gen.aclose()
+
+            assert events == ["driver_closed", "slot_released"]
+            assert released_priorities == [True]
+            assert gateway._semaphore._rt_available == initial_rt
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_upstream_exception_closes_driver_before_releasing_slot(
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Upstream mid-stream errors must close driver before releasing RT slot and re-raise."""
+    caplog.set_level(logging.ERROR)
+    events: list[str] = []
+    released_priorities: list[bool] = []
+    first_chunk = {"message": {"content": "partial"}, "done": False}
+
+    async def failing_chat_stream(
+        _payload: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any]]:
+        try:
+            yield first_chunk
+            msg = "upstream chat boom"
+            raise RuntimeError(msg)
+        finally:
+            events.append("driver_closed")
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.chat_stream = failing_chat_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        _instrument_semaphore_release(gateway, events, released_priorities)
+        initial_rt = gateway._semaphore._rt_available
+        try:
+            gen = await gateway.chat_stream(
+                {"messages": [{"role": "user", "content": "hi"}]}
+            )
+            assert gateway._semaphore._rt_available < initial_rt
+
+            first = await anext(gen)
+            assert first == first_chunk
+            assert events == []
+
+            with pytest.raises(RuntimeError, match="upstream chat boom"):
+                await anext(gen)
+
+            assert events == ["driver_closed", "slot_released"]
+            assert released_priorities == [True]
+            assert gateway._semaphore._rt_available == initial_rt
+            assert any("Chat stream error" in rec.message for rec in caplog.records)
+        finally:
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_thrown_exception_closes_driver_before_releasing_slot(
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An exception thrown into chat_stream mid-stream must close driver before releasing RT slot."""
+    caplog.set_level(logging.ERROR)
+    events: list[str] = []
+    released_priorities: list[bool] = []
+    first_chunk = {"message": {"content": "partial"}, "done": False}
+    second_chunk = {"message": {"content": "rest"}, "done": True}
+
+    async def fake_chat_stream(
+        _payload: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any]]:
+        try:
+            yield first_chunk
+            yield second_chunk
+        finally:
+            events.append("driver_closed")
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.chat_stream = fake_chat_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        _instrument_semaphore_release(gateway, events, released_priorities)
+        initial_rt = gateway._semaphore._rt_available
+
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            gen = await gateway.chat_stream(
+                {"messages": [{"role": "user", "content": "hi"}]}
+            )
+            assert await anext(gen) == first_chunk
+            assert events == []
+
+            with pytest.raises(RuntimeError, match="downstream chat boom"):
+                await gen.athrow(RuntimeError("downstream chat boom"))
+
+            assert events == ["driver_closed", "slot_released"]
+            assert released_priorities == [True]
+            assert gateway._semaphore._rt_available == initial_rt
+            assert any("Chat stream error" in rec.message for rec in caplog.records)
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_normal_completion_yields_all_chunks_and_releases_slot(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
+    """Normal chat_stream completion yields all chunks, closes driver, and releases RT slot."""
+    events: list[str] = []
+    released_priorities: list[bool] = []
+    expected_chunks = [
+        {"message": {"content": "hello"}, "done": False},
+        {"message": {"content": " world"}, "done": True},
+    ]
+
+    async def fake_chat_stream(
+        _payload: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any]]:
+        try:
+            for item in expected_chunks:
+                yield item
+        finally:
+            events.append("driver_closed")
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.chat_stream = fake_chat_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        _instrument_semaphore_release(gateway, events, released_priorities)
+        initial_rt = gateway._semaphore._rt_available
+        try:
+            gen = await gateway.chat_stream(
+                {"messages": [{"role": "user", "content": "hi"}]}
+            )
+            assert gateway._semaphore._rt_available < initial_rt
+
+            received = [chunk async for chunk in gen]
+
+            assert received == expected_chunks
+            assert events == ["driver_closed", "slot_released"]
+            assert released_priorities == [True]
+            assert gateway._semaphore._rt_available == initial_rt
         finally:
             await gateway.cleanup()

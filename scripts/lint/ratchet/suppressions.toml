@@ -26,7 +26,7 @@ ts_biome_ignore = 21
 
 [targets.altctl]
 go_nolint = 1
-go_nosec = 49
+go_nosec = 46
 
 [targets.auth-hub]
 go_nolint = 1

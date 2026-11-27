@@ -46,16 +46,45 @@ const (
 
 // Load reads configuration from environment variables with sensible defaults
 func Load() (*Config, error) {
+	kratosURL, err := getEnv("KRATOS_URL", "http://kratos:4433")
+	if err != nil {
+		return nil, err
+	}
+	kratosAdminURL, err := getEnv("KRATOS_ADMIN_URL", "http://kratos-admin:4434")
+	if err != nil {
+		return nil, err
+	}
+	port, err := getEnv("PORT", "8888")
+	if err != nil {
+		return nil, err
+	}
+	csrfSecret, err := getEnv("CSRF_SECRET", "")
+	if err != nil {
+		return nil, err
+	}
+	backendTokenIssuer, err := getEnv("BACKEND_TOKEN_ISSUER", "auth-hub")
+	if err != nil {
+		return nil, err
+	}
+	backendTokenAudience, err := getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend")
+	if err != nil {
+		return nil, err
+	}
+	internalAuthSecret, err := getEnv("INTERNAL_AUTH_SECRET", "")
+	if err != nil {
+		return nil, err
+	}
+
 	config := &Config{
-		KratosURL:            getEnv("KRATOS_URL", "http://kratos:4433"),
-		KratosAdminURL:       getEnv("KRATOS_ADMIN_URL", "http://kratos-admin:4434"),
-		Port:                 getEnv("PORT", "8888"),
+		KratosURL:            kratosURL,
+		KratosAdminURL:       kratosAdminURL,
+		Port:                 port,
 		CacheTTL:             DefaultCacheTTL,
-		CSRFSecret:           getEnv("CSRF_SECRET", ""),
-		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
-		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
+		CSRFSecret:           csrfSecret,
+		BackendTokenIssuer:   backendTokenIssuer,
+		BackendTokenAudience: backendTokenAudience,
 		BackendTokenTTL:      DefaultBackendTokenTTL,
-		InternalAuthSecret:   getEnv("INTERNAL_AUTH_SECRET", ""),
+		InternalAuthSecret:   internalAuthSecret,
 		ValidateRateLimit:    100.0 / 60.0,  // Default: ~1.67 req/s (100 req/min)
 		SessionRateLimit:     30.0 / 60.0,   // Default: 0.5 req/s (30 req/min)
 		CSRFRateLimit:        100.0,         // Default: 100 req/s
@@ -253,12 +282,24 @@ func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, bool, error) {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.KratosURL == "" {
+	if strings.TrimSpace(c.KratosURL) == "" {
 		return fmt.Errorf("KRATOS_URL cannot be empty")
 	}
 
-	if c.Port == "" {
+	if strings.TrimSpace(c.KratosAdminURL) == "" {
+		return fmt.Errorf("KRATOS_ADMIN_URL cannot be empty")
+	}
+
+	if strings.TrimSpace(c.Port) == "" {
 		return fmt.Errorf("PORT cannot be empty")
+	}
+
+	if strings.TrimSpace(c.BackendTokenIssuer) == "" {
+		return fmt.Errorf("BACKEND_TOKEN_ISSUER cannot be empty")
+	}
+
+	if strings.TrimSpace(c.BackendTokenAudience) == "" {
+		return fmt.Errorf("BACKEND_TOKEN_AUDIENCE cannot be empty")
 	}
 
 	if c.CacheTTL <= 0 {
@@ -276,7 +317,7 @@ func (c *Config) Validate() error {
 	}
 
 	// CSRF_SECRET is required for security - no fallback to hardcoded values
-	if c.CSRFSecret == "" {
+	if strings.TrimSpace(c.CSRFSecret) == "" {
 		return fmt.Errorf("CSRF_SECRET is required")
 	}
 	if len(c.CSRFSecret) < 32 {
@@ -289,7 +330,7 @@ func (c *Config) Validate() error {
 
 	// INTERNAL_AUTH_SECRET is the shared bearer the /internal group compares
 	// X-Internal-Auth against. No default — an unset value exits non-zero.
-	if c.InternalAuthSecret == "" {
+	if strings.TrimSpace(c.InternalAuthSecret) == "" {
 		return fmt.Errorf("INTERNAL_AUTH_SECRET is required")
 	}
 	if len(c.InternalAuthSecret) < 32 {
@@ -312,18 +353,25 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// getEnv retrieves an environment variable or returns a fallback value
-func getEnv(key, fallback string) string {
+// getEnv retrieves an environment variable or returns a fallback value.
+// When <KEY>_FILE is non-empty, its file must be readable, safe, and non-empty;
+// read or empty-file errors fail fast without falling back to <KEY> or fallback.
+func getEnv(key, fallback string) (string, error) {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
-		content, err := readConfigFile(fileValue)
-		if err == nil {
-			return strings.TrimSpace(string(content))
+		content, err := readConfigFile(strings.TrimSpace(fileValue))
+		if err != nil {
+			return "", fmt.Errorf("read %s_FILE: %w", key, err)
 		}
+		trimmed := strings.TrimSpace(string(content))
+		if trimmed == "" {
+			return "", fmt.Errorf("read %s_FILE: file is empty", key)
+		}
+		return trimmed, nil
 	}
 
 	if value := os.Getenv(key); value != "" {
-		return value
+		return value, nil
 	}
-	return fallback
+	return fallback, nil
 }

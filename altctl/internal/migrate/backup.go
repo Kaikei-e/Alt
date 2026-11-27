@@ -465,8 +465,8 @@ func ListBackups(baseDir string) ([]BackupInfo, error) {
 			continue
 		}
 
-		manifestPath := filepath.Join(baseDir, entry.Name(), ManifestFilename)
-		manifest, err := LoadManifest(manifestPath)
+		backupPath := filepath.Join(baseDir, entry.Name())
+		manifest, err := loadManifestInDir(backupPath)
 		if err != nil {
 			// Not a valid backup directory
 			continue

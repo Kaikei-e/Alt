@@ -170,7 +170,7 @@ func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Tim
 		}
 		deleted[i] = &driver.DeletedArticle{
 			ID:        da.GetId(),
-			DeletedAt: da.GetDeletedAt().AsTime(),
+			DeletedAt: timestampOrZero(da.GetDeletedAt()),
 		}
 	}
 
@@ -245,20 +245,30 @@ func toDriverArticle(p *datahubv1.ArticleWithTags) *driver.ArticleWithTags {
 	// SearchWithDateFilter plus Acolyte's weekly_briefing window. It is unset
 	// when the article row has no published_at, in which case created_at is
 	// the only date the backend can offer.
-	publishedAt := p.GetCreatedAt().AsTime()
+	createdAt := timestampOrZero(p.GetCreatedAt())
+	publishedAt := createdAt
 	if p.GetPublishedAt() != nil {
-		publishedAt = p.GetPublishedAt().AsTime()
+		publishedAt = timestampOrZero(p.GetPublishedAt())
 	}
 	return &driver.ArticleWithTags{
 		ID:          p.GetId(),
 		Title:       p.GetTitle(),
 		Content:     p.GetContent(),
 		Tags:        tags,
-		CreatedAt:   p.GetCreatedAt().AsTime(),
+		CreatedAt:   createdAt,
 		UserID:      p.GetUserId(),
 		Language:    p.GetLanguage(),
 		PublishedAt: publishedAt,
 	}
+}
+
+// timestampOrZero converts a protobuf Timestamp to time.Time, returning the
+// zero time.Time{} when ts is nil rather than Unix epoch 1970-01-01T00:00:00Z.
+func timestampOrZero(ts *timestamppb.Timestamp) time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	return ts.AsTime()
 }
 
 // safeInt32 converts an int to int32 with clamping to prevent overflow.

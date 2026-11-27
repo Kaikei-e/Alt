@@ -68,6 +68,100 @@ func TestToDriverArticle_PublishedAt(t *testing.T) {
 	}
 }
 
+func TestToDriverArticle_NilTimestamps(t *testing.T) {
+	t.Parallel()
+
+	publishedAt := time.Date(2026, 3, 20, 9, 30, 0, 0, time.UTC)
+
+	t.Run("nil created_at and nil published_at produce zero times", func(t *testing.T) {
+		t.Parallel()
+
+		got := toDriverArticle(&datahubv1.ArticleWithTags{
+			Id: "art-nil-both",
+		})
+		if !got.CreatedAt.IsZero() {
+			t.Errorf("CreatedAt = %v (IsZero=%v), want zero time.Time{}", got.CreatedAt, got.CreatedAt.IsZero())
+		}
+		if !got.PublishedAt.IsZero() {
+			t.Errorf("PublishedAt = %v (IsZero=%v), want zero time.Time{}", got.PublishedAt, got.PublishedAt.IsZero())
+		}
+	})
+
+	t.Run("nil created_at with non-nil published_at produces zero created_at and exact published_at", func(t *testing.T) {
+		t.Parallel()
+
+		got := toDriverArticle(&datahubv1.ArticleWithTags{
+			Id:          "art-nil-created",
+			PublishedAt: timestamppb.New(publishedAt),
+		})
+		if !got.CreatedAt.IsZero() {
+			t.Errorf("CreatedAt = %v (IsZero=%v), want zero time.Time{}", got.CreatedAt, got.CreatedAt.IsZero())
+		}
+		if !got.PublishedAt.Equal(publishedAt) {
+			t.Errorf("PublishedAt = %v, want %v", got.PublishedAt, publishedAt)
+		}
+	})
+}
+
+type deletedArticlesDataHub struct {
+	datahubv1connect.UnimplementedDataHubServiceHandler
+	resp *datahubv1.ListDeletedArticlesResponse
+}
+
+func (s *deletedArticlesDataHub) ListDeletedArticles(context.Context, *connect.Request[datahubv1.ListDeletedArticlesRequest]) (*connect.Response[datahubv1.ListDeletedArticlesResponse], error) {
+	return connect.NewResponse(s.resp), nil
+}
+
+func TestClient_GetDeletedArticles_NilDeletedAt(t *testing.T) {
+	t.Parallel()
+
+	deletedAt := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+
+	mux := http.NewServeMux()
+	mux.Handle(datahubv1connect.NewDataHubServiceHandler(&deletedArticlesDataHub{
+		resp: &datahubv1.ListDeletedArticlesResponse{
+			Articles: []*datahubv1.DeletedArticle{
+				{
+					Id:        "art-nil-deleted-at",
+					DeletedAt: nil,
+				},
+				{
+					Id:        "art-with-deleted-at",
+					DeletedAt: timestamppb.New(deletedAt),
+				},
+			},
+			NextDeletedAt: timestamppb.New(deletedAt),
+		},
+	}))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "test-token", srv.Client())
+
+	deleted, nextDeletedAt, err := c.GetDeletedArticles(context.Background(), nil, 10)
+	if err != nil {
+		t.Fatalf("GetDeletedArticles() unexpected error = %v", err)
+	}
+	if len(deleted) != 2 {
+		t.Fatalf("len(deleted) = %d, want 2", len(deleted))
+	}
+	if deleted[0].ID != "art-nil-deleted-at" {
+		t.Errorf("deleted[0].ID = %q, want %q", deleted[0].ID, "art-nil-deleted-at")
+	}
+	if !deleted[0].DeletedAt.IsZero() {
+		t.Errorf("deleted[0].DeletedAt = %v (IsZero=%v), want zero time.Time{}", deleted[0].DeletedAt, deleted[0].DeletedAt.IsZero())
+	}
+	if deleted[1].ID != "art-with-deleted-at" {
+		t.Errorf("deleted[1].ID = %q, want %q", deleted[1].ID, "art-with-deleted-at")
+	}
+	if !deleted[1].DeletedAt.Equal(deletedAt) {
+		t.Errorf("deleted[1].DeletedAt = %v, want %v", deleted[1].DeletedAt, deletedAt)
+	}
+	if nextDeletedAt == nil || !nextDeletedAt.Equal(deletedAt) {
+		t.Errorf("nextDeletedAt = %v, want %v", nextDeletedAt, deletedAt)
+	}
+}
+
 // TestClient_HTTPClient_HasTimeout verifies the Connect-RPC client uses an
 // http.Client with a non-zero Timeout, protecting search-indexer from
 // alt-backend hangs (ADR-000717 / C-003).
