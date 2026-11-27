@@ -1,0 +1,11 @@
+id = "E-04"
+corpus_id = "C-11"
+title = "Configure ReadHeaderTimeout on plaintext HTTP server without extra timeouts"
+language = "go"
+base_commit = "6cae3ef6f"
+neutral_workspace_name = "edge-server"
+target_file = "cmd/server/main.go"
+check01_expected_signal = "go.http_server_fields_change"
+has_char_test = true
+char_test_command = "bash test_characterization.sh"
+required_reads = ["cmd/server/main.go"]

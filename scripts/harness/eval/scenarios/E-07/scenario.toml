@@ -1,0 +1,11 @@
+id = "E-07"
+corpus_id = "C-18"
+title = "Keep compose variable check callable without --env-file and with env resolution"
+language = "shell"
+base_commit = "6cae3ef6f"
+neutral_workspace_name = "stack-check"
+target_file = "scripts/check-compose-variables.sh"
+check01_expected_signal = ""
+has_char_test = true
+char_test_command = "bash test_characterization.sh"
+required_reads = ["scripts/check-compose-variables.sh"]

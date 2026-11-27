@@ -1,0 +1,11 @@
+id = "E-02"
+corpus_id = "C-06"
+title = "Preserve queued acquire return tuple when decomposing priority semaphore"
+language = "python"
+base_commit = "6cae3ef6f"
+neutral_workspace_name = "worker-queue"
+target_file = "src/queue.py"
+check01_expected_signal = "python.control_flow_return_change"
+has_char_test = true
+char_test_command = "bash test_characterization.sh"
+required_reads = ["src/queue.py"]
