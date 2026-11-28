@@ -1,3 +1,4 @@
+mod docker_fixture;
 mod test_container_discovery;
 mod test_docker_client;
 mod test_docker_endpoint;
