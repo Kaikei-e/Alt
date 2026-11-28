@@ -1,11 +1,9 @@
-import { buildGetKnowledgeHomeResponse } from "../../fixtures/factories/knowledgeHomeFactory";
 import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
 import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
 
 /**
@@ -21,15 +19,8 @@ import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
  * Per-field validation and error-message wording belong in unit tests.
  */
 
-const KH_GET =
-	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome";
-const KH_TRACK_SEEN =
-	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen";
-const KH_RECALL =
-	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/GetRecallRail";
-const KH_STREAM =
-	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates";
-const LIST_SUBS = "**/api/v2/alt.feeds.v2.FeedService/ListSubscriptions";
+const LIST_ARTICLE_ANNOTATIONS =
+	"**/api/v2/alt.reading.v1.ReadingService/ListArticleAnnotations";
 
 test.describe("connection loss", () => {
 	test("feeds surfaces an error instead of spinning forever", async ({
@@ -91,43 +82,30 @@ test.describe("connection loss", () => {
 });
 
 test.describe("session expiry", () => {
-	/**
-	 * The matching positive case — Code.Unauthenticated must call
-	 * `goto("/login")` — lives in `src/lib/hooks/useKnowledgeHome.test.ts`, not
-	 * here, and deliberately so.
-	 *
-	 * Driving it end-to-end by fulfilling GetKnowledgeHome with a Connect 401
-	 * does NOT reach that branch: the browser logs the 401, the store never
-	 * redirects, and the page settles on /home. The same rejection built as a
-	 * real `ConnectError(…, Code.Unauthenticated)` does redirect at the unit
-	 * level. So either the fulfilled response is not wire-faithful enough for
-	 * connect-web to classify, or `err instanceof ConnectError` does not hold for
-	 * the bundled client — worth resolving, but not something an assertion here
-	 * can decide. Asserting the redirect from E2E would only encode whichever
-	 * answer happens to be true today.
-	 */
 	test("a non-auth backend error keeps the user on the page", async ({
 		page,
 	}) => {
-		// The mirror image: a 500 must NOT be mistaken for an expired session and
-		// bounce someone out of the app they are still signed into.
+		// A 500 must NOT be mistaken for an expired session and bounce someone out
+		// of the app they are still signed into.
 		await Promise.all([
-			page.route(KH_GET, (route) =>
+			page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
 				fulfillConnectError(route, "boom", "internal", 500),
 			),
-			page.route(KH_TRACK_SEEN, (route) => fulfillJson(route, {})),
-			page.route(KH_RECALL, (route) => fulfillJson(route, { candidates: [] })),
-			page.route(LIST_SUBS, (route) => fulfillJson(route, { sources: [] })),
-			page.route(KH_STREAM, (route) => route.abort()),
+			page.route(LIST_ARTICLE_ANNOTATIONS, (route) =>
+				fulfillJson(route, { annotations: [] }),
+			),
 		]);
 
-		await new DesktopKnowledgeHomePage(page).goto();
+		await page.goto("./today");
 
 		// Poll rather than assert once: the bug this guards against is a delayed
 		// navigation, which a single immediate check would miss.
 		await expect
 			.poll(() => page.url(), { timeout: 5_000, intervals: [500, 1000, 2000] })
 			.not.toMatch(/\/login/);
+		await expect(page.getByTestId("today-error")).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 });
 
@@ -167,23 +145,36 @@ test.describe("slow backend", () => {
 	});
 });
 
-test.describe("degraded knowledge home", () => {
-	test("still renders items when the recall rail fails", async ({ page }) => {
-		// One failing side panel must not take the main stream down with it.
+test.describe("degraded today surface", () => {
+	test("still renders queued items when recall annotations fail", async ({
+		page,
+	}) => {
+		// One failing secondary panel must not take the main reading queue down.
+		const now = Date.now();
 		await Promise.all([
-			page.route(KH_GET, (route) =>
-				fulfillJson(route, buildGetKnowledgeHomeResponse()),
+			page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
+				fulfillJson(route, {
+					items: [
+						{
+							articleId: "01938e82-7c00-7a7b-9b10-000000000001",
+							title: "Rust Async Runtime Deep Dive",
+							url: "https://example.com/rust-async",
+							sourceName: "Rust Blog",
+							imageUrl: "",
+							queuedAt: new Date(now).toISOString(),
+							expiresAt: new Date(now + 48 * 3600_000).toISOString(),
+						},
+					],
+					cap: 7,
+					readCountSince: 0,
+				}),
 			),
-			page.route(KH_TRACK_SEEN, (route) => fulfillJson(route, {})),
-			page.route(KH_RECALL, (route) =>
+			page.route(LIST_ARTICLE_ANNOTATIONS, (route) =>
 				fulfillConnectError(route, "recall down", "unavailable", 503),
 			),
-			page.route(LIST_SUBS, (route) => fulfillJson(route, { sources: [] })),
-			page.route(KH_STREAM, (route) => route.abort()),
 		]);
 
-		const homePage = new DesktopKnowledgeHomePage(page);
-		await homePage.goto();
+		await page.goto("./today");
 
 		await expect(page).not.toHaveURL(/\/login/);
 		await expect(

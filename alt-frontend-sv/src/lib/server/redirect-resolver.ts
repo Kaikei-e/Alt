@@ -31,6 +31,10 @@ export const RESPONSIVE_REDIRECTS: Record<string, string> = {
 	"/feeds/swipe": "/feeds/swipe/visual-preview",
 	"/mobile/feeds/swipe": "/feeds/swipe/visual-preview",
 	"/desktop": "/dashboard",
+	// ADR-001043: retired Knowledge Home & Knowledge Trail surfaces
+	// ((app)/+layout.ts sets ssr = false, so hooks.server.ts must emit the HTTP 303)
+	"/home": "/today",
+	"/knowledge/trail": "/knowledge",
 };
 
 /**

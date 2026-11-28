@@ -96,7 +96,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/home",
+			"/today",
 		);
 		return new HttpResponse(null, {
 			status: 303,
@@ -112,7 +112,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/home",
+			"/today",
 		);
 		return new HttpResponse(null, {
 			status: 303,
@@ -128,7 +128,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/home",
+			"/today",
 		);
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/auth/login?flow=flow-e2e-mock`;
@@ -155,7 +155,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/home",
+			"/today",
 		);
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/register?flow=flow-e2e-mock-reg`;

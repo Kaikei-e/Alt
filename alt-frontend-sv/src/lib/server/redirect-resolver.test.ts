@@ -46,4 +46,11 @@ describe("resolveResponsiveRedirect", () => {
 			"/feeds/swipe/visual-preview",
 		);
 	});
+
+	it("redirects retired /home and /knowledge/trail routes (ADR-001043)", () => {
+		expect(resolveResponsiveRedirect("/home", "")).toBe("/today");
+		expect(resolveResponsiveRedirect("/knowledge/trail", "")).toBe(
+			"/knowledge",
+		);
+	});
 });

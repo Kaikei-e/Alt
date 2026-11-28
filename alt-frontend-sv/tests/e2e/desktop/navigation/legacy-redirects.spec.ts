@@ -75,3 +75,19 @@ test.describe("legacy route redirects", () => {
 		expect(response.status()).toBe(200);
 	});
 });
+
+test.describe("retired knowledge surface redirects (ADR-001043)", () => {
+	const RETIRED_ROUTES: ReadonlyArray<readonly [string, string]> = [
+		["/home", "/today"],
+		["/knowledge/trail", "/knowledge"],
+	];
+
+	for (const [retired, target] of RETIRED_ROUTES) {
+		test(`${retired} redirects via 303 to ${target}`, async ({ page }) => {
+			const response = await page.request.get(retired, { maxRedirects: 0 });
+
+			expect(response.status()).toBe(303);
+			expect(response.headers().location).toBe(target);
+		});
+	}
+});

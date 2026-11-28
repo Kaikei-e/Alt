@@ -74,7 +74,7 @@ test.describe("Read today mobile flow", () => {
 			{ label: "Today", href: "/today" },
 			{ label: "Swipe", href: "/feeds/swipe/visual-preview" },
 			{ label: "Gallery", href: "/feeds/visual-preview" },
-			{ label: "Search", href: "/search" },
+			{ label: "Themes", href: "/knowledge" },
 			{ label: "Menu", href: "/menu" },
 		];
 		for (const [i, tab] of expectedTabs.entries()) {

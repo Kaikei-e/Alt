@@ -36,9 +36,10 @@ test.describe("desktop sidebar navigation", () => {
 		await page.goto("./feeds");
 
 		await expect(sidebar.brandTitle).toBeVisible();
-		await expect(sidebar.getLink("Knowledge Home Today")).toBeVisible();
-		await expect(sidebar.getLink("Your Trail")).toBeVisible();
-		await expect(sidebar.getLink("Dashboard")).toBeVisible();
+		await expect(sidebar.getLink("Today")).toBeVisible();
+		await expect(sidebar.getLink("Themes")).toBeVisible();
+		await expect(sidebar.getLink("Gallery")).toBeVisible();
+		await expect(sidebar.getLink("Statistics")).toBeVisible();
 	});
 
 	test("marks the current page with aria-current", async ({
@@ -54,7 +55,7 @@ test.describe("desktop sidebar navigation", () => {
 			"aria-current",
 			"page",
 		);
-		await expect(sidebar.getLink("Your Trail")).not.toHaveAttribute(
+		await expect(sidebar.getLink("Themes")).not.toHaveAttribute(
 			"aria-current",
 			"page",
 		);
@@ -63,10 +64,10 @@ test.describe("desktop sidebar navigation", () => {
 	test("navigates to a top-level section", async ({ page, sidebar }) => {
 		await page.goto("./feeds");
 
-		await sidebar.navigateTo("Dashboard");
+		await sidebar.navigateTo("Themes");
 
-		await expect(page).toHaveURL(/\/dashboard$/);
-		await expect(sidebar.getLink("Dashboard")).toHaveAttribute(
+		await expect(page).toHaveURL(/\/knowledge$/);
+		await expect(sidebar.getLink("Themes")).toHaveAttribute(
 			"aria-current",
 			"page",
 		);
@@ -118,11 +119,11 @@ test.describe("desktop sidebar navigation", () => {
 		// user on whatever page they landed on.
 		await page.goto("./feeds");
 
-		await sidebar.navigateTo("Dashboard");
-		await expect(page).toHaveURL(/\/dashboard$/);
+		await sidebar.navigateTo("Themes");
+		await expect(page).toHaveURL(/\/knowledge$/);
 
-		await sidebar.navigateTo("Your Trail");
-		await expect(page).toHaveURL(/\/knowledge\/trail$/);
+		await sidebar.navigateTo("Today");
+		await expect(page).toHaveURL(/\/today$/);
 
 		await expect(sidebar.brandTitle).toBeVisible();
 	});

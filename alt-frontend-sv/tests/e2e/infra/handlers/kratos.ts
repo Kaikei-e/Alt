@@ -147,7 +147,7 @@ export function createKratosServer(): http.Server {
 			log("POST login - setting session cookie");
 			const returnTo = validateRedirectUrl(
 				url.searchParams.get("return_to"),
-				"http://127.0.0.1:4174/home",
+				"http://127.0.0.1:4174/today",
 			);
 
 			res.writeHead(303, {
@@ -166,7 +166,7 @@ export function createKratosServer(): http.Server {
 			log("POST registration - setting session cookie");
 			const returnTo = validateRedirectUrl(
 				url.searchParams.get("return_to"),
-				"http://127.0.0.1:4174/home",
+				"http://127.0.0.1:4174/today",
 			);
 
 			res.writeHead(303, {
@@ -189,7 +189,7 @@ export function createKratosServer(): http.Server {
 			if (path === "/self-service/login/browser") {
 				const returnTo = validateRedirectUrl(
 					url.searchParams.get("return_to"),
-					"http://127.0.0.1:4174/home",
+					"http://127.0.0.1:4174/today",
 				);
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/auth/login?flow=${loginFlow.id}`;
@@ -227,7 +227,7 @@ export function createKratosServer(): http.Server {
 			if (path === "/self-service/registration/browser") {
 				const returnTo = validateRedirectUrl(
 					url.searchParams.get("return_to"),
-					"http://127.0.0.1:4174/home",
+					"http://127.0.0.1:4174/today",
 				);
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/register?flow=${registrationFlow.id}`;

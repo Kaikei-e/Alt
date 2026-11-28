@@ -33,7 +33,7 @@ test.describe("Desktop Article Detail", () => {
 		await expect(page.getByText("Open original")).toBeVisible();
 	});
 
-	test("shows back navigation to home", async ({ page }) => {
+	test("shows back navigation to today", async ({ page }) => {
 		await page.route(FETCH_CONTENT, (route) =>
 			fulfillJson(route, {
 				content: "<p>Content here.</p>",
@@ -52,9 +52,9 @@ test.describe("Desktop Article Detail", () => {
 		);
 		await page.waitForLoadState("domcontentloaded");
 
-		// Back to Home button should be present
+		// Back to Today button should be present
 		await expect(
-			page.getByRole("button", { name: /back to home/i }),
+			page.getByRole("button", { name: /back to today/i }),
 		).toBeVisible({ timeout: 10000 });
 	});
 
@@ -166,7 +166,7 @@ test.describe("Desktop Article Detail", () => {
 
 		// Top sticky action-bar actions remain reachable on mobile
 		await expect(
-			page.getByRole("button", { name: /back to home/i }),
+			page.getByRole("button", { name: /back to today/i }),
 		).toBeVisible();
 		await expect(
 			page.getByRole("link", { name: /open original/i }),
