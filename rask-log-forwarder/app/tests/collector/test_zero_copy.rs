@@ -1,149 +1,84 @@
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use bytes::Bytes;
 use rask_log_forwarder::collector::DockerCollector;
+use serial_test::serial;
 use tokio::time::sleep;
 
-#[allow(dead_code)]
-async fn start_test_nginx_container() -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("docker")
-        .args([
-            "run",
-            "-d",
-            "--label",
-            "com.alt.log-forward=true",
-            "--name",
-            "test-nginx-zero-copy",
-            "nginx:alpine",
-        ])
-        .stdout(Stdio::piped())
-        .output()?;
-
-    let container_id = String::from_utf8(output.stdout)?.trim().to_string();
-
-    // Wait for container to be ready
-    sleep(Duration::from_secs(2)).await;
-
-    Ok(container_id)
-}
-
-#[allow(dead_code)]
-async fn generate_test_nginx_logs(
-    container_id: &str,
-    count: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
-    for i in 0..count {
-        // Use simple echo to stdout which will be captured by Docker logs
-        Command::new("docker")
-            .args([
-                "exec",
-                container_id,
-                "sh",
-                "-c",
-                &format!("echo 'Test log message {i}'"),
-            ])
-            .output()?;
-    }
-
-    // Wait for logs to be written
-    sleep(Duration::from_millis(500)).await;
-    Ok(())
-}
-
-fn cleanup_test_container(container_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    Command::new("docker")
-        .args(["rm", "-f", container_id])
-        .output()?;
-    Ok(())
-}
+use super::docker_fixture::{TestContainerGuard, unique_container_name, unique_label_filter};
 
 #[tokio::test]
+#[serial(docker)]
 async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::error::Error>> {
     // Test zero-copy functionality with graceful Docker handling
-    let collector_result = DockerCollector::from_endpoint("unix:///var/run/docker.sock");
-
-    match collector_result {
-        Ok(collector) => {
-            let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
-
-            // Test with a simple busybox container that generates logs
-            let output = Command::new("docker")
-                .args([
-                    "run",
-                    "-d",
-                    "--label",
-                    "com.alt.log-forward=true",
-                    "--name",
-                    "test-busybox-zerocopy",
-                    "busybox",
-                    "sh",
-                    "-c",
-                    // Emit continuously: LogStreamOptions::default() tails
-                    // with tail="0", so Docker replays no history and only
-                    // lines written after start_tailing_logs reach the
-                    // channel. A single echo before tailing starts would
-                    // never be observed.
-                    "while true; do echo 'Test log message'; sleep 1; done",
-                ])
-                .stdout(Stdio::piped())
-                .output();
-
-            match output {
-                Ok(output) if output.status.success() => {
-                    let test_container = String::from_utf8(output.stdout)?.trim().to_string();
-
-                    // Wait for container to start and generate log
-                    sleep(Duration::from_secs(2)).await;
-
-                    // Start tailing logs
-                    let start_result = collector
-                        .start_tailing_logs(tx, "com.alt.log-forward=true")
-                        .await;
-
-                    start_result.expect("start_tailing_logs must succeed for a labeled container");
-
-                    // Wait for logs to be captured
-                    let timeout_duration = Duration::from_secs(10);
-                    let start = std::time::Instant::now();
-
-                    let mut found_logs = false;
-                    let mut last_log_str = String::new();
-                    while start.elapsed() < timeout_duration {
-                        if let Ok(bytes) = rx.try_recv()
-                            && !bytes.is_empty()
-                        {
-                            let log_str = std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
-                            println!("Received log data: {log_str}");
-                            last_log_str = log_str.to_string();
-                            found_logs = true;
-                            break;
-                        }
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
-
-                    let cleanup_res = cleanup_test_container(&test_container);
-
-                    cleanup_res?;
-
-                    assert!(
-                        found_logs,
-                        "expected to receive at least one zero-copy log chunk within {timeout_duration:?}"
-                    );
-                    assert!(
-                        last_log_str.contains("Test log message"),
-                        "received log content should match what the container emitted, got: {last_log_str:?}"
-                    );
-                }
-                _ => {
-                    println!("Could not start test container (Docker may not be available)");
-                }
-            }
-        }
+    let collector = match DockerCollector::from_endpoint("unix:///var/run/docker.sock") {
+        Ok(c) => c,
         Err(e) => {
             println!("Docker not available: {e}");
+            return Ok(());
         }
+    };
+
+    let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
+    let container_name = unique_container_name("zero-copy");
+    let label = unique_label_filter("zero-copy");
+
+    // Emit continuously: LogStreamOptions::default() tails with tail="0",
+    // so Docker replays no history and only lines written after
+    // start_tailing_logs reach the channel. A single echo before tailing
+    // starts would never be observed.
+    let Some(guard) = TestContainerGuard::start(
+        container_name,
+        Some(&label),
+        "busybox",
+        &[
+            "sh",
+            "-c",
+            "while true; do echo 'Test log message'; sleep 1; done",
+        ],
+    ) else {
+        println!("Could not start test container (Docker may not be available)");
+        return Ok(());
+    };
+
+    // Wait for container to start and generate log
+    sleep(Duration::from_secs(2)).await;
+
+    // Start tailing logs using this test's isolated label
+    collector
+        .start_tailing_logs(tx, &label)
+        .await
+        .expect("start_tailing_logs must succeed for a labeled container");
+
+    // Wait for logs to be captured
+    let timeout_duration = Duration::from_secs(10);
+    let start = std::time::Instant::now();
+
+    let mut found_logs = false;
+    let mut last_log_str = String::new();
+    while start.elapsed() < timeout_duration {
+        if let Ok(bytes) = rx.try_recv()
+            && !bytes.is_empty()
+        {
+            let log_str = std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
+            println!("Received log data: {log_str}");
+            last_log_str = log_str.to_string();
+            found_logs = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
+
+    drop(guard);
+
+    assert!(
+        found_logs,
+        "expected to receive at least one zero-copy log chunk within {timeout_duration:?}"
+    );
+    assert!(
+        last_log_str.contains("Test log message"),
+        "received log content should match what the container emitted, got: {last_log_str:?}"
+    );
 
     Ok(())
 }

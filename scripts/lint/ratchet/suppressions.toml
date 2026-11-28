@@ -86,7 +86,7 @@ go_nosec = 41
 rust_allow = 6
 
 [targets."rask-log-forwarder/app"]
-rust_allow = 32
+rust_allow = 30
 
 [targets.recap-evaluator]
 python_noqa = 36

@@ -7,7 +7,10 @@
 //! actual log bytes to arrive on the broadcast channel whenever a real
 //! Docker daemon is available, and only fall back to a skip when it isn't
 //! (matching the convention in `test_reconnect.rs`).
-use std::process::{Command, Stdio};
+//!
+//! Each test uses a unique PID-scoped label filter via `docker_fixture` and
+//! `#[serial(docker)]` so containers from other collector tests (or a live
+//! host stack) can never contaminate its broadcast stream.
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -15,42 +18,22 @@ use rask_log_forwarder::collector::{DockerCollector, LogStreamOptions};
 use serial_test::serial;
 use tokio::sync::broadcast;
 
-fn docker_ok(args: &[&str]) -> bool {
-    Command::new("docker")
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
-fn cleanup(container_name: &str) {
-    if let Err(err) = Command::new("docker")
-        .args(["rm", "-f", container_name])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-    {
-        eprintln!("Failed to remove test container {container_name}: {err}");
-    }
-}
+use super::docker_fixture::{TestContainerGuard, unique_container_name, unique_label_filter};
 
 /// Start a container that continuously emits distinguishable log lines, so a
 /// receiver can positively confirm it saw *this test's* traffic rather than
 /// leftover noise from another labeled container.
-fn start_chatty_container(name: &str) -> bool {
-    docker_ok(&[
-        "run",
-        "-d",
-        "--label",
-        "com.alt.log-forward=true",
-        "--name",
+fn start_chatty_container(name: String, label: &str) -> Option<TestContainerGuard> {
+    TestContainerGuard::start(
         name,
+        Some(label),
         "busybox",
-        "sh",
-        "-c",
-        "i=0; while true; do echo \"streaming-test-line $i\"; i=$((i+1)); sleep 0.1; done",
-    ])
+        &[
+            "sh",
+            "-c",
+            "i=0; while true; do echo \"streaming-test-line $i\"; i=$((i+1)); sleep 0.1; done",
+        ],
+    )
 }
 
 /// Poll the broadcast receiver until non-empty bytes arrive or `timeout` elapses.
@@ -73,11 +56,8 @@ async fn wait_for_log_bytes(
 }
 
 #[tokio::test]
-#[serial]
+#[serial(docker)]
 async fn test_nginx_log_stream_initialization() {
-    const CONTAINER_NAME: &str = "test-rlf-log-stream-init";
-    cleanup(CONTAINER_NAME);
-
     let collector = match DockerCollector::from_endpoint("unix:///var/run/docker.sock") {
         Ok(c) => c,
         Err(e) => {
@@ -86,20 +66,22 @@ async fn test_nginx_log_stream_initialization() {
         }
     };
 
-    if !start_chatty_container(CONTAINER_NAME) {
+    let container_name = unique_container_name("log-stream-init");
+    let label = unique_label_filter("log-stream-init");
+    let Some(guard) = start_chatty_container(container_name, &label) else {
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
-    }
+    };
 
     let (tx, mut rx) = broadcast::channel::<Bytes>(1000);
 
     collector
-        .start_tailing_logs(tx, "com.alt.log-forward=true")
+        .start_tailing_logs(tx, &label)
         .await
         .expect("start_tailing_logs must succeed once a labeled container exists");
 
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
-    cleanup(CONTAINER_NAME);
+    drop(guard);
 
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);
@@ -110,11 +92,8 @@ async fn test_nginx_log_stream_initialization() {
 }
 
 #[tokio::test]
-#[serial]
+#[serial(docker)]
 async fn test_log_stream_with_options() {
-    const CONTAINER_NAME: &str = "test-rlf-log-stream-options";
-    cleanup(CONTAINER_NAME);
-
     let collector = match DockerCollector::from_endpoint("unix:///var/run/docker.sock") {
         Ok(c) => c,
         Err(e) => {
@@ -123,10 +102,12 @@ async fn test_log_stream_with_options() {
         }
     };
 
-    if !start_chatty_container(CONTAINER_NAME) {
+    let container_name = unique_container_name("log-stream-options");
+    let label = unique_label_filter("log-stream-options");
+    let Some(guard) = start_chatty_container(container_name, &label) else {
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
-    }
+    };
 
     let (tx, mut rx) = broadcast::channel::<Bytes>(1000);
 
@@ -140,12 +121,12 @@ async fn test_log_stream_with_options() {
     };
 
     collector
-        .start_tailing_logs_with_options(tx, "com.alt.log-forward=true", options)
+        .start_tailing_logs_with_options(tx, &label, options)
         .await
         .expect("start_tailing_logs_with_options must succeed once a labeled container exists");
 
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
-    cleanup(CONTAINER_NAME);
+    drop(guard);
 
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);

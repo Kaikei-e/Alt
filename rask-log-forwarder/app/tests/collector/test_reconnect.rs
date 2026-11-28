@@ -5,7 +5,6 @@
 //! restarted): `start_docker_api_streaming` returned `Ok(())` on stream EOF,
 //! and nothing above it ever reconnected. A single container restart was
 //! enough to kill log collection for that service for good.
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,55 +13,32 @@ use serial_test::serial;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-const CONTAINER_NAME: &str = "test-rlf-reconnect";
-
-fn docker_ok(args: &[&str]) -> bool {
-    Command::new("docker")
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
-fn cleanup() {
-    if let Err(err) = Command::new("docker")
-        .args(["rm", "-f", CONTAINER_NAME])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-    {
-        eprintln!("Failed to remove test container {CONTAINER_NAME}: {err}");
-    }
-}
+use super::docker_fixture::{TestContainerGuard, docker_ok, unique_container_name};
 
 #[tokio::test]
-#[serial]
+#[serial(docker)]
 async fn collector_reconnects_after_container_restart() {
-    cleanup();
-
-    let started = docker_ok(&[
-        "run",
-        "-d",
-        "--name",
-        CONTAINER_NAME,
+    let container_name = unique_container_name("reconnect");
+    let Some(guard) = TestContainerGuard::start(
+        container_name,
+        None,
         "busybox",
-        "sh",
-        "-c",
-        "i=0; while true; do echo \"line $i\"; i=$((i+1)); sleep 0.2; done",
-    ]);
-
-    if !started {
+        &[
+            "sh",
+            "-c",
+            "i=0; while true; do echo \"line $i\"; i=$((i+1)); sleep 0.2; done",
+        ],
+    ) else {
         println!("Docker not available, skipping collector reconnect integration test");
         return;
-    }
+    };
 
     // Give the container a moment to start emitting logs.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     let config = CollectorConfig {
         auto_discover: false,
-        target_service: Some(CONTAINER_NAME.to_string()),
+        target_service: Some(guard.name().to_string()),
         follow_rotations: true,
         buffer_size: 8192,
     };
@@ -76,7 +52,6 @@ async fn collector_reconnects_after_container_restart() {
             println!(
                 "LogCollector::new_with_env failed ({e}), skipping (Docker may be unavailable)"
             );
-            cleanup();
             return;
         }
     };
@@ -105,7 +80,11 @@ async fn collector_reconnects_after_container_restart() {
     // the collector's point of view). Before the fix, the collector would
     // stop here permanently: `start_docker_api_streaming` returned `Ok(())`
     // and its `tx` was dropped, closing the channel for good.
-    docker_ok(&["restart", "-t", "1", CONTAINER_NAME]);
+    assert!(
+        docker_ok(&["restart", "-t", "1", guard.name()]),
+        "docker restart failed for test container {}",
+        guard.name()
+    );
 
     // Require entries to keep arriving across several distinct windows well
     // after the restart. A lucky leftover-backlog burst (already ruled out
@@ -128,7 +107,7 @@ async fn collector_reconnects_after_container_restart() {
     if let Err(err) = tokio::time::timeout(Duration::from_secs(5), handle).await {
         eprintln!("Collector task did not stop within timeout: {err}");
     }
-    cleanup();
+    drop(guard);
 
     assert!(
         windows_with_data >= 2,
