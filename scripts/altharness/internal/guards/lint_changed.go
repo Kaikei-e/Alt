@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"alt/scripts/altharness/internal/ratchet"
 )
 
 const (
@@ -138,8 +140,8 @@ func defaultAgyRunChangedLint(ctx context.Context, repoRoot string) (int, string
 }
 
 func runChangedLint(ctx context.Context, repoRoot string) (int, string) {
-	dirty, err := listDirtyFiles(ctx, repoRoot)
-	if err != nil || len(dirty) == 0 {
+	scan, err := listDirtyFiles(ctx, repoRoot)
+	if err != nil || len(scan.allPaths) == 0 {
 		return 0, ""
 	}
 
@@ -147,7 +149,7 @@ func runChangedLint(ctx context.Context, repoRoot string) (int, string) {
 	pyFilesByMod := map[string][]string{}
 	tsFilesByMod := map[string][]string{}
 
-	for _, rel := range dirty {
+	for _, rel := range scan.existingFiles {
 		norm := filepath.ToSlash(rel)
 		if isIgnoredForChangedLint(norm) {
 			continue
@@ -231,24 +233,45 @@ func runChangedLint(ctx context.Context, repoRoot string) (int, string) {
 		}
 	}
 
+	// 4. CHECK-02 inline suppression ratchet (catches increases AND un-updated decreases
+	// including suppressions removed by deleting source files).
+	if needsRatchetCheck(repoRoot, scan.allPaths) {
+		var rOut, rErr bytes.Buffer
+		if rc := ratchet.Run(ctx, []string{"--repo-root", repoRoot}, &rOut, &rErr); rc != 0 {
+			msg := strings.TrimSpace(rErr.String())
+			if msg == "" {
+				msg = strings.TrimSpace(rOut.String())
+			}
+			if msg == "" {
+				msg = fmt.Sprintf("suppression ratchet exited with code %d", rc)
+			}
+			failures = append(failures, "[ratchet] "+msg)
+		}
+	}
+
 	if len(failures) == 0 {
 		return 0, ""
 	}
 	return 1, "Changed-file lint gate failed (fix violations before stopping):\n\n" + strings.Join(failures, "\n\n")
 }
 
-func listDirtyFiles(ctx context.Context, repoRoot string) ([]string, error) {
+type dirtyScan struct {
+	existingFiles []string
+	allPaths      []string
+}
+
+func listDirtyFiles(ctx context.Context, repoRoot string) (dirtyScan, error) {
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
-		return nil, err
+		return dirtyScan{}, err
 	}
 	cmd := exec.CommandContext(ctx, gitBin, "-C", repoRoot, "--no-optional-locks", "status", "--porcelain", "-z")
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return dirtyScan{}, err
 	}
 	entries := bytes.Split(out, []byte{0})
-	var files []string
+	var scan dirtyScan
 	for i := 0; i < len(entries); i++ {
 		entry := entries[i]
 		if len(entry) < 4 {
@@ -257,17 +280,44 @@ func listDirtyFiles(ctx context.Context, repoRoot string) ([]string, error) {
 		xy := string(entry[:2])
 		path := string(entry[3:])
 		// Rename/copy entries consume an extra NUL-separated path (original path).
-		if strings.ContainsAny(xy, "RC") {
+		origPath := ""
+		if strings.ContainsAny(xy, "RC") && i+1 < len(entries) {
 			i++
+			origPath = string(entries[i])
 		}
-		if xy[0] == 'D' || xy[1] == 'D' {
-			continue
+		if strings.TrimSpace(origPath) != "" {
+			scan.allPaths = append(scan.allPaths, origPath)
 		}
 		if strings.TrimSpace(path) != "" {
-			files = append(files, path)
+			scan.allPaths = append(scan.allPaths, path)
+			if xy[0] != 'D' && xy[1] != 'D' {
+				scan.existingFiles = append(scan.existingFiles, path)
+			}
 		}
 	}
-	return files, nil
+	return scan, nil
+}
+
+func needsRatchetCheck(repoRoot string, allPaths []string) bool {
+	supPath := filepath.Join(repoRoot, "scripts", "lint", "ratchet", "suppressions.toml")
+	st, err := os.Stat(supPath)
+	if err != nil || st.IsDir() {
+		return false
+	}
+	for _, rel := range allPaths {
+		norm := filepath.ToSlash(rel)
+		if norm == "scripts/lint/ratchet/suppressions.toml" {
+			return true
+		}
+		if isIgnoredForChangedLint(norm) {
+			continue
+		}
+		switch strings.ToLower(filepath.Ext(norm)) {
+		case ".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".svelte":
+			return true
+		}
+	}
+	return false
 }
 
 func isIgnoredForChangedLint(norm string) bool {

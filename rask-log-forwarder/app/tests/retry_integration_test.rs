@@ -1,4 +1,7 @@
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rask_log_forwarder::reliability::{RetryConfig, RetryManager, RetryStrategy};
+use std::collections::HashSet;
 use std::time::Duration;
 
 #[tokio::test]
@@ -37,21 +40,28 @@ async fn test_retry_with_jitter() {
 
     let retry_manager = RetryManager::new(config);
 
-    // Collect multiple samples to reduce the probability of identical jittered delays
-    let samples: Vec<_> = (0..5).map(|_| retry_manager.calculate_delay(1)).collect();
+    // Deterministic seeded RNG verifies both range and variability without flakiness.
+    let mut rng = StdRng::seed_from_u64(0x1234_5678_u64);
+    let samples: Vec<_> = (0..32)
+        .map(|_| retry_manager.calculate_delay_with_rng(1, &mut rng))
+        .collect();
 
-    // All samples should be within expected jitter range (100-300ms)
     for delay in &samples {
         assert!(*delay >= Duration::from_millis(100));
-        assert!(*delay <= Duration::from_millis(300));
+        assert!(*delay < Duration::from_millis(300));
     }
 
-    // Ensure that at least one pair of samples differs – this minimizes flakiness
-    let unique: std::collections::HashSet<_> = samples.iter().collect();
+    let unique: HashSet<_> = samples.iter().collect();
     assert!(
-        unique.len() > 1,
-        "Jitter did not introduce enough variability"
+        unique.len() > 10,
+        "Seeded jitter did not introduce enough variability (got {})",
+        unique.len()
     );
+
+    // Default unseeded entrypoint still honors the ±50% range invariant.
+    let live_delay = retry_manager.calculate_delay(1);
+    assert!(live_delay >= Duration::from_millis(100));
+    assert!(live_delay <= Duration::from_millis(300));
 }
 
 #[tokio::test]

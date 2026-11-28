@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"alt/scripts/altharness/internal/fsperm"
+	"alt/scripts/altharness/internal/ratchet"
 )
 
 func TestRunLintChanged_ProvenToFailOnUnusedTestHelper(t *testing.T) {
@@ -217,5 +218,88 @@ func TestDefaultAgyFormatFile_ResolvesNearestProjectRoot(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(biomeGot), tsRoot+"|") {
 		t.Fatalf("biome ran in wrong dir: %q, want prefix %q", string(biomeGot), tsRoot+"|")
+	}
+}
+
+func TestRunLintChanged_ProvenToFailOnSuppressionRatchetDrift(t *testing.T) {
+	repo := initTestGitRepo(t)
+	feDir := filepath.Join(repo, "alt-frontend-sv")
+	specDir := filepath.Join(feDir, "tests", "e2e")
+	ratchetDir := filepath.Join(repo, "scripts", "lint", "ratchet")
+	if err := os.MkdirAll(specDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ratchetDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(feDir, "package.json"), []byte(`{"name":"alt-frontend-sv"}`+"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(feDir, "bun.lock"), []byte("# lock\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	legacySpec := filepath.Join(specDir, "legacy.spec.ts")
+	specSrc := `// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: legacy test
+export const a = 1;
+// biome-ignore lint/nursery/noPlaywrightNetworkidle: legacy test
+export const b = 2;
+`
+	if err := os.WriteFile(legacySpec, []byte(specSrc), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+
+	var rOut, rErr bytes.Buffer
+	if rc := ratchet.Run(context.Background(), []string{"--repo-root", repo, "--update"}, &rOut, &rErr); rc != 0 {
+		t.Fatalf("seed ratchet failed: rc=%d out=%q err=%q", rc, rOut.String(), rErr.String())
+	}
+
+	runGitInTest(t, repo, "add", "alt-frontend-sv/package.json", "alt-frontend-sv/bun.lock", "alt-frontend-sv/tests/e2e/legacy.spec.ts", "scripts/lint/ratchet/suppressions.toml")
+	runGitInTest(t, repo, "commit", "-m", "init frontend with biome-ignore baseline")
+
+	t.Setenv("ALT_HARNESS_REPO_ROOT", repo)
+	t.Setenv("ALT_ACTIVE_PACKET", "")
+
+	// 1. Clean baseline passes.
+	var stdout, stderr bytes.Buffer
+	if rc := RunLintChanged(context.Background(), []string{"--root", repo}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("clean repo should pass: rc=%d out=%q err=%q", rc, stdout.String(), stderr.String())
+	}
+
+	// 2. Proven-to-Fail (exact PR #418 reproduction): deleting a file containing biome-ignore
+	// lowers count from 2 to 0 without updating suppressions.toml -> must FAIL.
+	if err := os.Remove(legacySpec); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	rc := RunLintChanged(context.Background(), []string{"--root", repo}, &stdout, &stderr)
+	combined := stdout.String() + stderr.String()
+	if rc == 0 || !strings.Contains(combined, "ratchet.decrease-update-required") || !strings.Contains(combined, "ts_biome_ignore") {
+		t.Fatalf("deleting suppressed file without ratchet update must fail: rc=%d output:\n%s", rc, combined)
+	}
+
+	// 3. Running ratchet --update in the same commit fixes the mismatch -> passes.
+	rOut.Reset()
+	rErr.Reset()
+	if urc := ratchet.Run(context.Background(), []string{"--repo-root", repo, "--update"}, &rOut, &rErr); urc != 0 {
+		t.Fatalf("ratchet --update failed: rc=%d out=%q err=%q", urc, rOut.String(), rErr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if rc := RunLintChanged(context.Background(), []string{"--root", repo}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("after ratchet --update lint-changed must pass: rc=%d out=%q err=%q", rc, stdout.String(), stderr.String())
+	}
+
+	// 4. Proven-to-Fail (increase): introducing a new biome-ignore must FAIL with ratchet.increase.
+	newSpec := filepath.Join(specDir, "new.spec.ts")
+	if err := os.WriteFile(newSpec, []byte("// biome-ignore lint/suspicious/noExplicitAny: test\nexport const c = 3;\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	rc = RunLintChanged(context.Background(), []string{"--root", repo}, &stdout, &stderr)
+	combined = stdout.String() + stderr.String()
+	if rc == 0 || !strings.Contains(combined, "ratchet.increase") {
+		t.Fatalf("introducing new biome-ignore must fail ratchet: rc=%d output:\n%s", rc, combined)
 	}
 }

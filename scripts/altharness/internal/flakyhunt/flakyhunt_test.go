@@ -581,3 +581,151 @@ func TestReal(t *testing.T) {}
 		}
 	})
 }
+
+func TestFlakyHuntRustAutoDetectFailureAndZeroTests(t *testing.T) {
+	t.Parallel()
+	repo := makeTempRepo(t)
+	modDir := filepath.Join(repo, "rust-svc", "app")
+	if err := os.MkdirAll(modDir, fsperm.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "Cargo.toml"), []byte("[package]\nname = \"demo\"\nversion = \"0.1.0\"\n"), fsperm.File); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("detects flaky rust panic and ignores passing should_panic output", func(t *testing.T) {
+		t.Parallel()
+		binDir := t.TempDir()
+		stateFile := filepath.Join(binDir, "round.count")
+		stub := `#!/bin/sh
+n=0
+if [ -f "` + stateFile + `" ]; then n=$(cat "` + stateFile + `"); fi
+n=$((n + 1))
+echo "$n" > "` + stateFile + `"
+if [ "$n" -eq 2 ]; then
+  echo "running 2 tests"
+  echo "thread 'app::shutdown::should_panic_ok' panicked at src/shutdown.rs:10:5:"
+  echo "expected panic"
+  echo "test app::shutdown::should_panic_ok ... ok"
+  echo "thread 'reliability::test_retry_mechanism::test_retry_with_jitter' (7443) panicked at tests/reliability/test_retry_mechanism.rs:52:5:"
+  echo "assertion left != right failed"
+  echo "test reliability::test_retry_mechanism::test_retry_with_jitter ... FAILED"
+  echo "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out"
+  exit 101
+fi
+echo "running 2 tests"
+echo "test app::shutdown::should_panic_ok ... ok"
+echo "test reliability::test_retry_mechanism::test_retry_with_jitter ... ok"
+echo "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+exit 0
+`
+		if err := fsperm.WriteExecutable(filepath.Join(binDir, "cargo"), []byte(stub)); err != nil {
+			t.Fatal(err)
+		}
+
+		var out, errBuf bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"rust-svc/app", "--repo-root", repo, "--rounds", "3", "--format", "json",
+			"--evidence-dir", filepath.Join(t.TempDir(), "ev"),
+		}, Options{
+			Stdout: &out,
+			Stderr: &errBuf,
+			Env:    map[string]string{"PATH": binDir + string(os.PathListSeparator) + os.Getenv("PATH")},
+		})
+		if rc != 1 {
+			t.Fatalf("expected rc=1 on round 2 flake, got %d stdout=%q stderr=%q", rc, out.String(), errBuf.String())
+		}
+		var rep Report
+		if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+			t.Fatalf("invalid json: %v", err)
+		}
+		if rep.Lang != "rust" || rep.PassedRounds != 2 || rep.FailedRounds != 1 {
+			t.Fatalf("unexpected rust report: lang=%s passed=%d failed=%d", rep.Lang, rep.PassedRounds, rep.FailedRounds)
+		}
+		if len(rep.Failures) != 1 {
+			t.Fatalf("expected exactly 1 failure (ignoring passing should_panic), got %+v", rep.Failures)
+		}
+		f := rep.Failures[0]
+		if f.TestName != "reliability::test_retry_mechanism::test_retry_with_jitter" || f.Kind != "panic" {
+			t.Fatalf("unexpected failure entry: %+v", f)
+		}
+		if !strings.Contains(f.ReproCommand, "cargo test --manifest-path rust-svc/app/Cargo.toml") {
+			t.Fatalf("unexpected repro command: %q", f.ReproCommand)
+		}
+	})
+
+	t.Run("detects quiet-format rust failure lines", func(t *testing.T) {
+		t.Parallel()
+		binDir := t.TempDir()
+		stub := `#!/bin/sh
+echo "running 1 test"
+echo "F"
+echo "failures:"
+echo "---- reliability::test_retry_mechanism::test_retry_with_jitter stdout ----"
+echo "thread 'reliability::test_retry_mechanism::test_retry_with_jitter' (1234) panicked at tests/reliability/test_retry_mechanism.rs:52:5:"
+echo "assertion left != right failed"
+echo "failures:"
+echo "    reliability::test_retry_mechanism::test_retry_with_jitter"
+echo "reliability::test_retry_mechanism::test_retry_with_jitter --- FAILED"
+echo "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out"
+exit 101
+`
+		if err := fsperm.WriteExecutable(filepath.Join(binDir, "cargo"), []byte(stub)); err != nil {
+			t.Fatal(err)
+		}
+
+		var out, errBuf bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"rust-svc/app", "--repo-root", repo, "--rounds", "1", "--format", "json",
+			"--evidence-dir", filepath.Join(t.TempDir(), "ev-quiet"),
+			"--", "--quiet",
+		}, Options{
+			Stdout: &out,
+			Stderr: &errBuf,
+			Env:    map[string]string{"PATH": binDir + string(os.PathListSeparator) + os.Getenv("PATH")},
+		})
+		if rc != 1 {
+			t.Fatalf("expected rc=1 on quiet-format failure, got %d stdout=%q stderr=%q", rc, out.String(), errBuf.String())
+		}
+		var rep Report
+		if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+			t.Fatalf("invalid json: %v", err)
+		}
+		if len(rep.Failures) != 1 || rep.Failures[0].TestName != "reliability::test_retry_mechanism::test_retry_with_jitter" || rep.Failures[0].Kind != "panic" {
+			t.Fatalf("unexpected quiet-format failures: %+v", rep.Failures)
+		}
+	})
+
+	t.Run("fails closed when cargo test executes zero tests", func(t *testing.T) {
+		t.Parallel()
+		binDir := t.TempDir()
+		stub := `#!/bin/sh
+echo "running 0 tests"
+echo "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+exit 0
+`
+		if err := fsperm.WriteExecutable(filepath.Join(binDir, "cargo"), []byte(stub)); err != nil {
+			t.Fatal(err)
+		}
+
+		var out, errBuf bytes.Buffer
+		rc := RunWithOptions(context.Background(), []string{
+			"rust-svc/app", "--repo-root", repo, "--rounds", "1", "--format", "json",
+			"--evidence-dir", filepath.Join(t.TempDir(), "ev-zero"),
+		}, Options{
+			Stdout: &out,
+			Stderr: &errBuf,
+			Env:    map[string]string{"PATH": binDir + string(os.PathListSeparator) + os.Getenv("PATH")},
+		})
+		if rc != 1 {
+			t.Fatalf("expected rc=1 on 0-test cargo pass, got %d stdout=%q stderr=%q", rc, out.String(), errBuf.String())
+		}
+		var rep Report
+		if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+			t.Fatalf("invalid json: %v", err)
+		}
+		if len(rep.Failures) == 0 || rep.Failures[0].Kind != "zero_tests" {
+			t.Fatalf("expected zero_tests failure, got %+v", rep.Failures)
+		}
+	})
+}

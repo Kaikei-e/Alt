@@ -1,6 +1,6 @@
 #![deny(warnings, rust_2018_idioms)]
 
-use rand::RngExt;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -126,6 +126,12 @@ impl RetryManager {
 
     #[must_use]
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
+        let mut rng = rand::rng();
+        self.calculate_delay_with_rng(attempt, &mut rng)
+    }
+
+    #[must_use]
+    pub fn calculate_delay_with_rng<R: Rng + ?Sized>(&self, attempt: u32, rng: &mut R) -> Duration {
         // Configured base_delay in ms cannot exceed u64::MAX (~584M years).
         let base_ms = u64::try_from(self.config.base_delay.as_millis()).unwrap_or(u64::MAX);
         let base_delay = match self.config.strategy {
@@ -146,14 +152,13 @@ impl RetryManager {
 
         // Apply jitter if enabled
         if self.config.jitter {
-            Self::apply_jitter(capped_delay)
+            Self::apply_jitter_with_rng(capped_delay, rng)
         } else {
             capped_delay
         }
     }
 
-    fn apply_jitter(delay: Duration) -> Duration {
-        let mut rng = rand::rng();
+    fn apply_jitter_with_rng<R: Rng + ?Sized>(delay: Duration, rng: &mut R) -> Duration {
         let jitter_permille = rng.random_range(500_u64..1500_u64); // ±50% jitter
         // Delay is capped by max_delay (60s default); saturate to u64::MAX (~584M years).
         let jittered_millis = delay
