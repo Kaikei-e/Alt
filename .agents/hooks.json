@@ -50,7 +50,7 @@
       {
         "type": "command",
         "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" agy-hook stop",
-        "timeout": 30
+        "timeout": 60
       }
     ]
   }

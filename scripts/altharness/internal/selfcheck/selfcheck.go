@@ -61,6 +61,7 @@ var validAltHarnessSubcommands = map[string]struct{}{
 	"guard-adr-read":    {},
 	"harness-run":       {},
 	"agy-hook":          {},
+	"lint-changed":      {},
 	"gate":              {},
 	"preflight":         {},
 	"pytest-rand":       {},

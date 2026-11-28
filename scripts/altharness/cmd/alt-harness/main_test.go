@@ -41,7 +41,7 @@ func TestHelpListsAllSubcommands(t *testing.T) {
 		"generated", "screener", "packet", "corpus", "selfcheck",
 		"canary", "entrypoint-canary", "postmortem", "migration-gate", "adr-gate",
 		"guard-exec", "guard-scope", "guard-ops", "guard-protected", "guard-event-time", "guard-adr-read",
-		"harness-run", "agy-hook", "preflight", "pytest-rand",
+		"harness-run", "agy-hook", "lint-changed", "preflight", "pytest-rand",
 		"verify-claims", "verify-diff", "verify-golden", "verify-live", "flaky-hunt",
 		"loop-review", "loop-eval", "loop-correct", "gate",
 	}
@@ -78,6 +78,7 @@ func TestWiredSubcommandsHelpAndErrors(t *testing.T) {
 		{"loop-review help", []string{"loop-review", "--help"}, 0, "loop-04", ""},
 		{"loop-eval help", []string{"loop-eval", "--help"}, 0, "loop-05", ""},
 		{"loop-correct help", []string{"loop-correct", "--help"}, 0, "loop-07", ""},
+		{"lint-changed help", []string{"lint-changed", "--help"}, 0, "lint-changed", ""},
 		{"lang missing", []string{"lang"}, 2, "", "usage: alt-harness lang"},
 		{"lang unknown", []string{"lang", "bogus"}, 2, "", "unknown language runner"},
 		{"gate bad arity", []string{"gate"}, 2, "", "usage: alt-harness gate"},

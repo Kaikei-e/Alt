@@ -125,6 +125,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return guards.RunHarness(ctx, args[1:], stdin, stdout, stderr)
 	case "agy-hook":
 		return guards.RunAgyHook(ctx, args[1:], stdin, stdout, stderr)
+	case "lint-changed":
+		return guards.RunLintChangedWithStdin(ctx, args[1:], stdin, stdout, stderr)
 	case "preflight":
 		return preflight.Run(ctx, args[1:], stdin, stdout, stderr)
 	case "pytest-rand":
@@ -171,7 +173,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return code
 	case "help", "-h", "--help":
-		_, _ = fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook preflight pytest-rand verify-claims verify-diff verify-golden verify-live flaky-hunt loop-review loop-eval loop-correct gate")
+		_, _ = fmt.Fprintln(stdout, "alt-harness commands: lint lang layers host-final link-naming sync-go pki pyver workflow hygiene ratchet suppressions suppression-diff generated screener packet corpus selfcheck canary entrypoint-canary postmortem migration-gate adr-gate guard-exec guard-scope guard-ops guard-protected guard-event-time guard-adr-read harness-run agy-hook lint-changed preflight pytest-rand verify-claims verify-diff verify-golden verify-live flaky-hunt loop-review loop-eval loop-correct gate")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])

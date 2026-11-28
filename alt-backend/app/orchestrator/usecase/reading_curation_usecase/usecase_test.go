@@ -126,3 +126,35 @@ func TestCurateAndRemoveThemeItem(t *testing.T) {
 	require.Len(t, port.events, 2)
 	assert.Equal(t, domain.EventReadingThemeCurationRemove, port.events[1].EventType)
 }
+
+func TestListArticleAnnotationsAndThemeCurations(t *testing.T) {
+	userID := uuid.New()
+	articleID := uuid.New()
+	themeID := uuid.New()
+	readPort := &fakeReadPort{
+		annotations: []domain.ArticleAnnotation{
+			{AnnotationID: uuid.New(), ArticleID: articleID, Stance: domain.StanceInsight, Note: "Key finding"},
+		},
+		curations: []domain.ThemeCuration{
+			{CurationID: uuid.New(), ThemeID: themeID, Kind: domain.CurationPinKeyPoint, TargetText: "Pinned"},
+		},
+	}
+
+	listAnnUC := NewListArticleAnnotationsUsecase(readPort)
+	anns, err := listAnnUC.Execute(context.Background(), userID, []string{articleID.String()}, 0)
+	require.NoError(t, err)
+	require.Len(t, anns, 1)
+	assert.Equal(t, "Key finding", anns[0].Note)
+
+	_, err = listAnnUC.Execute(context.Background(), userID, []string{"not-a-uuid"}, 10)
+	require.ErrorIs(t, err, domain.ErrInvalidAnnotationInput)
+
+	listCurUC := NewListThemeCurationsUsecase(readPort)
+	curs, err := listCurUC.Execute(context.Background(), userID, themeID.String(), 0)
+	require.NoError(t, err)
+	require.Len(t, curs, 1)
+	assert.Equal(t, "Pinned", curs[0].TargetText)
+
+	_, err = listCurUC.Execute(context.Background(), userID, "not-a-uuid", 10)
+	require.ErrorIs(t, err, domain.ErrInvalidCurationInput)
+}
