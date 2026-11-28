@@ -25,6 +25,16 @@ type themeKey struct {
 	themeID uuid.UUID
 }
 
+type annotationKey struct {
+	userID       uuid.UUID
+	annotationID uuid.UUID
+}
+
+type curationKey struct {
+	userID     uuid.UUID
+	curationID uuid.UUID
+}
+
 type fakeQueueRow struct {
 	item          sovereign_db.ReadingQueueItem
 	removedAt     *time.Time
@@ -44,6 +54,8 @@ type fakeReadingRepo struct {
 	queue              map[queueKey]fakeQueueRow
 	themes             map[themeKey]sovereign_db.ReadingTheme
 	themeMembers       map[themeKey]map[uuid.UUID]int
+	annotations        map[annotationKey]sovereign_db.ReadingAnnotation
+	themeCurations     map[curationKey]sovereign_db.ReadingThemeCuration
 	nextXID            int64
 	runningWriterXID   int64
 	frontierReads      []frontierReadRecord
@@ -54,12 +66,14 @@ type fakeReadingRepo struct {
 
 func newFakeReadingRepo(events []sovereign_db.KnowledgeEvent) *fakeReadingRepo {
 	return &fakeReadingRepo{
-		events:       events,
-		sources:      make(map[queueKey]sovereign_db.ReadingSource),
-		queue:        make(map[queueKey]fakeQueueRow),
-		themes:       make(map[themeKey]sovereign_db.ReadingTheme),
-		themeMembers: make(map[themeKey]map[uuid.UUID]int),
-		nextXID:      100,
+		events:         events,
+		sources:        make(map[queueKey]sovereign_db.ReadingSource),
+		queue:          make(map[queueKey]fakeQueueRow),
+		themes:         make(map[themeKey]sovereign_db.ReadingTheme),
+		themeMembers:   make(map[themeKey]map[uuid.UUID]int),
+		annotations:    make(map[annotationKey]sovereign_db.ReadingAnnotation),
+		themeCurations: make(map[curationKey]sovereign_db.ReadingThemeCuration),
+		nextXID:        100,
 	}
 }
 
@@ -248,6 +262,52 @@ func (r *fakeReadingRepo) UpsertReadingThemeVersion(_ context.Context, theme sov
 		}
 	}
 	r.themeMembers[k] = next
+	return nil
+}
+
+func (r *fakeReadingRepo) UpsertReadingAnnotation(_ context.Context, ann sovereign_db.ReadingAnnotation) error {
+	k := annotationKey{userID: ann.UserID, annotationID: ann.AnnotationID}
+	if cur, ok := r.annotations[k]; ok && cur.LastEventSeq > ann.LastEventSeq {
+		return nil
+	}
+	ann.DeletedAt = nil
+	r.annotations[k] = ann
+	return nil
+}
+
+func (r *fakeReadingRepo) DeleteReadingAnnotation(_ context.Context, userID, annotationID uuid.UUID, deletedAt time.Time, eventSeq int64) error {
+	k := annotationKey{userID: userID, annotationID: annotationID}
+	cur, ok := r.annotations[k]
+	if !ok || cur.LastEventSeq > eventSeq {
+		return nil
+	}
+	t := deletedAt
+	cur.DeletedAt = &t
+	cur.LastEventSeq = eventSeq
+	r.annotations[k] = cur
+	return nil
+}
+
+func (r *fakeReadingRepo) UpsertReadingThemeCuration(_ context.Context, cur sovereign_db.ReadingThemeCuration) error {
+	k := curationKey{userID: cur.UserID, curationID: cur.CurationID}
+	if prev, ok := r.themeCurations[k]; ok && prev.LastEventSeq > cur.LastEventSeq {
+		return nil
+	}
+	cur.DeletedAt = nil
+	r.themeCurations[k] = cur
+	return nil
+}
+
+func (r *fakeReadingRepo) DeleteReadingThemeCuration(_ context.Context, userID, curationID uuid.UUID, deletedAt time.Time, eventSeq int64) error {
+	k := curationKey{userID: userID, curationID: curationID}
+	prev, ok := r.themeCurations[k]
+	if !ok || prev.LastEventSeq > eventSeq {
+		return nil
+	}
+	t := deletedAt
+	prev.DeletedAt = &t
+	prev.LastEventSeq = eventSeq
+	r.themeCurations[k] = prev
 	return nil
 }
 

@@ -9,6 +9,7 @@ import {
 	READ_ORIGINAL_LABEL,
 	TRY_AGAIN_LABEL,
 } from "#lib/utils/articleContentState.js";
+import ArticleCaptureBar from "./ArticleCaptureBar.svelte";
 import ArticleSummaryBlock from "./ArticleSummaryBlock.svelte";
 import type { ArticleReader } from "./createArticleReader.svelte.js";
 
@@ -114,6 +115,10 @@ const {
 			aria-hidden="true"
 		></div>
 	</div>
+	<ArticleCaptureBar
+		articleId={reader.effectiveArticleId}
+		articleTitle={reader.articleTitle}
+	/>
 	<ArticleEndBranches
 		branches={reader.endBranches.branches}
 		onResolve={reader.endBranches.resolve}

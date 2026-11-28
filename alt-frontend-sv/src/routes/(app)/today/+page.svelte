@@ -1,18 +1,41 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import type { ReadTodayQueueItem } from "#lib/connect/reading.js";
+import {
+	type ArticleAnnotationItem,
+	listArticleAnnotations,
+	type ReadTodayQueueItem,
+} from "#lib/connect/reading.js";
+import { getReadingTransport } from "#lib/connect/reading-transport.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import type { ReaderArticleItem } from "#lib/reader/types.js";
+import {
+	buildArticleAugurHref,
+	selectRecallAnnotations,
+	stanceLabel,
+} from "#lib/reading/curation-helpers.js";
 import {
 	formatTimeLeft,
 	sourceLabelOf,
 } from "#lib/reading/read-today-format.js";
 import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
+import { page } from "$app/state";
 
 let removeError = $state<string | null>(null);
 let queueNotice = $state<string | null>(null);
 let liveMessage = $state("");
+let recentAnnotations = $state<ArticleAnnotationItem[]>([]);
+let wasReaderOverlayOpen = false;
+
+const recallItems = $derived(selectRecallAnnotations(recentAnnotations, 3));
+
+$effect(() => {
+	const isOpen = Boolean(page.state.reader);
+	if (wasReaderOverlayOpen && !isOpen) {
+		loadRecallAnnotations();
+	}
+	wasReaderOverlayOpen = isOpen;
+});
 
 $effect(() => {
 	const notice = readTodayQueue.pendingNotice;
@@ -36,8 +59,19 @@ function loadQueue() {
 	});
 }
 
+function loadRecallAnnotations() {
+	void Promise.resolve(listArticleAnnotations(getReadingTransport(), [], 12))
+		.then((list) => {
+			recentAnnotations = Array.isArray(list) ? list : [];
+		})
+		.catch(() => {
+			recentAnnotations = [];
+		});
+}
+
 onMount(() => {
 	loadQueue();
+	loadRecallAnnotations();
 });
 
 function toReaderItem(item: ReadTodayQueueItem): ReaderArticleItem {
@@ -172,6 +206,51 @@ async function handleRemove(item: ReadTodayQueueItem) {
 			</p>
 		{/if}
 	</section>
+
+	{#if recallItems.length > 0}
+		<section
+			class="today-section"
+			aria-labelledby="revisit-takeaways-heading"
+			data-testid="today-recall-section"
+		>
+			<div class="section-head">
+				<h2 id="revisit-takeaways-heading" class="section-heading">
+					Revisit your takeaways
+				</h2>
+				<span class="section-count">{recallItems.length}</span>
+			</div>
+			<ul class="queue-list" data-testid="today-recall-list">
+				{#each recallItems as item (item.annotationId)}
+					<li class="recall-row" data-testid="today-recall-row">
+						<span class="row-kicker">{stanceLabel(item.stance)}</span>
+						{#if item.excerpt}
+							<blockquote class="recall-excerpt">{item.excerpt}</blockquote>
+						{/if}
+						{#if item.note}
+							<p class="recall-note">{item.note}</p>
+						{/if}
+						<div class="recall-actions">
+							<a
+								href={`/articles/${encodeURIComponent(item.articleId)}`}
+								class="recall-link"
+							>
+								Open article
+							</a>
+							<a
+								href={buildArticleAugurHref({
+									question: item.note || item.excerpt,
+									articleId: item.articleId,
+								})}
+								class="recall-link"
+							>
+								Ask Augur
+							</a>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 </div>
 
 <style>
@@ -443,6 +522,49 @@ async function handleRemove(item: ReadTodayQueueItem) {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--alt-slate);
+	}
+
+	.recall-row {
+		padding: 0.75rem 0;
+		border-bottom: 1px solid var(--surface-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.recall-excerpt {
+		margin: 0;
+		padding-left: 0.65rem;
+		border-left: 2px solid var(--surface-border);
+		font-size: 0.88rem;
+		line-height: 1.5;
+		color: var(--alt-slate);
+		overflow-wrap: anywhere;
+	}
+
+	.recall-note {
+		margin: 0;
+		font-size: 0.95rem;
+		line-height: 1.45;
+		color: var(--alt-charcoal);
+		overflow-wrap: anywhere;
+	}
+
+	.recall-actions {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.recall-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--alt-primary);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
 
 	@keyframes pulse {

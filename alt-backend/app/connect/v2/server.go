@@ -238,6 +238,13 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.RecordThemeOpenedUsecase,
 		container.ImageProxyUsecase,
 		logger,
+	).WithCurationUsecases(
+		container.SaveArticleAnnotationUsecase,
+		container.DeleteArticleAnnotationUsecase,
+		container.ListArticleAnnotationsUsecase,
+		container.CurateThemeItemUsecase,
+		container.RemoveThemeCurationUsecase,
+		container.ListThemeCurationsUsecase,
 	)
 	readingPath, readingServiceHandler := readingv1connect.NewReadingServiceHandler(readingHandler, opts)
 	mux.Handle(readingPath, readingServiceHandler)

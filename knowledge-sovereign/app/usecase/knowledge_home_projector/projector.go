@@ -58,6 +58,7 @@ type Repository interface {
 	UpsertTodayDigest(ctx context.Context, payload json.RawMessage) error
 	UpsertRecallCandidate(ctx context.Context, payload json.RawMessage) error
 	PatchKnowledgeHomeItemURL(ctx context.Context, payload json.RawMessage) error
+	ClearKnowledgeHomeItemSummary(ctx context.Context, payload json.RawMessage) error
 	SnoozeRecallCandidate(ctx context.Context, payload json.RawMessage) error
 	DismissRecallCandidate(ctx context.Context, payload json.RawMessage) error
 }
@@ -264,6 +265,8 @@ func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEve
 		return p.foldHomeItemDismissed(ctx, evt, version)
 	case "SummarySuperseded":
 		return p.foldSummarySuperseded(ctx, evt, version)
+	case "SummaryRetracted":
+		return p.foldSummaryRetracted(ctx, evt, version)
 	case "TagSetSuperseded":
 		return p.foldTagSetSuperseded(ctx, evt, version)
 	case "ReasonMerged":

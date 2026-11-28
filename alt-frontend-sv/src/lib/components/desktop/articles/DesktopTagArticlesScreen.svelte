@@ -106,11 +106,11 @@ function handleSelectArticle(index: number) {
 <div class="max-w-[90rem] mx-auto px-6 py-8">
 	<div class="flex items-center gap-3 mb-6">
 		<a
-			href="/home"
+			href="/today"
 			class="flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
 		>
 			<ArrowLeft class="h-4 w-4" />
-			Home
+			Today
 		</a>
 	</div>
 

@@ -6,12 +6,12 @@ describe("NAV_TABS (re-export)", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Today, Swipe, Gallery, Search, Menu in order", () => {
+	it("has Today, Swipe, Gallery, Themes, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Today",
 			"Swipe",
 			"Gallery",
-			"Search",
+			"Themes",
 			"Menu",
 		]);
 	});
@@ -33,10 +33,13 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/feeds/visual-preview/detail")).toBe(2);
 	});
 
-	it("returns 3 for /search and /feeds/search", () => {
-		expect(getActiveTabIndex("/search")).toBe(3);
-		expect(getActiveTabIndex("/feeds/search")).toBe(3);
-		expect(getActiveTabIndex("/feeds/search/results")).toBe(3);
+	it("returns 3 for /knowledge and sub-paths", () => {
+		expect(getActiveTabIndex("/knowledge")).toBe(3);
+		expect(
+			getActiveTabIndex(
+				"/knowledge/themes/01938e82-7c00-7a7b-9b10-000000000001",
+			),
+		).toBe(3);
 	});
 
 	it("returns 4 for /menu", () => {
@@ -44,14 +47,8 @@ describe("getActiveTabIndex", () => {
 	});
 
 	it("falls back to Menu (4) for secondary destinations surfaced by the Menu page", () => {
-		expect(getActiveTabIndex("/home")).toBe(4);
-		expect(getActiveTabIndex("/knowledge")).toBe(4);
-		expect(
-			getActiveTabIndex(
-				"/knowledge/themes/01938e82-7c00-7a7b-9b10-000000000001",
-			),
-		).toBe(4);
-		expect(getActiveTabIndex("/knowledge/trail")).toBe(4);
+		expect(getActiveTabIndex("/search")).toBe(4);
+		expect(getActiveTabIndex("/feeds/search")).toBe(4);
 		expect(getActiveTabIndex("/augur")).toBe(4);
 		expect(getActiveTabIndex("/augur/history")).toBe(4);
 		expect(getActiveTabIndex("/feeds")).toBe(4);

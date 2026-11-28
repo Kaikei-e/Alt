@@ -16,7 +16,7 @@ import { goto } from "$app/navigation";
 // redirect would have taken.
 onMount(() => {
 	if (isMobile()) {
-		goto("/home", { replace: true });
+		goto("/today", { replace: true });
 	}
 });
 </script>
@@ -36,11 +36,11 @@ onMount(() => {
 			Tag Verse is available on desktop only.
 		</p>
 		<a
-			href="/home"
+			href="/today"
 			class="text-sm underline underline-offset-4"
 			style="color: var(--text-primary);"
 		>
-			Go to Knowledge Home
+			Go to Today
 		</a>
 	</div>
 {/if}

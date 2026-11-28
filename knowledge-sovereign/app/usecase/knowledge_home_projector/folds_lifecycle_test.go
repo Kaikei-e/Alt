@@ -218,6 +218,33 @@ func TestProjector_FoldsSummarySuperseded(t *testing.T) {
 	assert.Equal(t, "the old excerpt", prevRef["previous_summary_excerpt"])
 }
 
+func TestProjector_FoldsSummaryRetracted(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 11, 28, 15, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"reason":     "quality_deleted",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "SummaryRetracted", articleID.String(), occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	itemKey := fmt.Sprintf("article:%s", articleID)
+	cleared, ok := repo.summaryClears[itemKey]
+	require.True(t, ok, "expected ClearKnowledgeHomeItemSummary to be called for retracted summary")
+	assert.Equal(t, user.String(), cleared.UserID)
+	assert.Equal(t, tenant.String(), cleared.TenantID)
+	assert.Equal(t, 1, cleared.ProjectionVersion)
+	assert.True(t, occurredAt.Equal(cleared.OccurredAt))
+	assert.Equal(t, int64(1), repo.checkpoint)
+}
+
 func TestProjector_FoldsTagSetSuperseded(t *testing.T) {
 	tenant := uuid.New()
 	user := userPtr()

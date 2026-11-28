@@ -184,6 +184,12 @@ const (
 	// KnowledgeSovereignServiceListReadingThemesProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's ListReadingThemes RPC.
 	KnowledgeSovereignServiceListReadingThemesProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes"
+	// KnowledgeSovereignServiceListReadingAnnotationsProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's ListReadingAnnotations RPC.
+	KnowledgeSovereignServiceListReadingAnnotationsProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingAnnotations"
+	// KnowledgeSovereignServiceListReadingThemeCurationsProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's ListReadingThemeCurations RPC.
+	KnowledgeSovereignServiceListReadingThemeCurationsProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemeCurations"
 )
 
 // KnowledgeSovereignServiceClient is a client for the
@@ -251,11 +257,13 @@ type KnowledgeSovereignServiceClient interface {
 	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
 	// item, newest first — the patch-exit read (D26).
 	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
-	// === Reading (Read Today queue & reading sources) ===
+	// === Reading (Read Today queue, reading sources, themes, annotations, curations) ===
 	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
 	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 	ListReadingSourcesInWindow(context.Context, *connect.Request[v1.ListReadingSourcesInWindowRequest]) (*connect.Response[v1.ListReadingSourcesInWindowResponse], error)
 	ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error)
+	ListReadingAnnotations(context.Context, *connect.Request[v1.ListReadingAnnotationsRequest]) (*connect.Response[v1.ListReadingAnnotationsResponse], error)
+	ListReadingThemeCurations(context.Context, *connect.Request[v1.ListReadingThemeCurationsRequest]) (*connect.Response[v1.ListReadingThemeCurationsResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -570,6 +578,18 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemes")),
 			connect.WithClientOptions(opts...),
 		),
+		listReadingAnnotations: connect.NewClient[v1.ListReadingAnnotationsRequest, v1.ListReadingAnnotationsResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceListReadingAnnotationsProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingAnnotations")),
+			connect.WithClientOptions(opts...),
+		),
+		listReadingThemeCurations: connect.NewClient[v1.ListReadingThemeCurationsRequest, v1.ListReadingThemeCurationsResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceListReadingThemeCurationsProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemeCurations")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -625,6 +645,8 @@ type knowledgeSovereignServiceClient struct {
 	countReadingSourcesSince   *connect.Client[v1.CountReadingSourcesSinceRequest, v1.CountReadingSourcesSinceResponse]
 	listReadingSourcesInWindow *connect.Client[v1.ListReadingSourcesInWindowRequest, v1.ListReadingSourcesInWindowResponse]
 	listReadingThemes          *connect.Client[v1.ListReadingThemesRequest, v1.ListReadingThemesResponse]
+	listReadingAnnotations     *connect.Client[v1.ListReadingAnnotationsRequest, v1.ListReadingAnnotationsResponse]
+	listReadingThemeCurations  *connect.Client[v1.ListReadingThemeCurationsRequest, v1.ListReadingThemeCurationsResponse]
 }
 
 // ApplyProjectionMutation calls
@@ -894,6 +916,18 @@ func (c *knowledgeSovereignServiceClient) ListReadingThemes(ctx context.Context,
 	return c.listReadingThemes.CallUnary(ctx, req)
 }
 
+// ListReadingAnnotations calls
+// services.sovereign.v1.KnowledgeSovereignService.ListReadingAnnotations.
+func (c *knowledgeSovereignServiceClient) ListReadingAnnotations(ctx context.Context, req *connect.Request[v1.ListReadingAnnotationsRequest]) (*connect.Response[v1.ListReadingAnnotationsResponse], error) {
+	return c.listReadingAnnotations.CallUnary(ctx, req)
+}
+
+// ListReadingThemeCurations calls
+// services.sovereign.v1.KnowledgeSovereignService.ListReadingThemeCurations.
+func (c *knowledgeSovereignServiceClient) ListReadingThemeCurations(ctx context.Context, req *connect.Request[v1.ListReadingThemeCurationsRequest]) (*connect.Response[v1.ListReadingThemeCurationsResponse], error) {
+	return c.listReadingThemeCurations.CallUnary(ctx, req)
+}
+
 // KnowledgeSovereignServiceHandler is an implementation of the
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
@@ -959,11 +993,13 @@ type KnowledgeSovereignServiceHandler interface {
 	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
 	// item, newest first — the patch-exit read (D26).
 	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
-	// === Reading (Read Today queue & reading sources) ===
+	// === Reading (Read Today queue, reading sources, themes, annotations, curations) ===
 	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
 	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 	ListReadingSourcesInWindow(context.Context, *connect.Request[v1.ListReadingSourcesInWindowRequest]) (*connect.Response[v1.ListReadingSourcesInWindowResponse], error)
 	ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error)
+	ListReadingAnnotations(context.Context, *connect.Request[v1.ListReadingAnnotationsRequest]) (*connect.Response[v1.ListReadingAnnotationsResponse], error)
+	ListReadingThemeCurations(context.Context, *connect.Request[v1.ListReadingThemeCurationsRequest]) (*connect.Response[v1.ListReadingThemeCurationsResponse], error)
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1273,6 +1309,18 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemes")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeSovereignServiceListReadingAnnotationsHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceListReadingAnnotationsProcedure,
+		svc.ListReadingAnnotations,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingAnnotations")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceListReadingThemeCurationsHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceListReadingThemeCurationsProcedure,
+		svc.ListReadingThemeCurations,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemeCurations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.sovereign.v1.KnowledgeSovereignService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeSovereignServiceApplyProjectionMutationProcedure:
@@ -1375,6 +1423,10 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceListReadingSourcesInWindowHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceListReadingThemesProcedure:
 			knowledgeSovereignServiceListReadingThemesHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceListReadingAnnotationsProcedure:
+			knowledgeSovereignServiceListReadingAnnotationsHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceListReadingThemeCurationsProcedure:
+			knowledgeSovereignServiceListReadingThemeCurationsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1582,4 +1634,12 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingSourcesInWindow(
 
 func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReadingThemes is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingAnnotations(context.Context, *connect.Request[v1.ListReadingAnnotationsRequest]) (*connect.Response[v1.ListReadingAnnotationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReadingAnnotations is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingThemeCurations(context.Context, *connect.Request[v1.ListReadingThemeCurationsRequest]) (*connect.Response[v1.ListReadingThemeCurationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReadingThemeCurations is not implemented"))
 }

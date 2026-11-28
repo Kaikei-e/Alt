@@ -97,16 +97,6 @@ onMount(() => {
 			</ul>
 		{/if}
 	</main>
-
-	<footer class="themes-footer">
-		<a
-			href="/knowledge/trail"
-			class="quiet-link"
-			data-testid="knowledge-trail-link"
-		>
-			Knowledge Trail
-		</a>
-	</footer>
 </div>
 
 <style>
@@ -256,27 +246,6 @@ onMount(() => {
 		font-size: 0.92rem;
 		line-height: 1.5;
 		color: var(--alt-slate);
-	}
-
-	.themes-footer {
-		margin-top: 1.25rem;
-	}
-
-	.quiet-link {
-		display: inline-flex;
-		align-items: center;
-		min-height: 44px;
-		min-width: 44px;
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		color: var(--alt-slate);
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-		touch-action: manipulation;
-	}
-
-	.quiet-link:active {
-		color: var(--alt-charcoal);
 	}
 
 	@keyframes pulse {

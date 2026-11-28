@@ -21,6 +21,7 @@ import (
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
+	"alt/orchestrator/usecase/reading_curation_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
@@ -121,6 +122,12 @@ func (fakeReadingTestPorts) ListReadingThemes(context.Context, uuid.UUID, int32)
 func (fakeReadingTestPorts) GetTheme(context.Context, uuid.UUID, uuid.UUID, *int32) (*domain.ReadingThemePage, error) {
 	return nil, nil
 }
+func (fakeReadingTestPorts) ListArticleAnnotations(context.Context, uuid.UUID, []uuid.UUID, int32) ([]domain.ArticleAnnotation, error) {
+	return nil, nil
+}
+func (fakeReadingTestPorts) ListThemeCurations(context.Context, uuid.UUID, uuid.UUID, int32) ([]domain.ThemeCuration, error) {
+	return nil, nil
+}
 
 type fakeSubscriptionTestPort struct{}
 
@@ -174,6 +181,12 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	listThemesUsecase := reading_theme_usecase.NewListThemesUsecase(readingPorts)
 	getThemeUsecase := reading_theme_usecase.NewGetThemeUsecase(readingPorts)
 	recordThemeOpenedUsecase := reading_theme_usecase.NewRecordThemeOpenedUsecase(readingPorts, fixedNow)
+	saveAnnotationUsecase := reading_curation_usecase.NewSaveArticleAnnotationUsecase(readingPorts, fixedNow)
+	deleteAnnotationUsecase := reading_curation_usecase.NewDeleteArticleAnnotationUsecase(readingPorts, fixedNow)
+	listAnnotationsUsecase := reading_curation_usecase.NewListArticleAnnotationsUsecase(readingPorts)
+	curateThemeUsecase := reading_curation_usecase.NewCurateThemeItemUsecase(readingPorts, fixedNow)
+	removeThemeCurationUsecase := reading_curation_usecase.NewRemoveThemeCurationUsecase(readingPorts, fixedNow)
+	listThemeCurationsUsecase := reading_curation_usecase.NewListThemeCurationsUsecase(readingPorts)
 	setCapUsecase := subscription_usecase.NewSetSubscriptionDailyCapUsecase(fakeSubscriptionTestPort{})
 	inflowUsecase := feed_inflow_stats_usecase.NewFeedInflowStatsUsecase(fakeFeedInflowTestPorts{}, fakeFeedInflowTestPorts{})
 
@@ -187,6 +200,12 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 			ListThemesUsecase:              listThemesUsecase,
 			GetThemeUsecase:                getThemeUsecase,
 			RecordThemeOpenedUsecase:       recordThemeOpenedUsecase,
+			SaveArticleAnnotationUsecase:   saveAnnotationUsecase,
+			DeleteArticleAnnotationUsecase: deleteAnnotationUsecase,
+			ListArticleAnnotationsUsecase:  listAnnotationsUsecase,
+			CurateThemeItemUsecase:         curateThemeUsecase,
+			RemoveThemeCurationUsecase:     removeThemeCurationUsecase,
+			ListThemeCurationsUsecase:      listThemeCurationsUsecase,
 			SetSubscriptionDailyCapUsecase: setCapUsecase,
 			FeedInflowStatsUsecase:         inflowUsecase,
 			Search:                         &di.SearchModule{},

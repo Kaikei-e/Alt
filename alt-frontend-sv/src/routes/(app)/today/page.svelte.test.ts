@@ -67,7 +67,9 @@ vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
 
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
 import {
+	AnnotationStance,
 	getReadTodayQueue,
+	listArticleAnnotations,
 	recordReadingEvents,
 	unqueueArticle,
 } from "#lib/connect/reading.js";
@@ -109,6 +111,8 @@ describe("/today page", () => {
 			{} as ReturnType<typeof createClientTransport>,
 		);
 		vi.mocked(getReadTodayQueue).mockReset();
+		vi.mocked(listArticleAnnotations).mockReset();
+		vi.mocked(listArticleAnnotations).mockResolvedValue([]);
 		vi.mocked(unqueueArticle).mockReset();
 		vi.mocked(unqueueArticle).mockResolvedValue(undefined);
 	});
@@ -328,5 +332,40 @@ describe("/today page", () => {
 		});
 		await expect.element(notice).toBeVisible();
 		expect(readTodayQueue.pendingNotice).toBeNull();
+	});
+
+	it("renders Revisit your takeaways recall section when annotations exist and hides it when empty", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
+		vi.mocked(listArticleAnnotations).mockResolvedValueOnce([
+			{
+				annotationId: "ann-q1",
+				articleId: "01938e82-7c00-7a7b-9b10-200000000001",
+				stance: AnnotationStance.QUESTION,
+				excerpt: "Memory arenas avoid fragmentation.",
+				note: "Can we apply this to projector batches?",
+				createdAt: new Date("2026-11-28T02:00:00Z"),
+			},
+		]);
+
+		render(Page);
+		await settle();
+
+		const recallSection = page.getByTestId("today-recall-section");
+		await expect.element(recallSection).toBeInTheDocument();
+		await expect
+			.element(
+				recallSection.getByText("Can we apply this to projector batches?"),
+			)
+			.toBeInTheDocument();
+		await expect
+			.element(recallSection.getByRole("link", { name: "Open article" }))
+			.toHaveAttribute(
+				"href",
+				"/articles/01938e82-7c00-7a7b-9b10-200000000001",
+			);
 	});
 });

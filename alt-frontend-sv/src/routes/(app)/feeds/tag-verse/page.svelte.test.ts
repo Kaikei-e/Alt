@@ -31,12 +31,12 @@ describe("Tag Verse page", () => {
 		vi.mocked(goto).mockImplementation(async () => {});
 	});
 
-	it("sends a phone-sized arrival to Knowledge Home", async () => {
+	it("sends a phone-sized arrival to Today", async () => {
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);
 		render(Page);
 		await settle();
 
-		expect(goto).toHaveBeenCalledWith("/home", { replace: true });
+		expect(goto).toHaveBeenCalledWith("/today", { replace: true });
 	});
 
 	it("gives the phone notice a way onward", async () => {
@@ -47,7 +47,7 @@ describe("Tag Verse page", () => {
 		// happened — a rotation, or a redirect that did not land — so it has to
 		// carry its own exit rather than assume one.
 		await expect
-			.element(page.getByRole("link", { name: /knowledge home/i }))
+			.element(page.getByRole("link", { name: /go to today/i }))
 			.toBeInTheDocument();
 	});
 
@@ -64,7 +64,7 @@ describe("Tag Verse page", () => {
 		// of the page; the notice above is the answer instead.
 		expect(goto).not.toHaveBeenCalled();
 		await expect
-			.element(page.getByRole("link", { name: /knowledge home/i }))
+			.element(page.getByRole("link", { name: /go to today/i }))
 			.toBeInTheDocument();
 	});
 });

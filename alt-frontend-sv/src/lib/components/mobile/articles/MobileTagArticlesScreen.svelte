@@ -110,7 +110,7 @@ function handleOpenArticle(index: number) {
 
 <div class="flex flex-col h-full" style="background: var(--app-bg);">
 	<header class="flex items-center gap-3 px-4 py-3 border-b" style="border-color: var(--surface-border);">
-		<a href="/home" class="p-1">
+		<a href="/today" class="p-1">
 			<ArrowLeft size={20} style="color: var(--text-primary);" />
 		</a>
 		<div class="flex items-center gap-2">

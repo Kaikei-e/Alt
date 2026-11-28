@@ -50,12 +50,12 @@ describe("Dashboard page", () => {
 		});
 	});
 
-	it("sends a phone-sized arrival to Knowledge Home", async () => {
+	it("sends a phone-sized arrival to Today", async () => {
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);
 		render(Page);
 		await settle();
 
-		expect(goto).toHaveBeenCalledWith("/home", { replace: true });
+		expect(goto).toHaveBeenCalledWith("/today", { replace: true });
 	});
 
 	it("renders the brief when the app opens at a desktop width", async () => {
@@ -83,7 +83,7 @@ describe("Dashboard page", () => {
 		// rotation, so the sentence became a permanent lie with nothing on
 		// screen to act on. Whatever it says now, it has to be actionable.
 		await expect
-			.element(page.getByRole("link", { name: /knowledge home/i }))
+			.element(page.getByRole("link", { name: /go to today/i }))
 			.toBeInTheDocument();
 	});
 

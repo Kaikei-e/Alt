@@ -48,7 +48,7 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 // permanent lie with nothing to act on.
 onMount(() => {
 	if (isMobile()) {
-		goto("/home", { replace: true });
+		goto("/today", { replace: true });
 		return;
 	}
 
@@ -137,7 +137,7 @@ onMount(() => {
 			The brief is typeset for a wide screen. Turn the phone back to
 			landscape to read it here.
 		</p>
-		<a class="narrow-link" href="/home">Go to Knowledge Home</a>
+		<a class="narrow-link" href="/today">Go to Today</a>
 	</div>
 {/if}
 

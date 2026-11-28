@@ -18,7 +18,13 @@ import {
 	createClientTransport,
 	streamAugurChat,
 } from "#lib/connect/index.js";
+import { curateThemeItem, ThemeCurationKind } from "#lib/connect/reading.js";
+import {
+	clampMicroText,
+	MAX_CURATION_TEXT_LENGTH,
+} from "#lib/reading/curation-helpers.js";
 import { prefersReducedMotion } from "#lib/stores/motion.svelte.js";
+import { parseAugurUserMessage } from "#lib/utils/augur-entry.js";
 import { formatAugurFallbackMessage } from "#lib/utils/augurFallback.js";
 import {
 	createTypewriterReveal,
@@ -56,6 +62,8 @@ interface Props {
 	initialQuestion?: string;
 	initialMessages?: Message[];
 	initialConversationId?: string;
+	themeId?: string | null;
+	themeTitle?: string | null;
 	onConversationIdChange?: (id: string) => void;
 }
 
@@ -64,11 +72,16 @@ const {
 	initialQuestion = "",
 	initialMessages = [],
 	initialConversationId = "",
+	themeId = null,
+	themeTitle = null,
 	onConversationIdChange,
 }: Props = $props();
 
 let messages = $state<Message[]>(untrack(() => [...initialMessages]));
 let conversationId = $state<string>(untrack(() => initialConversationId));
+let promotedMessageIds = $state<Record<string, boolean>>({});
+let promotingMessageId = $state<string | null>(null);
+let promoteError = $state<string | null>(null);
 
 let inputValue = $state("");
 let isLoading = $state(false);
@@ -117,6 +130,44 @@ let railActiveIndex = $state(-1);
 
 function focusCitation(index: number) {
 	railActiveIndex = index;
+}
+
+function precedingUserQuestionFor(assistantIndex: number): string {
+	for (let i = assistantIndex - 1; i >= 0; i--) {
+		const prev = messages[i];
+		if (prev?.role === "user" && prev.message.trim()) {
+			return parseAugurUserMessage(prev.message).question.trim();
+		}
+	}
+	return "";
+}
+
+async function handlePromoteInsight(msg: Message, assistantIndex: number) {
+	if (!themeId || !msg.message.trim() || promotedMessageIds[msg.id]) return;
+	if (promotingMessageId !== null) return;
+
+	promotingMessageId = msg.id;
+	promoteError = null;
+	try {
+		const userQuestion = precedingUserQuestionFor(assistantIndex);
+		const insightNote = clampMicroText(msg.message, MAX_CURATION_TEXT_LENGTH);
+		const targetText = clampMicroText(
+			userQuestion || insightNote,
+			MAX_CURATION_TEXT_LENGTH,
+		);
+		await curateThemeItem(createClientTransport(), {
+			themeId,
+			kind: ThemeCurationKind.PROMOTE_AUGUR_INSIGHT,
+			targetText,
+			userNote: insightNote,
+			augurConversationId: conversationId,
+		});
+		promotedMessageIds = { ...promotedMessageIds, [msg.id]: true };
+	} catch {
+		promoteError = "Could not save insight to theme. Please try again.";
+	} finally {
+		promotingMessageId = null;
+	}
 }
 
 // Auto-scroll, suppressed when the reader scrolls up
@@ -428,6 +479,24 @@ $effect(() => {
 
 <div class="augur-shell" class:revealed class:is-empty={!hasMessages}>
 	<div class="augur-column">
+		{#if themeId}
+			<div class="theme-context-banner" data-testid="augur-theme-banner">
+				<span class="theme-context-label">
+					Theme: {themeTitle || "Linked Theme"}
+				</span>
+				<a
+					href={`/knowledge/themes/${encodeURIComponent(themeId)}`}
+					class="theme-context-link"
+				>
+					Back to theme
+				</a>
+			</div>
+		{/if}
+		{#if promoteError}
+			<p class="promote-error" role="alert" data-testid="augur-promote-error">
+				{promoteError}
+			</p>
+		{/if}
 		<div bind:this={threadContainer} class="augur-thread" onscroll={handleScroll}>
 			{#if !hasMessages}
 				<!-- Empty state: the invitation -->
@@ -439,15 +508,24 @@ $effect(() => {
 			{/if}
 
 			{#each messages as msg, idx (msg.id)}
+				{@const isTurnStreaming =
+					idx === messages.length - 1 && msg.role === "assistant" && isLoading}
 				<ThreadEntry
 					message={msg.message}
 					role={msg.role}
 					timestamp={msg.timestamp}
 					citations={msg.citations}
 					index={idx}
-					streaming={idx === messages.length - 1 &&
-						msg.role === "assistant" &&
-						isLoading}
+					streaming={isTurnStreaming}
+					canPromoteToTheme={Boolean(
+						themeId &&
+							msg.role === "assistant" &&
+							!msg.failed &&
+							msg.message.trim(),
+					)}
+					isPromotedToTheme={Boolean(promotedMessageIds[msg.id])}
+					isPromotingToTheme={promotingMessageId === msg.id}
+					onPromoteToTheme={() => void handlePromoteInsight(msg, idx)}
 				/>
 				{#if idx === messages.length - 1 && msg.role === "assistant" && isLoading && isProvisional && statusText}
 					<div class="stage-hint" role="status">
@@ -535,6 +613,40 @@ $effect(() => {
 		min-height: 0;
 	}
 	.augur-rail-slot { display: none; }
+
+	.theme-context-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.45rem 1rem;
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
+		background: var(--surface-2, #f5f4f1);
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.72rem;
+		color: var(--alt-slate, #666);
+		flex-shrink: 0;
+	}
+	.theme-context-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.theme-context-link {
+		flex-shrink: 0;
+		color: var(--alt-primary, #2f4f4f);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+	.promote-error {
+		margin: 0.5rem 1rem 0;
+		padding: 0.4rem 0.65rem;
+		border-left: 3px solid var(--alt-error, #8c1d1d);
+		background: var(--surface-2, #f5f4f1);
+		font-size: 0.8rem;
+		color: var(--alt-error, #8c1d1d);
+	}
 
 	/* ===== Thread ===== */
 	.augur-thread {

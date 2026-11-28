@@ -78,6 +78,8 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"RecordReadingEventsUsecase",
 				"QueueArticleUsecase", "UnqueueArticleUsecase", "GetReadTodayQueueUsecase",
 				"ListThemesUsecase", "GetThemeUsecase", "RecordThemeOpenedUsecase",
+				"SaveArticleAnnotationUsecase", "DeleteArticleAnnotationUsecase", "ListArticleAnnotationsUsecase",
+				"CurateThemeItemUsecase", "RemoveThemeCurationUsecase", "ListThemeCurationsUsecase",
 				"SetSubscriptionDailyCapUsecase", "FeedInflowStatsUsecase",
 			},
 		},

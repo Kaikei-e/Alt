@@ -81,6 +81,8 @@ type ReadOperations interface {
 	CountReadingSourcesSince(ctx context.Context, userID uuid.UUID, since time.Time) (int, error)
 	ListReadingSourcesInWindow(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]sovereign_db.ReadingSource, error)
 	ListReadingThemes(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.ReadingTheme, error)
+	ListReadingAnnotations(ctx context.Context, userID uuid.UUID, articleIDs []uuid.UUID, limit int) ([]sovereign_db.ReadingAnnotation, error)
+	ListReadingThemeCurations(ctx context.Context, userID, themeID uuid.UUID, limit int) ([]sovereign_db.ReadingThemeCuration, error)
 }
 
 // Compile-time check.

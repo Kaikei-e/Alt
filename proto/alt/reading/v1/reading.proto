@@ -301,6 +301,176 @@ message RecordThemeOpenedRequest {
 // RecordThemeOpenedResponse acknowledges the theme opened event.
 message RecordThemeOpenedResponse {}
 
+// AnnotationStance classifies the user's epistemic reaction to an article takeaway.
+enum AnnotationStance {
+  // Default unspecified stance.
+  ANNOTATION_STANCE_UNSPECIFIED = 0;
+  // Something unexpected or counterintuitive.
+  ANNOTATION_STANCE_SURPRISE = 1;
+  // An open question raised while reading.
+  ANNOTATION_STANCE_QUESTION = 2;
+  // Tension or contradiction against prior understanding.
+  ANNOTATION_STANCE_CONTRADICTION = 3;
+  // Core takeaway or synthesized insight.
+  ANNOTATION_STANCE_INSIGHT = 4;
+}
+
+// ArticleAnnotation represents a user-authored micro-externalization attached to a read article.
+message ArticleAnnotation {
+  // Unique identifier of the annotation.
+  string annotation_id = 1;
+  // Identifier of the source article.
+  string article_id = 2;
+  // User's epistemic stance on the excerpt or note.
+  AnnotationStance stance = 3;
+  // Optional short excerpt picked from the article (plain text, max 500 chars).
+  string excerpt = 4;
+  // Optional 1-line user note or question (plain text, max 500 chars).
+  string note = 5;
+  // Timestamp when the annotation was created.
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// SaveArticleAnnotationRequest records a new article micro-externalization.
+message SaveArticleAnnotationRequest {
+  // Identifier of the article being annotated.
+  string article_id = 1;
+  // Epistemic stance for this annotation.
+  AnnotationStance stance = 2;
+  // Optional excerpt selected from the article body.
+  string excerpt = 3;
+  // Optional 1-line user note.
+  string note = 4;
+  // Client-generated UUID used to deduplicate retried deliveries.
+  string client_event_id = 5;
+  // Client-observed creation timestamp.
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// SaveArticleAnnotationResponse returns the newly saved annotation.
+message SaveArticleAnnotationResponse {
+  // Saved annotation record.
+  ArticleAnnotation annotation = 1;
+}
+
+// DeleteArticleAnnotationRequest removes a previously saved article annotation.
+message DeleteArticleAnnotationRequest {
+  // Identifier of the annotation to remove.
+  string annotation_id = 1;
+  // Client-generated UUID used to deduplicate retried deliveries.
+  string client_event_id = 2;
+  // Client-observed deletion timestamp.
+  google.protobuf.Timestamp deleted_at = 3;
+}
+
+// DeleteArticleAnnotationResponse acknowledges the deletion.
+message DeleteArticleAnnotationResponse {}
+
+// ListArticleAnnotationsRequest lists active annotations for the calling user.
+message ListArticleAnnotationsRequest {
+  // Optional list of article IDs to filter by; empty returns recent annotations across all articles.
+  repeated string article_ids = 1;
+  // Maximum number of annotations to return (0 uses server default).
+  int32 limit = 2;
+}
+
+// ListArticleAnnotationsResponse returns matching annotations newest first.
+message ListArticleAnnotationsResponse {
+  // Active annotations belonging to the calling user.
+  repeated ArticleAnnotation annotations = 1;
+}
+
+// ThemeCurationKind classifies a user co-creation action on a theme page.
+enum ThemeCurationKind {
+  // Default unspecified kind.
+  THEME_CURATION_KIND_UNSPECIFIED = 0;
+  // Pin a generated key point as confirmed/high-priority.
+  THEME_CURATION_KIND_PIN_KEY_POINT = 1;
+  // Dismiss a noisy or incorrect generated key point.
+  THEME_CURATION_KIND_DISMISS_KEY_POINT = 2;
+  // Add a user-authored open question to the theme.
+  THEME_CURATION_KIND_ADD_QUESTION = 3;
+  // Mark an open question resolved with an optional synthesis note.
+  THEME_CURATION_KIND_RESOLVE_QUESTION = 4;
+  // Add a user seed note or hypothesis to steer future theme versions.
+  THEME_CURATION_KIND_ADD_SEED_NOTE = 5;
+  // Promote an Ask Augur insight into the theme with conversation provenance.
+  THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT = 6;
+}
+
+// ThemeCuration represents one active user curation on a theme page.
+message ThemeCuration {
+  // Unique identifier of the curation.
+  string curation_id = 1;
+  // Identifier of the target theme.
+  string theme_id = 2;
+  // Co-creation action kind.
+  ThemeCurationKind kind = 3;
+  // Deterministic hash identifying a target generated sentence (optional for user-added items).
+  string target_hash = 4;
+  // Text of the curated sentence, user question, or promoted insight.
+  string target_text = 5;
+  // Optional 1-line user note or synthesis rationale.
+  string user_note = 6;
+  // Optional Augur conversation ID when promoted from Ask Augur.
+  string augur_conversation_id = 7;
+  // Timestamp when the curation was recorded.
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// CurateThemeItemRequest records a new co-creation action on a theme page.
+message CurateThemeItemRequest {
+  // Identifier of the target theme.
+  string theme_id = 1;
+  // Co-creation action kind.
+  ThemeCurationKind kind = 2;
+  // Optional deterministic hash of the target sentence.
+  string target_hash = 3;
+  // Curated sentence, question, or promoted insight text.
+  string target_text = 4;
+  // Optional user note or answer.
+  string user_note = 5;
+  // Optional Augur conversation ID provenance.
+  string augur_conversation_id = 6;
+  // Client-generated UUID used to deduplicate retried deliveries.
+  string client_event_id = 7;
+  // Client-observed creation timestamp.
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// CurateThemeItemResponse returns the saved curation.
+message CurateThemeItemResponse {
+  // Saved theme curation record.
+  ThemeCuration curation = 1;
+}
+
+// RemoveThemeCurationRequest removes (undoes) a theme curation.
+message RemoveThemeCurationRequest {
+  // Identifier of the curation to remove.
+  string curation_id = 1;
+  // Client-generated UUID used to deduplicate retried deliveries.
+  string client_event_id = 2;
+  // Client-observed removal timestamp.
+  google.protobuf.Timestamp removed_at = 3;
+}
+
+// RemoveThemeCurationResponse acknowledges removal.
+message RemoveThemeCurationResponse {}
+
+// ListThemeCurationsRequest lists active curations for a theme.
+message ListThemeCurationsRequest {
+  // Identifier of the theme.
+  string theme_id = 1;
+  // Maximum number of curations to return (0 uses server default).
+  int32 limit = 2;
+}
+
+// ListThemeCurationsResponse returns active curations for the theme.
+message ListThemeCurationsResponse {
+  // Active theme curations ordered newest first.
+  repeated ThemeCuration curations = 1;
+}
+
 // =============================================================================
 // Service
 // =============================================================================
@@ -324,4 +494,16 @@ service ReadingService {
   rpc GetTheme(GetThemeRequest) returns (GetThemeResponse);
   // Records that the user opened a theme page version.
   rpc RecordThemeOpened(RecordThemeOpenedRequest) returns (RecordThemeOpenedResponse);
+  // Records a user micro-externalization (excerpt, stance, 1-line note) on an article.
+  rpc SaveArticleAnnotation(SaveArticleAnnotationRequest) returns (SaveArticleAnnotationResponse);
+  // Removes a previously recorded article annotation.
+  rpc DeleteArticleAnnotation(DeleteArticleAnnotationRequest) returns (DeleteArticleAnnotationResponse);
+  // Lists active article annotations for the calling user.
+  rpc ListArticleAnnotations(ListArticleAnnotationsRequest) returns (ListArticleAnnotationsResponse);
+  // Records a user co-creation action (pin/dismiss/question/resolve/seed/promote) on a theme.
+  rpc CurateThemeItem(CurateThemeItemRequest) returns (CurateThemeItemResponse);
+  // Removes (undoes) a theme curation.
+  rpc RemoveThemeCuration(RemoveThemeCurationRequest) returns (RemoveThemeCurationResponse);
+  // Lists active user curations on a theme.
+  rpc ListThemeCurations(ListThemeCurationsRequest) returns (ListThemeCurationsResponse);
 }

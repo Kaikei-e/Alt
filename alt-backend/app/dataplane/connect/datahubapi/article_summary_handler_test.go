@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/dataplane/port/internal_article_port"
+	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/mocks"
 	"alt/shared/usecase/create_summary_version_usecase"
@@ -320,5 +321,86 @@ func TestHasUnsummarizedArticles_Unimplemented(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestSaveArticleSummary_PlaceholderSkipsVersioning(t *testing.T) {
+	placeholders := []string{
+		"本文が短すぎるため要約できませんでした。",
+		"本文が長すぎるため要約できませんでした。",
+		"本文をモデルが処理できなかったため要約できませんでした。",
+		"品質基準を満たす要約を生成できなかったため要約できませんでした。",
+	}
+
+	for _, text := range placeholders {
+		t.Run(text, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockSave := mocks.NewMockSaveArticleSummaryPort(ctrl)
+			mockVersion := mocks.NewMockCreateSummaryVersionPort(ctrl)
+			stubEvents := &stubKnowledgeEventPort{}
+
+			h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+				WithArticleIngestionPorts(nil, nil, mockSave, nil, nil, nil),
+				WithKnowledgeVersionUsecases(
+					create_summary_version_usecase.NewCreateSummaryVersionUsecase(mockVersion, stubEvents, &fakeSummaryVersionPort{}),
+					nil,
+				))
+
+			mockSave.EXPECT().SaveArticleSummary(gomock.Any(), gomock.Any()).Return(nil)
+			// Expect ZERO calls to CreateSummaryVersion and ZERO knowledge events emitted.
+
+			req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
+				ArticleId: "11111111-1111-1111-1111-111111111111",
+				UserId:    testTenantID,
+				Summary:   text,
+			})
+
+			resp, err := h.SaveArticleSummary(context.Background(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !resp.Msg.GetSuccess() {
+				t.Fatal("expected success")
+			}
+			if stubEvents.called {
+				t.Fatalf("expected 0 knowledge events for placeholder summary, got %+v", stubEvents.lastEvent)
+			}
+		})
+	}
+}
+
+func TestDeleteArticleSummary_EmitsSummaryRetracted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockDelete := mocks.NewMockDeleteArticleSummaryPort(ctrl)
+	mockGetArticle := mocks.NewMockGetArticleByIDPort(ctrl)
+	stubEvents := &stubKnowledgeEventPort{}
+
+	articleID := "11111111-1111-1111-1111-111111111111"
+	h := NewHandler(nil, nil, nil, nil, mockGetArticle, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithSummaryQualityPorts(mockDelete, nil, nil),
+		WithKnowledgeEventPort(stubEvents),
+	)
+
+	mockDelete.EXPECT().DeleteArticleSummary(gomock.Any(), articleID).Return(nil)
+	mockGetArticle.EXPECT().GetArticleByID(gomock.Any(), articleID).Return(&internal_article_port.ArticleWithTags{
+		ID:     articleID,
+		Title:  "Some Article",
+		UserID: testTenantID,
+	}, nil)
+
+	resp, err := h.DeleteArticleSummary(context.Background(), connect.NewRequest(&datahubv1.DeleteArticleSummaryRequest{
+		ArticleId: articleID,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Msg.GetSuccess() {
+		t.Fatal("expected success")
+	}
+	if !stubEvents.called {
+		t.Fatal("expected SummaryRetracted event to be appended")
+	}
+	if stubEvents.lastEvent.EventType != domain.EventSummaryRetracted {
+		t.Fatalf("expected event type %q, got %q", domain.EventSummaryRetracted, stubEvents.lastEvent.EventType)
 	}
 }

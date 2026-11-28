@@ -13,7 +13,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/reading/v1/reading.proto.
  */
 export const file_alt_reading_v1_reading: GenFile = /*@__PURE__*/
-  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgiTQoGT3BlbmVkEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIq4CCgxSZWFkaW5nRXZlbnQSFwoPY2xpZW50X2V2ZW50X2lkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5zdXJmYWNlX3ZpZXdlZBgKIAEoCzIdLmFsdC5yZWFkaW5nLnYxLlN1cmZhY2VWaWV3ZWRIABIxCgtyZWFjaGVkX2VuZBgLIAEoCzIaLmFsdC5yZWFkaW5nLnYxLlJlYWNoZWRFbmRIABI1Cg1zZXNzaW9uX2VuZGVkGAwgASgLMhwuYWx0LnJlYWRpbmcudjEuU2Vzc2lvbkVuZGVkSAASKAoGb3BlbmVkGA0gASgLMhYuYWx0LnJlYWRpbmcudjEuT3BlbmVkSABCBwoFZXZlbnQiSgoaUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QSLAoGZXZlbnRzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuUmVhZGluZ0V2ZW50Il0KG1JlY29yZFJlYWRpbmdFdmVudHNSZXNwb25zZRIQCghhY2NlcHRlZBgBIAEoBRISCgpkdXBsaWNhdGVzGAIgASgFEhgKEHJlYWRfYXJ0aWNsZV9pZHMYAyADKAkiyQEKEFJlYWRpbmdRdWV1ZUl0ZW0SEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSEQoJaW1hZ2VfdXJsGAUgASgJEi0KCXF1ZXVlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAipAEKE1F1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KB3N1cmZhY2UYBCABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSKKAQoUUXVldWVBcnRpY2xlUmVzcG9uc2USNAoHb3V0Y29tZRgBIAEoDjIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZU91dGNvbWUSLwoFaXRlbXMYAiADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgDIAEoBSJ1ChVVbnF1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFlVucXVldWVBcnRpY2xlUmVzcG9uc2UiSgoYR2V0UmVhZFRvZGF5UXVldWVSZXF1ZXN0Ei4KCnJlYWRfc2luY2UYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKGUdldFJlYWRUb2RheVF1ZXVlUmVzcG9uc2USLwoFaXRlbXMYASADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgCIAEoBRIYChByZWFkX2NvdW50X3NpbmNlGAMgASgFIhMKEUxpc3RUaGVtZXNSZXF1ZXN0IvcBCgxUaGVtZVN1bW1hcnkSEAoIdGhlbWVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSFgoObGF0ZXN0X3ZlcnNpb24YAyABKAUSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIuCgp1cGRhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5sYXN0X29wZW5lZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIAIgBARIbChNsYXN0X29wZW5lZF92ZXJzaW9uGAcgASgFQhEKD19sYXN0X29wZW5lZF9hdCJCChJMaXN0VGhlbWVzUmVzcG9uc2USLAoGdGhlbWVzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuVGhlbWVTdW1tYXJ5IkUKD0dldFRoZW1lUmVxdWVzdBIQCgh0aGVtZV9pZBgBIAEoCRIUCgd2ZXJzaW9uGAIgASgFSACIAQFCCgoIX3ZlcnNpb24iOQoNVGhlbWVTZW50ZW5jZRIMCgR0ZXh0GAEgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgCIAMoCSJMChJUaGVtZVRpbWVsaW5lRW50cnkSDAoEZGF0ZRgBIAEoCRIMCgR0ZXh0GAIgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgDIAMoCSI9CgtUaGVtZVNvdXJjZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCSJpCg9UaGVtZVZlcnNpb25SZWYSDwoHdmVyc2lvbhgBIAEoBRIuCgpjcmVhdGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1hcnRpY2xlX2NvdW50GAMgASgFIsIDChBHZXRUaGVtZVJlc3BvbnNlEhAKCHRoZW1lX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB3ZlcnNpb24YAyABKAUSFgoObGF0ZXN0X3ZlcnNpb24YBCABKAUSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMQoKa2V5X3BvaW50cxgGIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USNAoIdGltZWxpbmUYByADKAsyIi5hbHQucmVhZGluZy52MS5UaGVtZVRpbWVsaW5lRW50cnkSMwoMd2hhdF9jaGFuZ2VkGAggAygLMh0uYWx0LnJlYWRpbmcudjEuVGhlbWVTZW50ZW5jZRI1Cg5vcGVuX3F1ZXN0aW9ucxgJIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USLAoHc291cmNlcxgKIAMoCzIbLmFsdC5yZWFkaW5nLnYxLlRoZW1lU291cmNlEjEKCHZlcnNpb25zGAsgAygLMh8uYWx0LnJlYWRpbmcudjEuVGhlbWVWZXJzaW9uUmVmIoUBChhSZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QSEAoIdGhlbWVfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoBRIXCg9jbGllbnRfZXZlbnRfaWQYAyABKAkSLQoJb3BlbmVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIbChlSZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlKqYBCg5SZWFkaW5nU3VyZmFjZRIfChtSRUFESU5HX1NVUkZBQ0VfVU5TUEVDSUZJRUQQABIbChdSRUFESU5HX1NVUkZBQ0VfR0FMTEVSWRABEhkKFVJFQURJTkdfU1VSRkFDRV9TV0lQRRACEiAKHFJFQURJTkdfU1VSRkFDRV9BUlRJQ0xFX1BBR0UQAxIZChVSRUFESU5HX1NVUkZBQ0VfT1RIRVIQBCquAQoTUXVldWVBcnRpY2xlT3V0Y29tZRIlCiFRVUVVRV9BUlRJQ0xFX09VVENPTUVfVU5TUEVDSUZJRUQQABIgChxRVUVVRV9BUlRJQ0xFX09VVENPTUVfUVVFVUVEEAESKAokUVVFVUVfQVJUSUNMRV9PVVRDT01FX0FMUkVBRFlfUVVFVUVEEAISJAogUVVFVUVfQVJUSUNMRV9PVVRDT01FX1FVRVVFX0ZVTEwQAzK6BQoOUmVhZGluZ1NlcnZpY2USbgoTUmVjb3JkUmVhZGluZ0V2ZW50cxIqLmFsdC5yZWFkaW5nLnYxLlJlY29yZFJlYWRpbmdFdmVudHNSZXF1ZXN0GisuYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlElkKDFF1ZXVlQXJ0aWNsZRIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZVJlcXVlc3QaJC5hbHQucmVhZGluZy52MS5RdWV1ZUFydGljbGVSZXNwb25zZRJfCg5VbnF1ZXVlQXJ0aWNsZRIlLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVxdWVzdBomLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVzcG9uc2USaAoRR2V0UmVhZFRvZGF5UXVldWUSKC5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlc3BvbnNlElMKCkxpc3RUaGVtZXMSIS5hbHQucmVhZGluZy52MS5MaXN0VGhlbWVzUmVxdWVzdBoiLmFsdC5yZWFkaW5nLnYxLkxpc3RUaGVtZXNSZXNwb25zZRJNCghHZXRUaGVtZRIfLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVxdWVzdBogLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVzcG9uc2USaAoRUmVjb3JkVGhlbWVPcGVuZWQSKC5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlGgSItRgBQihaJmFsdC9nZW4vcHJvdG8vYWx0L3JlYWRpbmcvdjE7cmVhZGluZ3YxYgZwcm90bzM", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
+  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgiTQoGT3BlbmVkEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIq4CCgxSZWFkaW5nRXZlbnQSFwoPY2xpZW50X2V2ZW50X2lkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5zdXJmYWNlX3ZpZXdlZBgKIAEoCzIdLmFsdC5yZWFkaW5nLnYxLlN1cmZhY2VWaWV3ZWRIABIxCgtyZWFjaGVkX2VuZBgLIAEoCzIaLmFsdC5yZWFkaW5nLnYxLlJlYWNoZWRFbmRIABI1Cg1zZXNzaW9uX2VuZGVkGAwgASgLMhwuYWx0LnJlYWRpbmcudjEuU2Vzc2lvbkVuZGVkSAASKAoGb3BlbmVkGA0gASgLMhYuYWx0LnJlYWRpbmcudjEuT3BlbmVkSABCBwoFZXZlbnQiSgoaUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QSLAoGZXZlbnRzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuUmVhZGluZ0V2ZW50Il0KG1JlY29yZFJlYWRpbmdFdmVudHNSZXNwb25zZRIQCghhY2NlcHRlZBgBIAEoBRISCgpkdXBsaWNhdGVzGAIgASgFEhgKEHJlYWRfYXJ0aWNsZV9pZHMYAyADKAkiyQEKEFJlYWRpbmdRdWV1ZUl0ZW0SEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSEQoJaW1hZ2VfdXJsGAUgASgJEi0KCXF1ZXVlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAipAEKE1F1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KB3N1cmZhY2UYBCABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSKKAQoUUXVldWVBcnRpY2xlUmVzcG9uc2USNAoHb3V0Y29tZRgBIAEoDjIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZU91dGNvbWUSLwoFaXRlbXMYAiADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgDIAEoBSJ1ChVVbnF1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFlVucXVldWVBcnRpY2xlUmVzcG9uc2UiSgoYR2V0UmVhZFRvZGF5UXVldWVSZXF1ZXN0Ei4KCnJlYWRfc2luY2UYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKGUdldFJlYWRUb2RheVF1ZXVlUmVzcG9uc2USLwoFaXRlbXMYASADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgCIAEoBRIYChByZWFkX2NvdW50X3NpbmNlGAMgASgFIhMKEUxpc3RUaGVtZXNSZXF1ZXN0IvcBCgxUaGVtZVN1bW1hcnkSEAoIdGhlbWVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSFgoObGF0ZXN0X3ZlcnNpb24YAyABKAUSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIuCgp1cGRhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5sYXN0X29wZW5lZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIAIgBARIbChNsYXN0X29wZW5lZF92ZXJzaW9uGAcgASgFQhEKD19sYXN0X29wZW5lZF9hdCJCChJMaXN0VGhlbWVzUmVzcG9uc2USLAoGdGhlbWVzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuVGhlbWVTdW1tYXJ5IkUKD0dldFRoZW1lUmVxdWVzdBIQCgh0aGVtZV9pZBgBIAEoCRIUCgd2ZXJzaW9uGAIgASgFSACIAQFCCgoIX3ZlcnNpb24iOQoNVGhlbWVTZW50ZW5jZRIMCgR0ZXh0GAEgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgCIAMoCSJMChJUaGVtZVRpbWVsaW5lRW50cnkSDAoEZGF0ZRgBIAEoCRIMCgR0ZXh0GAIgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgDIAMoCSI9CgtUaGVtZVNvdXJjZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCSJpCg9UaGVtZVZlcnNpb25SZWYSDwoHdmVyc2lvbhgBIAEoBRIuCgpjcmVhdGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1hcnRpY2xlX2NvdW50GAMgASgFIsIDChBHZXRUaGVtZVJlc3BvbnNlEhAKCHRoZW1lX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB3ZlcnNpb24YAyABKAUSFgoObGF0ZXN0X3ZlcnNpb24YBCABKAUSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMQoKa2V5X3BvaW50cxgGIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USNAoIdGltZWxpbmUYByADKAsyIi5hbHQucmVhZGluZy52MS5UaGVtZVRpbWVsaW5lRW50cnkSMwoMd2hhdF9jaGFuZ2VkGAggAygLMh0uYWx0LnJlYWRpbmcudjEuVGhlbWVTZW50ZW5jZRI1Cg5vcGVuX3F1ZXN0aW9ucxgJIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USLAoHc291cmNlcxgKIAMoCzIbLmFsdC5yZWFkaW5nLnYxLlRoZW1lU291cmNlEjEKCHZlcnNpb25zGAsgAygLMh8uYWx0LnJlYWRpbmcudjEuVGhlbWVWZXJzaW9uUmVmIoUBChhSZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QSEAoIdGhlbWVfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoBRIXCg9jbGllbnRfZXZlbnRfaWQYAyABKAkSLQoJb3BlbmVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIbChlSZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlIr8BChFBcnRpY2xlQW5ub3RhdGlvbhIVCg1hbm5vdGF0aW9uX2lkGAEgASgJEhIKCmFydGljbGVfaWQYAiABKAkSMAoGc3RhbmNlGAMgASgOMiAuYWx0LnJlYWRpbmcudjEuQW5ub3RhdGlvblN0YW5jZRIPCgdleGNlcnB0GAQgASgJEgwKBG5vdGUYBSABKAkSLgoKY3JlYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAizAEKHFNhdmVBcnRpY2xlQW5ub3RhdGlvblJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIwCgZzdGFuY2UYAiABKA4yIC5hbHQucmVhZGluZy52MS5Bbm5vdGF0aW9uU3RhbmNlEg8KB2V4Y2VycHQYAyABKAkSDAoEbm90ZRgEIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYBSABKAkSLgoKY3JlYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiVgodU2F2ZUFydGljbGVBbm5vdGF0aW9uUmVzcG9uc2USNQoKYW5ub3RhdGlvbhgBIAEoCzIhLmFsdC5yZWFkaW5nLnYxLkFydGljbGVBbm5vdGF0aW9uIoABCh5EZWxldGVBcnRpY2xlQW5ub3RhdGlvblJlcXVlc3QSFQoNYW5ub3RhdGlvbl9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLgoKZGVsZXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQofRGVsZXRlQXJ0aWNsZUFubm90YXRpb25SZXNwb25zZSJDCh1MaXN0QXJ0aWNsZUFubm90YXRpb25zUmVxdWVzdBITCgthcnRpY2xlX2lkcxgBIAMoCRINCgVsaW1pdBgCIAEoBSJYCh5MaXN0QXJ0aWNsZUFubm90YXRpb25zUmVzcG9uc2USNgoLYW5ub3RhdGlvbnMYASADKAsyIS5hbHQucmVhZGluZy52MS5BcnRpY2xlQW5ub3RhdGlvbiLzAQoNVGhlbWVDdXJhdGlvbhITCgtjdXJhdGlvbl9pZBgBIAEoCRIQCgh0aGVtZV9pZBgCIAEoCRIvCgRraW5kGAMgASgOMiEuYWx0LnJlYWRpbmcudjEuVGhlbWVDdXJhdGlvbktpbmQSEwoLdGFyZ2V0X2hhc2gYBCABKAkSEwoLdGFyZ2V0X3RleHQYBSABKAkSEQoJdXNlcl9ub3RlGAYgASgJEh0KFWF1Z3VyX2NvbnZlcnNhdGlvbl9pZBgHIAEoCRIuCgpjcmVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKAAgoWQ3VyYXRlVGhlbWVJdGVtUmVxdWVzdBIQCgh0aGVtZV9pZBgBIAEoCRIvCgRraW5kGAIgASgOMiEuYWx0LnJlYWRpbmcudjEuVGhlbWVDdXJhdGlvbktpbmQSEwoLdGFyZ2V0X2hhc2gYAyABKAkSEwoLdGFyZ2V0X3RleHQYBCABKAkSEQoJdXNlcl9ub3RlGAUgASgJEh0KFWF1Z3VyX2NvbnZlcnNhdGlvbl9pZBgGIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYByABKAkSLgoKY3JlYXRlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiSgoXQ3VyYXRlVGhlbWVJdGVtUmVzcG9uc2USLwoIY3VyYXRpb24YASABKAsyHS5hbHQucmVhZGluZy52MS5UaGVtZUN1cmF0aW9uInoKGlJlbW92ZVRoZW1lQ3VyYXRpb25SZXF1ZXN0EhMKC2N1cmF0aW9uX2lkGAEgASgJEhcKD2NsaWVudF9ldmVudF9pZBgCIAEoCRIuCgpyZW1vdmVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIdChtSZW1vdmVUaGVtZUN1cmF0aW9uUmVzcG9uc2UiPAoZTGlzdFRoZW1lQ3VyYXRpb25zUmVxdWVzdBIQCgh0aGVtZV9pZBgBIAEoCRINCgVsaW1pdBgCIAEoBSJOChpMaXN0VGhlbWVDdXJhdGlvbnNSZXNwb25zZRIwCgljdXJhdGlvbnMYASADKAsyHS5hbHQucmVhZGluZy52MS5UaGVtZUN1cmF0aW9uKqYBCg5SZWFkaW5nU3VyZmFjZRIfChtSRUFESU5HX1NVUkZBQ0VfVU5TUEVDSUZJRUQQABIbChdSRUFESU5HX1NVUkZBQ0VfR0FMTEVSWRABEhkKFVJFQURJTkdfU1VSRkFDRV9TV0lQRRACEiAKHFJFQURJTkdfU1VSRkFDRV9BUlRJQ0xFX1BBR0UQAxIZChVSRUFESU5HX1NVUkZBQ0VfT1RIRVIQBCquAQoTUXVldWVBcnRpY2xlT3V0Y29tZRIlCiFRVUVVRV9BUlRJQ0xFX09VVENPTUVfVU5TUEVDSUZJRUQQABIgChxRVUVVRV9BUlRJQ0xFX09VVENPTUVfUVVFVUVEEAESKAokUVVFVUVfQVJUSUNMRV9PVVRDT01FX0FMUkVBRFlfUVVFVUVEEAISJAogUVVFVUVfQVJUSUNMRV9PVVRDT01FX1FVRVVFX0ZVTEwQAyq5AQoQQW5ub3RhdGlvblN0YW5jZRIhCh1BTk5PVEFUSU9OX1NUQU5DRV9VTlNQRUNJRklFRBAAEh4KGkFOTk9UQVRJT05fU1RBTkNFX1NVUlBSSVNFEAESHgoaQU5OT1RBVElPTl9TVEFOQ0VfUVVFU1RJT04QAhIjCh9BTk5PVEFUSU9OX1NUQU5DRV9DT05UUkFESUNUSU9OEAMSHQoZQU5OT1RBVElPTl9TVEFOQ0VfSU5TSUdIVBAEKrACChFUaGVtZUN1cmF0aW9uS2luZBIjCh9USEVNRV9DVVJBVElPTl9LSU5EX1VOU1BFQ0lGSUVEEAASJQohVEhFTUVfQ1VSQVRJT05fS0lORF9QSU5fS0VZX1BPSU5UEAESKQolVEhFTUVfQ1VSQVRJT05fS0lORF9ESVNNSVNTX0tFWV9QT0lOVBACEiQKIFRIRU1FX0NVUkFUSU9OX0tJTkRfQUREX1FVRVNUSU9OEAMSKAokVEhFTUVfQ1VSQVRJT05fS0lORF9SRVNPTFZFX1FVRVNUSU9OEAQSJQohVEhFTUVfQ1VSQVRJT05fS0lORF9BRERfU0VFRF9OT1RFEAUSLQopVEhFTUVfQ1VSQVRJT05fS0lORF9QUk9NT1RFX0FVR1VSX0lOU0lHSFQQBjLmCgoOUmVhZGluZ1NlcnZpY2USbgoTUmVjb3JkUmVhZGluZ0V2ZW50cxIqLmFsdC5yZWFkaW5nLnYxLlJlY29yZFJlYWRpbmdFdmVudHNSZXF1ZXN0GisuYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlElkKDFF1ZXVlQXJ0aWNsZRIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZVJlcXVlc3QaJC5hbHQucmVhZGluZy52MS5RdWV1ZUFydGljbGVSZXNwb25zZRJfCg5VbnF1ZXVlQXJ0aWNsZRIlLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVxdWVzdBomLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVzcG9uc2USaAoRR2V0UmVhZFRvZGF5UXVldWUSKC5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlc3BvbnNlElMKCkxpc3RUaGVtZXMSIS5hbHQucmVhZGluZy52MS5MaXN0VGhlbWVzUmVxdWVzdBoiLmFsdC5yZWFkaW5nLnYxLkxpc3RUaGVtZXNSZXNwb25zZRJNCghHZXRUaGVtZRIfLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVxdWVzdBogLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVzcG9uc2USaAoRUmVjb3JkVGhlbWVPcGVuZWQSKC5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlEnQKFVNhdmVBcnRpY2xlQW5ub3RhdGlvbhIsLmFsdC5yZWFkaW5nLnYxLlNhdmVBcnRpY2xlQW5ub3RhdGlvblJlcXVlc3QaLS5hbHQucmVhZGluZy52MS5TYXZlQXJ0aWNsZUFubm90YXRpb25SZXNwb25zZRJ6ChdEZWxldGVBcnRpY2xlQW5ub3RhdGlvbhIuLmFsdC5yZWFkaW5nLnYxLkRlbGV0ZUFydGljbGVBbm5vdGF0aW9uUmVxdWVzdBovLmFsdC5yZWFkaW5nLnYxLkRlbGV0ZUFydGljbGVBbm5vdGF0aW9uUmVzcG9uc2USdwoWTGlzdEFydGljbGVBbm5vdGF0aW9ucxItLmFsdC5yZWFkaW5nLnYxLkxpc3RBcnRpY2xlQW5ub3RhdGlvbnNSZXF1ZXN0Gi4uYWx0LnJlYWRpbmcudjEuTGlzdEFydGljbGVBbm5vdGF0aW9uc1Jlc3BvbnNlEmIKD0N1cmF0ZVRoZW1lSXRlbRImLmFsdC5yZWFkaW5nLnYxLkN1cmF0ZVRoZW1lSXRlbVJlcXVlc3QaJy5hbHQucmVhZGluZy52MS5DdXJhdGVUaGVtZUl0ZW1SZXNwb25zZRJuChNSZW1vdmVUaGVtZUN1cmF0aW9uEiouYWx0LnJlYWRpbmcudjEuUmVtb3ZlVGhlbWVDdXJhdGlvblJlcXVlc3QaKy5hbHQucmVhZGluZy52MS5SZW1vdmVUaGVtZUN1cmF0aW9uUmVzcG9uc2USawoSTGlzdFRoZW1lQ3VyYXRpb25zEikuYWx0LnJlYWRpbmcudjEuTGlzdFRoZW1lQ3VyYXRpb25zUmVxdWVzdBoqLmFsdC5yZWFkaW5nLnYxLkxpc3RUaGVtZUN1cmF0aW9uc1Jlc3BvbnNlGgSItRgBQihaJmFsdC9nZW4vcHJvdG8vYWx0L3JlYWRpbmcvdjE7cmVhZGluZ3YxYgZwcm90bzM", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
 
 /**
  * SurfaceViewed records that the user viewed a reading surface.
@@ -932,6 +932,498 @@ export const RecordThemeOpenedResponseSchema: GenMessage<RecordThemeOpenedRespon
   messageDesc(file_alt_reading_v1_reading, 24);
 
 /**
+ * ArticleAnnotation represents a user-authored micro-externalization attached to a read article.
+ *
+ * @generated from message alt.reading.v1.ArticleAnnotation
+ */
+export type ArticleAnnotation = Message<"alt.reading.v1.ArticleAnnotation"> & {
+  /**
+   * Unique identifier of the annotation.
+   *
+   * @generated from field: string annotation_id = 1;
+   */
+  annotationId: string;
+
+  /**
+   * Identifier of the source article.
+   *
+   * @generated from field: string article_id = 2;
+   */
+  articleId: string;
+
+  /**
+   * User's epistemic stance on the excerpt or note.
+   *
+   * @generated from field: alt.reading.v1.AnnotationStance stance = 3;
+   */
+  stance: AnnotationStance;
+
+  /**
+   * Optional short excerpt picked from the article (plain text, max 500 chars).
+   *
+   * @generated from field: string excerpt = 4;
+   */
+  excerpt: string;
+
+  /**
+   * Optional 1-line user note or question (plain text, max 500 chars).
+   *
+   * @generated from field: string note = 5;
+   */
+  note: string;
+
+  /**
+   * Timestamp when the annotation was created.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 6;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.ArticleAnnotation.
+ * Use `create(ArticleAnnotationSchema)` to create a new message.
+ */
+export const ArticleAnnotationSchema: GenMessage<ArticleAnnotation> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 25);
+
+/**
+ * SaveArticleAnnotationRequest records a new article micro-externalization.
+ *
+ * @generated from message alt.reading.v1.SaveArticleAnnotationRequest
+ */
+export type SaveArticleAnnotationRequest = Message<"alt.reading.v1.SaveArticleAnnotationRequest"> & {
+  /**
+   * Identifier of the article being annotated.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Epistemic stance for this annotation.
+   *
+   * @generated from field: alt.reading.v1.AnnotationStance stance = 2;
+   */
+  stance: AnnotationStance;
+
+  /**
+   * Optional excerpt selected from the article body.
+   *
+   * @generated from field: string excerpt = 3;
+   */
+  excerpt: string;
+
+  /**
+   * Optional 1-line user note.
+   *
+   * @generated from field: string note = 4;
+   */
+  note: string;
+
+  /**
+   * Client-generated UUID used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 5;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed creation timestamp.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 6;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.SaveArticleAnnotationRequest.
+ * Use `create(SaveArticleAnnotationRequestSchema)` to create a new message.
+ */
+export const SaveArticleAnnotationRequestSchema: GenMessage<SaveArticleAnnotationRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 26);
+
+/**
+ * SaveArticleAnnotationResponse returns the newly saved annotation.
+ *
+ * @generated from message alt.reading.v1.SaveArticleAnnotationResponse
+ */
+export type SaveArticleAnnotationResponse = Message<"alt.reading.v1.SaveArticleAnnotationResponse"> & {
+  /**
+   * Saved annotation record.
+   *
+   * @generated from field: alt.reading.v1.ArticleAnnotation annotation = 1;
+   */
+  annotation?: ArticleAnnotation | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.SaveArticleAnnotationResponse.
+ * Use `create(SaveArticleAnnotationResponseSchema)` to create a new message.
+ */
+export const SaveArticleAnnotationResponseSchema: GenMessage<SaveArticleAnnotationResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 27);
+
+/**
+ * DeleteArticleAnnotationRequest removes a previously saved article annotation.
+ *
+ * @generated from message alt.reading.v1.DeleteArticleAnnotationRequest
+ */
+export type DeleteArticleAnnotationRequest = Message<"alt.reading.v1.DeleteArticleAnnotationRequest"> & {
+  /**
+   * Identifier of the annotation to remove.
+   *
+   * @generated from field: string annotation_id = 1;
+   */
+  annotationId: string;
+
+  /**
+   * Client-generated UUID used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 2;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed deletion timestamp.
+   *
+   * @generated from field: google.protobuf.Timestamp deleted_at = 3;
+   */
+  deletedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.DeleteArticleAnnotationRequest.
+ * Use `create(DeleteArticleAnnotationRequestSchema)` to create a new message.
+ */
+export const DeleteArticleAnnotationRequestSchema: GenMessage<DeleteArticleAnnotationRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 28);
+
+/**
+ * DeleteArticleAnnotationResponse acknowledges the deletion.
+ *
+ * @generated from message alt.reading.v1.DeleteArticleAnnotationResponse
+ */
+export type DeleteArticleAnnotationResponse = Message<"alt.reading.v1.DeleteArticleAnnotationResponse"> & {
+};
+
+/**
+ * Describes the message alt.reading.v1.DeleteArticleAnnotationResponse.
+ * Use `create(DeleteArticleAnnotationResponseSchema)` to create a new message.
+ */
+export const DeleteArticleAnnotationResponseSchema: GenMessage<DeleteArticleAnnotationResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 29);
+
+/**
+ * ListArticleAnnotationsRequest lists active annotations for the calling user.
+ *
+ * @generated from message alt.reading.v1.ListArticleAnnotationsRequest
+ */
+export type ListArticleAnnotationsRequest = Message<"alt.reading.v1.ListArticleAnnotationsRequest"> & {
+  /**
+   * Optional list of article IDs to filter by; empty returns recent annotations across all articles.
+   *
+   * @generated from field: repeated string article_ids = 1;
+   */
+  articleIds: string[];
+
+  /**
+   * Maximum number of annotations to return (0 uses server default).
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.ListArticleAnnotationsRequest.
+ * Use `create(ListArticleAnnotationsRequestSchema)` to create a new message.
+ */
+export const ListArticleAnnotationsRequestSchema: GenMessage<ListArticleAnnotationsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 30);
+
+/**
+ * ListArticleAnnotationsResponse returns matching annotations newest first.
+ *
+ * @generated from message alt.reading.v1.ListArticleAnnotationsResponse
+ */
+export type ListArticleAnnotationsResponse = Message<"alt.reading.v1.ListArticleAnnotationsResponse"> & {
+  /**
+   * Active annotations belonging to the calling user.
+   *
+   * @generated from field: repeated alt.reading.v1.ArticleAnnotation annotations = 1;
+   */
+  annotations: ArticleAnnotation[];
+};
+
+/**
+ * Describes the message alt.reading.v1.ListArticleAnnotationsResponse.
+ * Use `create(ListArticleAnnotationsResponseSchema)` to create a new message.
+ */
+export const ListArticleAnnotationsResponseSchema: GenMessage<ListArticleAnnotationsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 31);
+
+/**
+ * ThemeCuration represents one active user curation on a theme page.
+ *
+ * @generated from message alt.reading.v1.ThemeCuration
+ */
+export type ThemeCuration = Message<"alt.reading.v1.ThemeCuration"> & {
+  /**
+   * Unique identifier of the curation.
+   *
+   * @generated from field: string curation_id = 1;
+   */
+  curationId: string;
+
+  /**
+   * Identifier of the target theme.
+   *
+   * @generated from field: string theme_id = 2;
+   */
+  themeId: string;
+
+  /**
+   * Co-creation action kind.
+   *
+   * @generated from field: alt.reading.v1.ThemeCurationKind kind = 3;
+   */
+  kind: ThemeCurationKind;
+
+  /**
+   * Deterministic hash identifying a target generated sentence (optional for user-added items).
+   *
+   * @generated from field: string target_hash = 4;
+   */
+  targetHash: string;
+
+  /**
+   * Text of the curated sentence, user question, or promoted insight.
+   *
+   * @generated from field: string target_text = 5;
+   */
+  targetText: string;
+
+  /**
+   * Optional 1-line user note or synthesis rationale.
+   *
+   * @generated from field: string user_note = 6;
+   */
+  userNote: string;
+
+  /**
+   * Optional Augur conversation ID when promoted from Ask Augur.
+   *
+   * @generated from field: string augur_conversation_id = 7;
+   */
+  augurConversationId: string;
+
+  /**
+   * Timestamp when the curation was recorded.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 8;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeCuration.
+ * Use `create(ThemeCurationSchema)` to create a new message.
+ */
+export const ThemeCurationSchema: GenMessage<ThemeCuration> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 32);
+
+/**
+ * CurateThemeItemRequest records a new co-creation action on a theme page.
+ *
+ * @generated from message alt.reading.v1.CurateThemeItemRequest
+ */
+export type CurateThemeItemRequest = Message<"alt.reading.v1.CurateThemeItemRequest"> & {
+  /**
+   * Identifier of the target theme.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Co-creation action kind.
+   *
+   * @generated from field: alt.reading.v1.ThemeCurationKind kind = 2;
+   */
+  kind: ThemeCurationKind;
+
+  /**
+   * Optional deterministic hash of the target sentence.
+   *
+   * @generated from field: string target_hash = 3;
+   */
+  targetHash: string;
+
+  /**
+   * Curated sentence, question, or promoted insight text.
+   *
+   * @generated from field: string target_text = 4;
+   */
+  targetText: string;
+
+  /**
+   * Optional user note or answer.
+   *
+   * @generated from field: string user_note = 5;
+   */
+  userNote: string;
+
+  /**
+   * Optional Augur conversation ID provenance.
+   *
+   * @generated from field: string augur_conversation_id = 6;
+   */
+  augurConversationId: string;
+
+  /**
+   * Client-generated UUID used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 7;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed creation timestamp.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 8;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.CurateThemeItemRequest.
+ * Use `create(CurateThemeItemRequestSchema)` to create a new message.
+ */
+export const CurateThemeItemRequestSchema: GenMessage<CurateThemeItemRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 33);
+
+/**
+ * CurateThemeItemResponse returns the saved curation.
+ *
+ * @generated from message alt.reading.v1.CurateThemeItemResponse
+ */
+export type CurateThemeItemResponse = Message<"alt.reading.v1.CurateThemeItemResponse"> & {
+  /**
+   * Saved theme curation record.
+   *
+   * @generated from field: alt.reading.v1.ThemeCuration curation = 1;
+   */
+  curation?: ThemeCuration | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.CurateThemeItemResponse.
+ * Use `create(CurateThemeItemResponseSchema)` to create a new message.
+ */
+export const CurateThemeItemResponseSchema: GenMessage<CurateThemeItemResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 34);
+
+/**
+ * RemoveThemeCurationRequest removes (undoes) a theme curation.
+ *
+ * @generated from message alt.reading.v1.RemoveThemeCurationRequest
+ */
+export type RemoveThemeCurationRequest = Message<"alt.reading.v1.RemoveThemeCurationRequest"> & {
+  /**
+   * Identifier of the curation to remove.
+   *
+   * @generated from field: string curation_id = 1;
+   */
+  curationId: string;
+
+  /**
+   * Client-generated UUID used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 2;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed removal timestamp.
+   *
+   * @generated from field: google.protobuf.Timestamp removed_at = 3;
+   */
+  removedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.RemoveThemeCurationRequest.
+ * Use `create(RemoveThemeCurationRequestSchema)` to create a new message.
+ */
+export const RemoveThemeCurationRequestSchema: GenMessage<RemoveThemeCurationRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 35);
+
+/**
+ * RemoveThemeCurationResponse acknowledges removal.
+ *
+ * @generated from message alt.reading.v1.RemoveThemeCurationResponse
+ */
+export type RemoveThemeCurationResponse = Message<"alt.reading.v1.RemoveThemeCurationResponse"> & {
+};
+
+/**
+ * Describes the message alt.reading.v1.RemoveThemeCurationResponse.
+ * Use `create(RemoveThemeCurationResponseSchema)` to create a new message.
+ */
+export const RemoveThemeCurationResponseSchema: GenMessage<RemoveThemeCurationResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 36);
+
+/**
+ * ListThemeCurationsRequest lists active curations for a theme.
+ *
+ * @generated from message alt.reading.v1.ListThemeCurationsRequest
+ */
+export type ListThemeCurationsRequest = Message<"alt.reading.v1.ListThemeCurationsRequest"> & {
+  /**
+   * Identifier of the theme.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Maximum number of curations to return (0 uses server default).
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.ListThemeCurationsRequest.
+ * Use `create(ListThemeCurationsRequestSchema)` to create a new message.
+ */
+export const ListThemeCurationsRequestSchema: GenMessage<ListThemeCurationsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 37);
+
+/**
+ * ListThemeCurationsResponse returns active curations for the theme.
+ *
+ * @generated from message alt.reading.v1.ListThemeCurationsResponse
+ */
+export type ListThemeCurationsResponse = Message<"alt.reading.v1.ListThemeCurationsResponse"> & {
+  /**
+   * Active theme curations ordered newest first.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeCuration curations = 1;
+   */
+  curations: ThemeCuration[];
+};
+
+/**
+ * Describes the message alt.reading.v1.ListThemeCurationsResponse.
+ * Use `create(ListThemeCurationsResponseSchema)` to create a new message.
+ */
+export const ListThemeCurationsResponseSchema: GenMessage<ListThemeCurationsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 38);
+
+/**
  * ReadingSurface identifies the UI surface where reading activity occurred.
  *
  * @generated from enum alt.reading.v1.ReadingSurface
@@ -1022,6 +1514,116 @@ export const QueueArticleOutcomeSchema: GenEnum<QueueArticleOutcome> = /*@__PURE
   enumDesc(file_alt_reading_v1_reading, 1);
 
 /**
+ * AnnotationStance classifies the user's epistemic reaction to an article takeaway.
+ *
+ * @generated from enum alt.reading.v1.AnnotationStance
+ */
+export enum AnnotationStance {
+  /**
+   * Default unspecified stance.
+   *
+   * @generated from enum value: ANNOTATION_STANCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Something unexpected or counterintuitive.
+   *
+   * @generated from enum value: ANNOTATION_STANCE_SURPRISE = 1;
+   */
+  SURPRISE = 1,
+
+  /**
+   * An open question raised while reading.
+   *
+   * @generated from enum value: ANNOTATION_STANCE_QUESTION = 2;
+   */
+  QUESTION = 2,
+
+  /**
+   * Tension or contradiction against prior understanding.
+   *
+   * @generated from enum value: ANNOTATION_STANCE_CONTRADICTION = 3;
+   */
+  CONTRADICTION = 3,
+
+  /**
+   * Core takeaway or synthesized insight.
+   *
+   * @generated from enum value: ANNOTATION_STANCE_INSIGHT = 4;
+   */
+  INSIGHT = 4,
+}
+
+/**
+ * Describes the enum alt.reading.v1.AnnotationStance.
+ */
+export const AnnotationStanceSchema: GenEnum<AnnotationStance> = /*@__PURE__*/
+  enumDesc(file_alt_reading_v1_reading, 2);
+
+/**
+ * ThemeCurationKind classifies a user co-creation action on a theme page.
+ *
+ * @generated from enum alt.reading.v1.ThemeCurationKind
+ */
+export enum ThemeCurationKind {
+  /**
+   * Default unspecified kind.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Pin a generated key point as confirmed/high-priority.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_PIN_KEY_POINT = 1;
+   */
+  PIN_KEY_POINT = 1,
+
+  /**
+   * Dismiss a noisy or incorrect generated key point.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_DISMISS_KEY_POINT = 2;
+   */
+  DISMISS_KEY_POINT = 2,
+
+  /**
+   * Add a user-authored open question to the theme.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_ADD_QUESTION = 3;
+   */
+  ADD_QUESTION = 3,
+
+  /**
+   * Mark an open question resolved with an optional synthesis note.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_RESOLVE_QUESTION = 4;
+   */
+  RESOLVE_QUESTION = 4,
+
+  /**
+   * Add a user seed note or hypothesis to steer future theme versions.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_ADD_SEED_NOTE = 5;
+   */
+  ADD_SEED_NOTE = 5,
+
+  /**
+   * Promote an Ask Augur insight into the theme with conversation provenance.
+   *
+   * @generated from enum value: THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT = 6;
+   */
+  PROMOTE_AUGUR_INSIGHT = 6,
+}
+
+/**
+ * Describes the enum alt.reading.v1.ThemeCurationKind.
+ */
+export const ThemeCurationKindSchema: GenEnum<ThemeCurationKind> = /*@__PURE__*/
+  enumDesc(file_alt_reading_v1_reading, 3);
+
+/**
  * ReadingService records client-observed reading events and manages the Read Today queue.
  *
  * @generated from service alt.reading.v1.ReadingService
@@ -1097,6 +1699,66 @@ export const ReadingService: GenService<{
     methodKind: "unary";
     input: typeof RecordThemeOpenedRequestSchema;
     output: typeof RecordThemeOpenedResponseSchema;
+  },
+  /**
+   * Records a user micro-externalization (excerpt, stance, 1-line note) on an article.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.SaveArticleAnnotation
+   */
+  saveArticleAnnotation: {
+    methodKind: "unary";
+    input: typeof SaveArticleAnnotationRequestSchema;
+    output: typeof SaveArticleAnnotationResponseSchema;
+  },
+  /**
+   * Removes a previously recorded article annotation.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.DeleteArticleAnnotation
+   */
+  deleteArticleAnnotation: {
+    methodKind: "unary";
+    input: typeof DeleteArticleAnnotationRequestSchema;
+    output: typeof DeleteArticleAnnotationResponseSchema;
+  },
+  /**
+   * Lists active article annotations for the calling user.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.ListArticleAnnotations
+   */
+  listArticleAnnotations: {
+    methodKind: "unary";
+    input: typeof ListArticleAnnotationsRequestSchema;
+    output: typeof ListArticleAnnotationsResponseSchema;
+  },
+  /**
+   * Records a user co-creation action (pin/dismiss/question/resolve/seed/promote) on a theme.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.CurateThemeItem
+   */
+  curateThemeItem: {
+    methodKind: "unary";
+    input: typeof CurateThemeItemRequestSchema;
+    output: typeof CurateThemeItemResponseSchema;
+  },
+  /**
+   * Removes (undoes) a theme curation.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.RemoveThemeCuration
+   */
+  removeThemeCuration: {
+    methodKind: "unary";
+    input: typeof RemoveThemeCurationRequestSchema;
+    output: typeof RemoveThemeCurationResponseSchema;
+  },
+  /**
+   * Lists active user curations on a theme.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.ListThemeCurations
+   */
+  listThemeCurations: {
+    methodKind: "unary";
+    input: typeof ListThemeCurationsRequestSchema;
+    output: typeof ListThemeCurationsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_reading_v1_reading, 0);

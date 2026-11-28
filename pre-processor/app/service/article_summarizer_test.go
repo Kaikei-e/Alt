@@ -281,3 +281,63 @@ func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T
 		assert.Equal(t, 0, result.SuccessCount)
 	})
 }
+
+type capturingSummaryRepo struct {
+	repository.SummaryRepository
+	created []*domain.ArticleSummary
+}
+
+func (m *capturingSummaryRepo) Create(_ context.Context, s *domain.ArticleSummary) error {
+	m.created = append(m.created, s)
+	return nil
+}
+
+type fixedErrorAPIRepo struct {
+	repository.ExternalAPIRepository
+	err error
+}
+
+func (m *fixedErrorAPIRepo) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	return nil, m.err
+}
+
+func TestArticleSummarizerService_SavePlaceholder_SkipsVersioning(t *testing.T) {
+	cases := []struct {
+		name            string
+		apiErr          error
+		wantPlaceholder string
+	}{
+		{
+			name:            "content too short",
+			apiErr:          domain.ErrContentTooShort,
+			wantPlaceholder: domain.PlaceholderTooShort,
+		},
+		{
+			name:            "content too long",
+			apiErr:          domain.ErrContentTooLong,
+			wantPlaceholder: domain.PlaceholderTooLong,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			summaryRepo := &capturingSummaryRepo{}
+			svc := NewArticleSummarizerService(
+				&stubArticleRepo{articles: []*domain.Article{
+					{ID: "art-1", Content: "x", UserID: "user-1", Title: "Title"},
+				}},
+				summaryRepo,
+				&fixedErrorAPIRepo{err: tc.apiErr},
+				testLoggerSummarizer(),
+			)
+
+			res, err := svc.SummarizeArticles(context.Background(), 10)
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.SuccessCount)
+			require.Len(t, summaryRepo.created, 1)
+			assert.Equal(t, tc.wantPlaceholder, summaryRepo.created[0].SummaryJapanese)
+			assert.True(t, summaryRepo.created[0].SkipVersioning,
+				"placeholder summary must skip SummaryVersionCreated emission")
+		})
+	}
+}

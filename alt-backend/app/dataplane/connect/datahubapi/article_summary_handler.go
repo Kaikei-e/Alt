@@ -2,7 +2,9 @@ package datahubapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"alt/dataplane/port/internal_article_port"
@@ -53,6 +55,7 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 	// duplicated entry in the Knowledge Home timeline, which no test on either
 	// side reads. SUMMARY_VERSIONING_SKIP makes the caller say so.
 	if req.Msg.GetSummaryVersioning() != datahubv1.SummaryVersioning_SUMMARY_VERSIONING_SKIP &&
+		!domain.IsPlaceholderSummary(req.Msg.GetSummary()) &&
 		h.createSummaryVersionUsecase != nil {
 		articleUUID, parseErr := uuid.Parse(req.Msg.GetArticleId())
 		userUUID, userParseErr := uuid.Parse(req.Msg.GetUserId())
@@ -111,6 +114,47 @@ func (h *Handler) DeleteArticleSummary(ctx context.Context, req *connect.Request
 	if err != nil {
 		h.logger.Error("DeleteArticleSummary failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to delete article summary"))
+	}
+
+	// Emit SummaryRetracted so knowledge-sovereign clears stale/rejected
+	// summary excerpts from knowledge_home_items (ADR-001042).
+	if h.knowledgeEventPort != nil && h.getArticleByID != nil {
+		article, lookupErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.GetArticleId())
+		if lookupErr != nil || article == nil {
+			h.logger.Warn("DeleteArticleSummary: could not resolve article owner for SummaryRetracted",
+				"article_id", req.Msg.GetArticleId(), "error", lookupErr)
+		} else if userUUID, parseErr := uuid.Parse(article.UserID); parseErr == nil && userUUID != uuid.Nil {
+			now := time.Now().UTC()
+			eventID := uuid.New()
+			payload, _ := json.Marshal(map[string]string{
+				"article_id": req.Msg.GetArticleId(),
+				"reason":     "quality_deleted",
+			})
+			kevent := domain.KnowledgeEvent{
+				EventID:       eventID,
+				OccurredAt:    now,
+				TenantID:      userUUID,
+				UserID:        &userUUID,
+				ActorType:     domain.ActorService,
+				ActorID:       "alt-data-hub",
+				EventType:     domain.EventSummaryRetracted,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   req.Msg.GetArticleId(),
+				DedupeKey:     fmt.Sprintf("summary-retracted:%s:%s", req.Msg.GetArticleId(), eventID.String()),
+				Payload:       payload,
+			}
+			if _, appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
+				h.logger.Error("DeleteArticleSummary: failed to append SummaryRetracted event",
+					"article_id", req.Msg.GetArticleId(), "error", appendErr)
+				return nil, connect.NewError(connect.CodeUnavailable,
+					errors.New("summary deleted but retraction event could not be recorded; retry"))
+			}
+		}
+	} else {
+		h.logger.Warn("DeleteArticleSummary: knowledgeEventPort or getArticleByID is unwired; SummaryRetracted skipped",
+			"article_id", req.Msg.GetArticleId(),
+			"knowledge_event_port_wired", h.knowledgeEventPort != nil,
+			"get_article_by_id_wired", h.getArticleByID != nil)
 	}
 
 	return connect.NewResponse(&datahubv1.DeleteArticleSummaryResponse{

@@ -51,8 +51,8 @@ beforeNavigate(({ shallow }) => {
 		<Button
 			variant="ghost"
 			size="icon"
-			aria-label="Back to Home"
-			onclick={() => goto("/home")}
+			aria-label="Back to Today"
+			onclick={() => goto("/today")}
 			class="action-btn action-btn--back"
 		>
 			<ArrowLeft class="h-4 w-4" />
@@ -74,10 +74,10 @@ beforeNavigate(({ shallow }) => {
 					{#snippet emptyAction()}
 						<Button
 							variant="outline"
-							onclick={() => goto("/home")}
+							onclick={() => goto("/today")}
 							class="placeholder-cta mt-1"
 						>
-							Return to Home
+							Return to Today
 						</Button>
 					{/snippet}
 				</ArticleReaderBody>

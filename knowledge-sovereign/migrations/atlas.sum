@@ -1,4 +1,4 @@
-h1:8LDZ4RRc6r/ume0CQE+LO5Lv+46naHzci3x3YKeiRsM=
+h1:lrbOHDbSWbHViwBCb5JjDZoatz9wYmA/OnmNa5FCeTw=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -36,3 +36,4 @@ h1:8LDZ4RRc6r/ume0CQE+LO5Lv+46naHzci3x3YKeiRsM=
 00035_create_reading_sources_and_queue.sql h1:eGhC9oebaBLPLheonq8nXc81TIswvlu5w1HLWiIoeUc=
 00036_create_reading_themes.sql h1:8Msn+YshyxDgzOdskTMuIGoBvErMGtmqscKVEIVVBnY=
 00037_drop_today_digest_pulse_columns.sql h1:r1vrSDP6hbY0nbTYcg3meO1ZzWQNP+DOcgY3zu/0yhw=
+00038_create_reading_annotations_and_curations.sql h1:9KzPWys5WKxcHpY5XR/8ru0ezkEKNEhiN1SjmceSrjA=

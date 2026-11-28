@@ -4,16 +4,15 @@ import {
 	Bell,
 	BirdIcon,
 	BookMarked,
+	BookOpen,
 	CalendarRange,
 	ChartBar,
 	ChevronDown,
 	Compass,
 	Eye,
-	Footprints,
 	GalleryVerticalEnd,
 	Gauge,
 	Home,
-	Lightbulb,
 	LinkIcon,
 	MessagesSquare,
 	Newspaper,
@@ -37,9 +36,9 @@ let {
 
 const baseMenuItems = [
 	{
-		label: "Knowledge Home",
-		href: "/home",
-		icon: Lightbulb,
+		label: "Today",
+		href: "/today",
+		icon: BookOpen,
 		category: "main",
 	},
 	{
@@ -49,21 +48,15 @@ const baseMenuItems = [
 		category: "main",
 	},
 	{
-		label: "Your Trail",
-		href: "/knowledge/trail",
-		icon: Footprints,
+		label: "Gallery",
+		href: "/feeds/visual-preview",
+		icon: GalleryVerticalEnd,
 		category: "main",
 	},
 	{
 		label: "Search",
 		href: "/search",
 		icon: Search,
-		category: "main",
-	},
-	{
-		label: "Dashboard",
-		href: "/dashboard",
-		icon: Home,
 		category: "main",
 	},
 	{
@@ -75,11 +68,6 @@ const baseMenuItems = [
 				label: "Unread Feeds",
 				href: "/feeds",
 				icon: Rss,
-			},
-			{
-				label: "Visual Preview",
-				href: "/feeds/visual-preview",
-				icon: GalleryVerticalEnd,
 			},
 			{
 				label: "Read History",
@@ -112,6 +100,11 @@ const baseMenuItems = [
 				label: "Morning Letter",
 				href: "/recap/morning-letter",
 				icon: Newspaper,
+			},
+			{
+				label: "Dashboard",
+				href: "/dashboard",
+				icon: Home,
 			},
 			{
 				label: "Job Status",
@@ -239,6 +232,9 @@ function toggleSection(category: string) {
 
 function isActive(href: string): boolean {
 	const pathname = page.url.pathname;
+	if (href === "/today") {
+		return pathname === "/today" || pathname.startsWith("/today/");
+	}
 	if (href === "/knowledge") {
 		return (
 			pathname === "/knowledge" || pathname.startsWith("/knowledge/themes/")
@@ -331,13 +327,6 @@ function isParentActive(children?: { href: string }[]): boolean {
 						>
 							<item.icon class="h-4 w-4" />
 							<span>{item.label}</span>
-							{#if item.label === "Knowledge Home" && !isActive(item.href)}
-								<span
-									class="ml-auto text-xs text-[var(--accent-primary)]/60 font-normal"
-								>
-									Today
-								</span>
-							{/if}
 						</a>
 					</li>
 				{/if}

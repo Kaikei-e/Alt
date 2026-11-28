@@ -50,6 +50,7 @@ import (
 	"alt/orchestrator/usecase/list_lenses_usecase"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
+	"alt/orchestrator/usecase/reading_curation_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/reading_theme_usecase"
@@ -216,6 +217,12 @@ type ApplicationComponents struct {
 	ListThemesUsecase                *reading_theme_usecase.ListThemesUsecase
 	GetThemeUsecase                  *reading_theme_usecase.GetThemeUsecase
 	RecordThemeOpenedUsecase         *reading_theme_usecase.RecordThemeOpenedUsecase
+	SaveArticleAnnotationUsecase     *reading_curation_usecase.SaveArticleAnnotationUsecase
+	DeleteArticleAnnotationUsecase   *reading_curation_usecase.DeleteArticleAnnotationUsecase
+	ListArticleAnnotationsUsecase    *reading_curation_usecase.ListArticleAnnotationsUsecase
+	CurateThemeItemUsecase           *reading_curation_usecase.CurateThemeItemUsecase
+	RemoveThemeCurationUsecase       *reading_curation_usecase.RemoveThemeCurationUsecase
+	ListThemeCurationsUsecase        *reading_curation_usecase.ListThemeCurationsUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase

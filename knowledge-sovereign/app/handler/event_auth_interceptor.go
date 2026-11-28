@@ -317,6 +317,20 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 			}
 		}
 
+	case *sovereignv1.ListReadingAnnotationsRequest:
+		if principal.RequireUserToken {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
+				return err
+			}
+		}
+
+	case *sovereignv1.ListReadingThemeCurationsRequest:
+		if principal.RequireUserToken {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
+				return err
+			}
+		}
+
 	case *sovereignv1.ListRecallSignalsRequest:
 		if principal.RequireUserToken {
 			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {

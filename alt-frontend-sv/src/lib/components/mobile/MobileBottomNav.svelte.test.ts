@@ -43,15 +43,15 @@ describe("MobileBottomNav", () => {
 		await expect.element(links.nth(2)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("activates Search tab for /feeds/search", async () => {
-		render(MobileBottomNav, { props: { pathname: "/feeds/search" } });
+	it("activates Themes tab for /knowledge", async () => {
+		render(MobileBottomNav, { props: { pathname: "/knowledge" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
 		await expect.element(links.nth(3)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("activates Menu tab for secondary destinations (/home, /recap, /augur)", async () => {
+	it("activates Menu tab for secondary destinations (/search, /recap, /augur)", async () => {
 		render(MobileBottomNav, { props: { pathname: "/recap" } });
 
 		const nav = page.getByRole("navigation");

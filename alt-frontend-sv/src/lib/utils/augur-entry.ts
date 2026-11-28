@@ -11,13 +11,17 @@ export function buildAugurInitialMessage(
 ): string {
 	const trimmedQuestion = question.trim();
 	const trimmedContext = context?.trim() ?? "";
+	const trimmedArticleId = articleId?.trim() ?? "";
+
+	if (trimmedArticleId) {
+		const header = trimmedContext
+			? `Regarding the article: ${trimmedContext} [articleId: ${trimmedArticleId}]`
+			: `Regarding the article: [articleId: ${trimmedArticleId}]`;
+		return `${header}\n\nQuestion:\n${trimmedQuestion}`;
+	}
 
 	if (!trimmedContext) {
 		return trimmedQuestion;
-	}
-
-	if (articleId) {
-		return `Regarding the article: ${trimmedContext} [articleId: ${articleId}]\n\nQuestion:\n${trimmedQuestion}`;
 	}
 
 	return `Context:\n${trimmedContext}\n\nQuestion:\n${trimmedQuestion}`;
@@ -140,4 +144,27 @@ export function resolveAugurEntry({
 		initialDraft: trimmedContext,
 		initialMessage: "",
 	};
+}
+
+export interface AugurThemeLink {
+	themeId: string | null;
+	themeTitle: string | null;
+}
+
+const MAX_THEME_TITLE_LENGTH = 120;
+
+export function resolveAugurThemeLink(input: {
+	themeId?: string | null;
+	themeTitle?: string | null;
+}): AugurThemeLink {
+	const rawId = input.themeId?.trim() ?? "";
+	if (!rawId || !UUID_PATTERN.test(rawId)) {
+		return { themeId: null, themeTitle: null };
+	}
+	const rawTitle = input.themeTitle?.trim() ?? "";
+	const themeTitle =
+		rawTitle.length > MAX_THEME_TITLE_LENGTH
+			? rawTitle.slice(0, MAX_THEME_TITLE_LENGTH).trim()
+			: rawTitle || null;
+	return { themeId: rawId, themeTitle };
 }

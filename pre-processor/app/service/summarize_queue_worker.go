@@ -361,7 +361,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"duration_ms", summarizeDuration.Milliseconds())
-			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooShort, false)
+			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooShort, true)
 			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too short for summarization"); updateErr != nil {
 				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
 			}
@@ -373,7 +373,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"duration_ms", summarizeDuration.Milliseconds())
-			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooLong, false)
+			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooLong, true)
 			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too long for summarization"); updateErr != nil {
 				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
 			}

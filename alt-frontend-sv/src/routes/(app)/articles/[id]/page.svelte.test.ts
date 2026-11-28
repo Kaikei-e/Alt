@@ -376,7 +376,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 		renderPage();
 
 		await expect
-			.element(testPage.getByRole("button", { name: /back to home/i }))
+			.element(testPage.getByRole("button", { name: /back to today/i }))
 			.toBeInTheDocument();
 		await expect
 			.element(testPage.getByTestId("fetch-button"))

@@ -31,18 +31,24 @@ import Sidebar from "./Sidebar.svelte";
 
 describe("Desktop Sidebar", () => {
 	beforeEach(() => {
-		pageState.url = new URL("http://localhost/home");
+		pageState.url = new URL("http://localhost/today");
 		pageState.data = { userRole: "user" };
 	});
 
-	it("renders primary navigation links including /search and keeps Today badge on Knowledge Home when inactive", async () => {
+	it("renders unified primary navigation links (Today, Themes, Gallery, Search) and omits retired Home/Trail", async () => {
 		pageState.url = new URL("http://localhost/dashboard");
 		render(Sidebar);
 
-		const homeLink = page.getByRole("link", { name: /Knowledge Home/i });
-		await expect.element(homeLink).toBeInTheDocument();
-		await expect.element(homeLink).toHaveAttribute("href", "/home");
-		await expect.element(homeLink).toHaveTextContent("Today");
+		const todayLink = page.getByRole("link", { name: "Today" });
+		await expect.element(todayLink).toBeInTheDocument();
+		await expect.element(todayLink).toHaveAttribute("href", "/today");
+
+		await expect
+			.element(page.getByRole("link", { name: /Knowledge Home/i }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "Your Trail" }))
+			.not.toBeInTheDocument();
 
 		const recapToggle = page.getByRole("button", { name: "Recap" });
 		await recapToggle.click();
@@ -50,7 +56,6 @@ describe("Desktop Sidebar", () => {
 			name: "Morning Letter",
 		});
 		await expect.element(morningLetterLink).toBeInTheDocument();
-		await expect.element(morningLetterLink).not.toHaveTextContent("Today");
 		await expect
 			.element(page.getByRole("link", { name: "Evening Pulse" }))
 			.not.toBeInTheDocument();
@@ -59,28 +64,30 @@ describe("Desktop Sidebar", () => {
 		await expect.element(themesLink).toBeInTheDocument();
 		await expect.element(themesLink).toHaveAttribute("href", "/knowledge");
 
-		const trailLink = page.getByRole("link", { name: "Your Trail" });
-		await expect.element(trailLink).toBeInTheDocument();
-		await expect.element(trailLink).toHaveAttribute("href", "/knowledge/trail");
+		const galleryLink = page.getByRole("link", { name: "Gallery" });
+		await expect.element(galleryLink).toBeInTheDocument();
+		await expect
+			.element(galleryLink)
+			.toHaveAttribute("href", "/feeds/visual-preview");
 
 		const searchLink = page.getByRole("link", { name: "Search" });
 		await expect.element(searchLink).toBeInTheDocument();
 		await expect.element(searchLink).toHaveAttribute("href", "/search");
 	});
 
-	it("marks Themes active on /knowledge without marking Your Trail", async () => {
-		pageState.url = new URL("http://localhost/knowledge");
+	it("marks Today active on /today", async () => {
+		pageState.url = new URL("http://localhost/today");
 		render(Sidebar);
 
 		await expect
-			.element(page.getByRole("link", { name: "Themes" }))
+			.element(page.getByRole("link", { name: "Today" }))
 			.toHaveAttribute("aria-current", "page");
 		await expect
-			.element(page.getByRole("link", { name: "Your Trail" }))
+			.element(page.getByRole("link", { name: "Themes" }))
 			.not.toHaveAttribute("aria-current", "page");
 	});
 
-	it("marks Themes active on /knowledge/themes/* without marking Your Trail", async () => {
+	it("marks Themes active on /knowledge and /knowledge/themes/*", async () => {
 		pageState.url = new URL(
 			"http://localhost/knowledge/themes/01938e82-7c00-7a7b-9b10-000000000001",
 		);
@@ -90,19 +97,7 @@ describe("Desktop Sidebar", () => {
 			.element(page.getByRole("link", { name: "Themes" }))
 			.toHaveAttribute("aria-current", "page");
 		await expect
-			.element(page.getByRole("link", { name: "Your Trail" }))
-			.not.toHaveAttribute("aria-current", "page");
-	});
-
-	it("marks Your Trail active on /knowledge/trail without marking Themes", async () => {
-		pageState.url = new URL("http://localhost/knowledge/trail");
-		render(Sidebar);
-
-		await expect
-			.element(page.getByRole("link", { name: "Your Trail" }))
-			.toHaveAttribute("aria-current", "page");
-		await expect
-			.element(page.getByRole("link", { name: "Themes" }))
+			.element(page.getByRole("link", { name: "Today" }))
 			.not.toHaveAttribute("aria-current", "page");
 	});
 

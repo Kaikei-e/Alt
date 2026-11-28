@@ -16,6 +16,7 @@ import (
 	readingv1 "alt/gen/proto/alt/reading/v1"
 	"alt/gen/proto/alt/reading/v1/readingv1connect"
 	"alt/orchestrator/usecase/image_proxy_usecase"
+	"alt/orchestrator/usecase/reading_curation_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
@@ -23,15 +24,21 @@ import (
 )
 
 type Handler struct {
-	recordUsecase            *record_reading_events_usecase.RecordReadingEventsUsecase
-	queueUsecase             *reading_queue_usecase.QueueArticleUsecase
-	unqueueUsecase           *reading_queue_usecase.UnqueueArticleUsecase
-	getQueueUsecase          *reading_queue_usecase.GetReadTodayQueueUsecase
-	listThemesUsecase        *reading_theme_usecase.ListThemesUsecase
-	getThemeUsecase          *reading_theme_usecase.GetThemeUsecase
-	recordThemeOpenedUsecase *reading_theme_usecase.RecordThemeOpenedUsecase
-	imageProxy               *image_proxy_usecase.ImageProxyUsecase
-	logger                   *slog.Logger
+	recordUsecase              *record_reading_events_usecase.RecordReadingEventsUsecase
+	queueUsecase               *reading_queue_usecase.QueueArticleUsecase
+	unqueueUsecase             *reading_queue_usecase.UnqueueArticleUsecase
+	getQueueUsecase            *reading_queue_usecase.GetReadTodayQueueUsecase
+	listThemesUsecase          *reading_theme_usecase.ListThemesUsecase
+	getThemeUsecase            *reading_theme_usecase.GetThemeUsecase
+	recordThemeOpenedUsecase   *reading_theme_usecase.RecordThemeOpenedUsecase
+	saveAnnotationUsecase      *reading_curation_usecase.SaveArticleAnnotationUsecase
+	deleteAnnotationUsecase    *reading_curation_usecase.DeleteArticleAnnotationUsecase
+	listAnnotationsUsecase     *reading_curation_usecase.ListArticleAnnotationsUsecase
+	curateThemeUsecase         *reading_curation_usecase.CurateThemeItemUsecase
+	removeThemeCurationUsecase *reading_curation_usecase.RemoveThemeCurationUsecase
+	listThemeCurationsUsecase  *reading_curation_usecase.ListThemeCurationsUsecase
+	imageProxy                 *image_proxy_usecase.ImageProxyUsecase
+	logger                     *slog.Logger
 }
 
 var _ readingv1connect.ReadingServiceHandler = (*Handler)(nil)
