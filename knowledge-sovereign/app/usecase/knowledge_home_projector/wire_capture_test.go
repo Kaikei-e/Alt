@@ -104,6 +104,14 @@ type capturedURLPatch struct {
 	OccurredAt        time.Time `json:"occurred_at"`
 }
 
+type capturedSummaryClear struct {
+	UserID            string    `json:"user_id"`
+	TenantID          string    `json:"tenant_id"`
+	ItemKey           string    `json:"item_key"`
+	ProjectionVersion int       `json:"projection_version"`
+	OccurredAt        time.Time `json:"occurred_at"`
+}
+
 type capturedSnooze struct {
 	UserID     string `json:"user_id"`
 	TenantID   string `json:"tenant_id"`

@@ -53,6 +53,24 @@ const (
 	// ReadingServiceRecordThemeOpenedProcedure is the fully-qualified name of the ReadingService's
 	// RecordThemeOpened RPC.
 	ReadingServiceRecordThemeOpenedProcedure = "/alt.reading.v1.ReadingService/RecordThemeOpened"
+	// ReadingServiceSaveArticleAnnotationProcedure is the fully-qualified name of the ReadingService's
+	// SaveArticleAnnotation RPC.
+	ReadingServiceSaveArticleAnnotationProcedure = "/alt.reading.v1.ReadingService/SaveArticleAnnotation"
+	// ReadingServiceDeleteArticleAnnotationProcedure is the fully-qualified name of the
+	// ReadingService's DeleteArticleAnnotation RPC.
+	ReadingServiceDeleteArticleAnnotationProcedure = "/alt.reading.v1.ReadingService/DeleteArticleAnnotation"
+	// ReadingServiceListArticleAnnotationsProcedure is the fully-qualified name of the ReadingService's
+	// ListArticleAnnotations RPC.
+	ReadingServiceListArticleAnnotationsProcedure = "/alt.reading.v1.ReadingService/ListArticleAnnotations"
+	// ReadingServiceCurateThemeItemProcedure is the fully-qualified name of the ReadingService's
+	// CurateThemeItem RPC.
+	ReadingServiceCurateThemeItemProcedure = "/alt.reading.v1.ReadingService/CurateThemeItem"
+	// ReadingServiceRemoveThemeCurationProcedure is the fully-qualified name of the ReadingService's
+	// RemoveThemeCuration RPC.
+	ReadingServiceRemoveThemeCurationProcedure = "/alt.reading.v1.ReadingService/RemoveThemeCuration"
+	// ReadingServiceListThemeCurationsProcedure is the fully-qualified name of the ReadingService's
+	// ListThemeCurations RPC.
+	ReadingServiceListThemeCurationsProcedure = "/alt.reading.v1.ReadingService/ListThemeCurations"
 )
 
 // ReadingServiceClient is a client for the alt.reading.v1.ReadingService service.
@@ -72,6 +90,18 @@ type ReadingServiceClient interface {
 	GetTheme(context.Context, *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error)
 	// Records that the user opened a theme page version.
 	RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error)
+	// Records a user micro-externalization (excerpt, stance, 1-line note) on an article.
+	SaveArticleAnnotation(context.Context, *connect.Request[v1.SaveArticleAnnotationRequest]) (*connect.Response[v1.SaveArticleAnnotationResponse], error)
+	// Removes a previously recorded article annotation.
+	DeleteArticleAnnotation(context.Context, *connect.Request[v1.DeleteArticleAnnotationRequest]) (*connect.Response[v1.DeleteArticleAnnotationResponse], error)
+	// Lists active article annotations for the calling user.
+	ListArticleAnnotations(context.Context, *connect.Request[v1.ListArticleAnnotationsRequest]) (*connect.Response[v1.ListArticleAnnotationsResponse], error)
+	// Records a user co-creation action (pin/dismiss/question/resolve/seed/promote) on a theme.
+	CurateThemeItem(context.Context, *connect.Request[v1.CurateThemeItemRequest]) (*connect.Response[v1.CurateThemeItemResponse], error)
+	// Removes (undoes) a theme curation.
+	RemoveThemeCuration(context.Context, *connect.Request[v1.RemoveThemeCurationRequest]) (*connect.Response[v1.RemoveThemeCurationResponse], error)
+	// Lists active user curations on a theme.
+	ListThemeCurations(context.Context, *connect.Request[v1.ListThemeCurationsRequest]) (*connect.Response[v1.ListThemeCurationsResponse], error)
 }
 
 // NewReadingServiceClient constructs a client for the alt.reading.v1.ReadingService service. By
@@ -127,18 +157,60 @@ func NewReadingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(readingServiceMethods.ByName("RecordThemeOpened")),
 			connect.WithClientOptions(opts...),
 		),
+		saveArticleAnnotation: connect.NewClient[v1.SaveArticleAnnotationRequest, v1.SaveArticleAnnotationResponse](
+			httpClient,
+			baseURL+ReadingServiceSaveArticleAnnotationProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("SaveArticleAnnotation")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteArticleAnnotation: connect.NewClient[v1.DeleteArticleAnnotationRequest, v1.DeleteArticleAnnotationResponse](
+			httpClient,
+			baseURL+ReadingServiceDeleteArticleAnnotationProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("DeleteArticleAnnotation")),
+			connect.WithClientOptions(opts...),
+		),
+		listArticleAnnotations: connect.NewClient[v1.ListArticleAnnotationsRequest, v1.ListArticleAnnotationsResponse](
+			httpClient,
+			baseURL+ReadingServiceListArticleAnnotationsProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("ListArticleAnnotations")),
+			connect.WithClientOptions(opts...),
+		),
+		curateThemeItem: connect.NewClient[v1.CurateThemeItemRequest, v1.CurateThemeItemResponse](
+			httpClient,
+			baseURL+ReadingServiceCurateThemeItemProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("CurateThemeItem")),
+			connect.WithClientOptions(opts...),
+		),
+		removeThemeCuration: connect.NewClient[v1.RemoveThemeCurationRequest, v1.RemoveThemeCurationResponse](
+			httpClient,
+			baseURL+ReadingServiceRemoveThemeCurationProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("RemoveThemeCuration")),
+			connect.WithClientOptions(opts...),
+		),
+		listThemeCurations: connect.NewClient[v1.ListThemeCurationsRequest, v1.ListThemeCurationsResponse](
+			httpClient,
+			baseURL+ReadingServiceListThemeCurationsProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("ListThemeCurations")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // readingServiceClient implements ReadingServiceClient.
 type readingServiceClient struct {
-	recordReadingEvents *connect.Client[v1.RecordReadingEventsRequest, v1.RecordReadingEventsResponse]
-	queueArticle        *connect.Client[v1.QueueArticleRequest, v1.QueueArticleResponse]
-	unqueueArticle      *connect.Client[v1.UnqueueArticleRequest, v1.UnqueueArticleResponse]
-	getReadTodayQueue   *connect.Client[v1.GetReadTodayQueueRequest, v1.GetReadTodayQueueResponse]
-	listThemes          *connect.Client[v1.ListThemesRequest, v1.ListThemesResponse]
-	getTheme            *connect.Client[v1.GetThemeRequest, v1.GetThemeResponse]
-	recordThemeOpened   *connect.Client[v1.RecordThemeOpenedRequest, v1.RecordThemeOpenedResponse]
+	recordReadingEvents     *connect.Client[v1.RecordReadingEventsRequest, v1.RecordReadingEventsResponse]
+	queueArticle            *connect.Client[v1.QueueArticleRequest, v1.QueueArticleResponse]
+	unqueueArticle          *connect.Client[v1.UnqueueArticleRequest, v1.UnqueueArticleResponse]
+	getReadTodayQueue       *connect.Client[v1.GetReadTodayQueueRequest, v1.GetReadTodayQueueResponse]
+	listThemes              *connect.Client[v1.ListThemesRequest, v1.ListThemesResponse]
+	getTheme                *connect.Client[v1.GetThemeRequest, v1.GetThemeResponse]
+	recordThemeOpened       *connect.Client[v1.RecordThemeOpenedRequest, v1.RecordThemeOpenedResponse]
+	saveArticleAnnotation   *connect.Client[v1.SaveArticleAnnotationRequest, v1.SaveArticleAnnotationResponse]
+	deleteArticleAnnotation *connect.Client[v1.DeleteArticleAnnotationRequest, v1.DeleteArticleAnnotationResponse]
+	listArticleAnnotations  *connect.Client[v1.ListArticleAnnotationsRequest, v1.ListArticleAnnotationsResponse]
+	curateThemeItem         *connect.Client[v1.CurateThemeItemRequest, v1.CurateThemeItemResponse]
+	removeThemeCuration     *connect.Client[v1.RemoveThemeCurationRequest, v1.RemoveThemeCurationResponse]
+	listThemeCurations      *connect.Client[v1.ListThemeCurationsRequest, v1.ListThemeCurationsResponse]
 }
 
 // RecordReadingEvents calls alt.reading.v1.ReadingService.RecordReadingEvents.
@@ -176,6 +248,36 @@ func (c *readingServiceClient) RecordThemeOpened(ctx context.Context, req *conne
 	return c.recordThemeOpened.CallUnary(ctx, req)
 }
 
+// SaveArticleAnnotation calls alt.reading.v1.ReadingService.SaveArticleAnnotation.
+func (c *readingServiceClient) SaveArticleAnnotation(ctx context.Context, req *connect.Request[v1.SaveArticleAnnotationRequest]) (*connect.Response[v1.SaveArticleAnnotationResponse], error) {
+	return c.saveArticleAnnotation.CallUnary(ctx, req)
+}
+
+// DeleteArticleAnnotation calls alt.reading.v1.ReadingService.DeleteArticleAnnotation.
+func (c *readingServiceClient) DeleteArticleAnnotation(ctx context.Context, req *connect.Request[v1.DeleteArticleAnnotationRequest]) (*connect.Response[v1.DeleteArticleAnnotationResponse], error) {
+	return c.deleteArticleAnnotation.CallUnary(ctx, req)
+}
+
+// ListArticleAnnotations calls alt.reading.v1.ReadingService.ListArticleAnnotations.
+func (c *readingServiceClient) ListArticleAnnotations(ctx context.Context, req *connect.Request[v1.ListArticleAnnotationsRequest]) (*connect.Response[v1.ListArticleAnnotationsResponse], error) {
+	return c.listArticleAnnotations.CallUnary(ctx, req)
+}
+
+// CurateThemeItem calls alt.reading.v1.ReadingService.CurateThemeItem.
+func (c *readingServiceClient) CurateThemeItem(ctx context.Context, req *connect.Request[v1.CurateThemeItemRequest]) (*connect.Response[v1.CurateThemeItemResponse], error) {
+	return c.curateThemeItem.CallUnary(ctx, req)
+}
+
+// RemoveThemeCuration calls alt.reading.v1.ReadingService.RemoveThemeCuration.
+func (c *readingServiceClient) RemoveThemeCuration(ctx context.Context, req *connect.Request[v1.RemoveThemeCurationRequest]) (*connect.Response[v1.RemoveThemeCurationResponse], error) {
+	return c.removeThemeCuration.CallUnary(ctx, req)
+}
+
+// ListThemeCurations calls alt.reading.v1.ReadingService.ListThemeCurations.
+func (c *readingServiceClient) ListThemeCurations(ctx context.Context, req *connect.Request[v1.ListThemeCurationsRequest]) (*connect.Response[v1.ListThemeCurationsResponse], error) {
+	return c.listThemeCurations.CallUnary(ctx, req)
+}
+
 // ReadingServiceHandler is an implementation of the alt.reading.v1.ReadingService service.
 type ReadingServiceHandler interface {
 	// Appends a batch of at most 50 reading events, deduplicating retries by
@@ -193,6 +295,18 @@ type ReadingServiceHandler interface {
 	GetTheme(context.Context, *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error)
 	// Records that the user opened a theme page version.
 	RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error)
+	// Records a user micro-externalization (excerpt, stance, 1-line note) on an article.
+	SaveArticleAnnotation(context.Context, *connect.Request[v1.SaveArticleAnnotationRequest]) (*connect.Response[v1.SaveArticleAnnotationResponse], error)
+	// Removes a previously recorded article annotation.
+	DeleteArticleAnnotation(context.Context, *connect.Request[v1.DeleteArticleAnnotationRequest]) (*connect.Response[v1.DeleteArticleAnnotationResponse], error)
+	// Lists active article annotations for the calling user.
+	ListArticleAnnotations(context.Context, *connect.Request[v1.ListArticleAnnotationsRequest]) (*connect.Response[v1.ListArticleAnnotationsResponse], error)
+	// Records a user co-creation action (pin/dismiss/question/resolve/seed/promote) on a theme.
+	CurateThemeItem(context.Context, *connect.Request[v1.CurateThemeItemRequest]) (*connect.Response[v1.CurateThemeItemResponse], error)
+	// Removes (undoes) a theme curation.
+	RemoveThemeCuration(context.Context, *connect.Request[v1.RemoveThemeCurationRequest]) (*connect.Response[v1.RemoveThemeCurationResponse], error)
+	// Lists active user curations on a theme.
+	ListThemeCurations(context.Context, *connect.Request[v1.ListThemeCurationsRequest]) (*connect.Response[v1.ListThemeCurationsResponse], error)
 }
 
 // NewReadingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -244,6 +358,42 @@ func NewReadingServiceHandler(svc ReadingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(readingServiceMethods.ByName("RecordThemeOpened")),
 		connect.WithHandlerOptions(opts...),
 	)
+	readingServiceSaveArticleAnnotationHandler := connect.NewUnaryHandler(
+		ReadingServiceSaveArticleAnnotationProcedure,
+		svc.SaveArticleAnnotation,
+		connect.WithSchema(readingServiceMethods.ByName("SaveArticleAnnotation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceDeleteArticleAnnotationHandler := connect.NewUnaryHandler(
+		ReadingServiceDeleteArticleAnnotationProcedure,
+		svc.DeleteArticleAnnotation,
+		connect.WithSchema(readingServiceMethods.ByName("DeleteArticleAnnotation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceListArticleAnnotationsHandler := connect.NewUnaryHandler(
+		ReadingServiceListArticleAnnotationsProcedure,
+		svc.ListArticleAnnotations,
+		connect.WithSchema(readingServiceMethods.ByName("ListArticleAnnotations")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceCurateThemeItemHandler := connect.NewUnaryHandler(
+		ReadingServiceCurateThemeItemProcedure,
+		svc.CurateThemeItem,
+		connect.WithSchema(readingServiceMethods.ByName("CurateThemeItem")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceRemoveThemeCurationHandler := connect.NewUnaryHandler(
+		ReadingServiceRemoveThemeCurationProcedure,
+		svc.RemoveThemeCuration,
+		connect.WithSchema(readingServiceMethods.ByName("RemoveThemeCuration")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceListThemeCurationsHandler := connect.NewUnaryHandler(
+		ReadingServiceListThemeCurationsProcedure,
+		svc.ListThemeCurations,
+		connect.WithSchema(readingServiceMethods.ByName("ListThemeCurations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.reading.v1.ReadingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReadingServiceRecordReadingEventsProcedure:
@@ -260,6 +410,18 @@ func NewReadingServiceHandler(svc ReadingServiceHandler, opts ...connect.Handler
 			readingServiceGetThemeHandler.ServeHTTP(w, r)
 		case ReadingServiceRecordThemeOpenedProcedure:
 			readingServiceRecordThemeOpenedHandler.ServeHTTP(w, r)
+		case ReadingServiceSaveArticleAnnotationProcedure:
+			readingServiceSaveArticleAnnotationHandler.ServeHTTP(w, r)
+		case ReadingServiceDeleteArticleAnnotationProcedure:
+			readingServiceDeleteArticleAnnotationHandler.ServeHTTP(w, r)
+		case ReadingServiceListArticleAnnotationsProcedure:
+			readingServiceListArticleAnnotationsHandler.ServeHTTP(w, r)
+		case ReadingServiceCurateThemeItemProcedure:
+			readingServiceCurateThemeItemHandler.ServeHTTP(w, r)
+		case ReadingServiceRemoveThemeCurationProcedure:
+			readingServiceRemoveThemeCurationHandler.ServeHTTP(w, r)
+		case ReadingServiceListThemeCurationsProcedure:
+			readingServiceListThemeCurationsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -295,4 +457,28 @@ func (UnimplementedReadingServiceHandler) GetTheme(context.Context, *connect.Req
 
 func (UnimplementedReadingServiceHandler) RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.RecordThemeOpened is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) SaveArticleAnnotation(context.Context, *connect.Request[v1.SaveArticleAnnotationRequest]) (*connect.Response[v1.SaveArticleAnnotationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.SaveArticleAnnotation is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) DeleteArticleAnnotation(context.Context, *connect.Request[v1.DeleteArticleAnnotationRequest]) (*connect.Response[v1.DeleteArticleAnnotationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.DeleteArticleAnnotation is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) ListArticleAnnotations(context.Context, *connect.Request[v1.ListArticleAnnotationsRequest]) (*connect.Response[v1.ListArticleAnnotationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.ListArticleAnnotations is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) CurateThemeItem(context.Context, *connect.Request[v1.CurateThemeItemRequest]) (*connect.Response[v1.CurateThemeItemResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.CurateThemeItem is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) RemoveThemeCuration(context.Context, *connect.Request[v1.RemoveThemeCurationRequest]) (*connect.Response[v1.RemoveThemeCurationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.RemoveThemeCuration is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) ListThemeCurations(context.Context, *connect.Request[v1.ListThemeCurationsRequest]) (*connect.Response[v1.ListThemeCurationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.ListThemeCurations is not implemented"))
 }

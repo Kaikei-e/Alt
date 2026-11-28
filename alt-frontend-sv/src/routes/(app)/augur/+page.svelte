@@ -1,7 +1,10 @@
 <script lang="ts">
 import AugurChat from "#lib/components/desktop/augur/AugurChat.svelte";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
-import { resolveAugurEntry } from "#lib/utils/augur-entry.js";
+import {
+	resolveAugurEntry,
+	resolveAugurThemeLink,
+} from "#lib/utils/augur-entry.js";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 
@@ -10,6 +13,13 @@ const augurEntry = $derived(
 		q: page.url.searchParams.get("q"),
 		context: page.url.searchParams.get("context"),
 		articleId: page.url.searchParams.get("articleId"),
+	}),
+);
+
+const themeLink = $derived(
+	resolveAugurThemeLink({
+		themeId: page.url.searchParams.get("themeId"),
+		themeTitle: page.url.searchParams.get("themeTitle"),
 	}),
 );
 
@@ -44,11 +54,22 @@ $effect(() => {
 	<AugurChat
 		initialContext={augurEntry.initialDraft}
 		initialQuestion={augurEntry.initialMessage}
+		themeId={themeLink.themeId}
+		themeTitle={themeLink.themeTitle}
 		onConversationIdChange={(id) => {
 			// Reflect the persisted id in the address bar without navigating, so a
 			// reload resumes the same conversation and the streaming component is
 			// left alone. `goto` with shallow routing rather than `history.replaceState`.
-			void goto(`/augur/${id}`, { shallow: true, replace: true, state: {} });
+			const params = new URLSearchParams();
+			if (themeLink.themeId) {
+				params.set("themeId", themeLink.themeId);
+				if (themeLink.themeTitle) {
+					params.set("themeTitle", themeLink.themeTitle);
+				}
+			}
+			const qs = params.toString();
+			const target = qs ? `/augur/${id}?${qs}` : `/augur/${id}`;
+			void goto(target, { shallow: true, replace: true, state: {} });
 		}}
 	/>
 </div>

@@ -9,6 +9,20 @@ interface Props {
 }
 
 const { reader, excerpt = null }: Props = $props();
+
+function normalizeComparableText(text: string | null | undefined): string {
+	return (text ?? "").trim().replace(/\s+/g, " ");
+}
+
+const visibleExcerpt = $derived.by(() => {
+	const trimmed = excerpt?.trim() ?? "";
+	if (!trimmed) return null;
+	const summary = normalizeComparableText(reader.summarizer.summary);
+	if (summary && normalizeComparableText(trimmed) === summary) {
+		return null;
+	}
+	return trimmed;
+});
 </script>
 
 <aside
@@ -28,10 +42,10 @@ const { reader, excerpt = null }: Props = $props();
 		</p>
 	</section>
 
-	{#if excerpt}
+	{#if visibleExcerpt}
 		<section class="rail-section">
 			<h2 class="rail-kicker">Excerpt</h2>
-			<p class="rail-value">{excerpt}</p>
+			<p class="rail-value">{visibleExcerpt}</p>
 		</section>
 	{/if}
 

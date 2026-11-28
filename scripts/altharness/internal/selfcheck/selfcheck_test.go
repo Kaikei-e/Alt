@@ -20,7 +20,7 @@ func TestRealRepoPasses(t *testing.T) {
 		t.Fatalf("code=%d\n%s\n%s", code, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "agent_harness_selfcheck: OK") || !strings.Contains(out, "codex_hooks=9") || !strings.Contains(out, "claude_hooks=14") || !strings.Contains(out, "agy_hooks=6") || !strings.Contains(out, "shared_blocks=2") {
+	if !strings.Contains(out, "agent_harness_selfcheck: OK") || !strings.Contains(out, "codex_hooks=10") || !strings.Contains(out, "claude_hooks=15") || !strings.Contains(out, "agy_hooks=6") || !strings.Contains(out, "shared_blocks=2") {
 		t.Fatalf("stdout=%s", out)
 	}
 }

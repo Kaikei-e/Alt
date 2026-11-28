@@ -70,6 +70,20 @@ vi.mock("#lib/connect/index.js", () => ({
 	streamAugurChat,
 }));
 
+const { curateThemeItem } = vi.hoisted(() => ({
+	curateThemeItem: vi.fn(),
+}));
+
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		curateThemeItem,
+	};
+});
+
+import { ThemeCurationKind } from "#lib/connect/reading.js";
 import Page from "./+page.svelte";
 
 const PORTRAIT = { width: 393, height: 851 };
@@ -251,5 +265,57 @@ describe("Augur page, question arriving in the URL", () => {
 			replace: true,
 			state: {},
 		});
+	});
+
+	it("shows linked theme banner and promotes completed assistant insight back to the theme", async () => {
+		const themeId = "01938e82-7c00-7a7b-9b10-100000000001";
+		curateThemeItem.mockReset();
+		curateThemeItem.mockResolvedValueOnce({
+			curationId: "cur-promoted-1",
+			themeId,
+			kind: ThemeCurationKind.PROMOTE_AUGUR_INSIGHT,
+			targetHash: "",
+			targetText: QUESTION,
+			userNote: "Inference chips got cheaper.",
+			augurConversationId: "conv-theme-1",
+			createdAt: new Date("2026-11-28T03:00:00Z"),
+		});
+		arriveWith(
+			`?q=${encodeURIComponent(QUESTION)}&themeId=${themeId}&themeTitle=${encodeURIComponent("AI Chips")}`,
+		);
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		render(Page);
+		await settle();
+
+		const banner = page.getByTestId("augur-theme-banner");
+		await expect.element(banner).toBeInTheDocument();
+		await expect.element(banner).toHaveTextContent("Theme: AI Chips");
+		await expect
+			.element(banner.getByRole("link", { name: "Back to theme" }))
+			.toHaveAttribute("href", `/knowledge/themes/${themeId}`);
+
+		calls()[0]?.onConversationId?.("conv-theme-1");
+		calls()[0]?.onComplete?.({
+			answer: "Inference chips got cheaper.",
+			citations: [],
+			relatedCitations: [],
+		});
+		await settle();
+
+		const promoteBtn = page.getByTestId("augur-promote-to-theme");
+		await expect.element(promoteBtn).toBeInTheDocument();
+		await promoteBtn.click();
+		await settle();
+
+		expect(curateThemeItem).toHaveBeenCalledWith(expect.anything(), {
+			themeId,
+			kind: ThemeCurationKind.PROMOTE_AUGUR_INSIGHT,
+			targetText: QUESTION,
+			userNote: "Inference chips got cheaper.",
+			augurConversationId: "conv-theme-1",
+		});
+		await expect.element(promoteBtn).toHaveTextContent("Saved to Theme");
+		await expect.element(promoteBtn).toBeDisabled();
 	});
 });

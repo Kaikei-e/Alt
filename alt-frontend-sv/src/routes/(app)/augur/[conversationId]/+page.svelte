@@ -5,7 +5,10 @@ import {
 	createClientTransport,
 	getAugurConversation,
 } from "#lib/connect/index.js";
-import { formatAugurConversationLabel } from "#lib/utils/augur-entry.js";
+import {
+	formatAugurConversationLabel,
+	resolveAugurThemeLink,
+} from "#lib/utils/augur-entry.js";
 import { page } from "$app/state";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
@@ -32,6 +35,12 @@ let errorMessage = $state<string>("");
 let isLoading = $state(true);
 
 const conversationId = $derived(page.params.conversationId ?? "");
+const themeLink = $derived(
+	resolveAugurThemeLink({
+		themeId: page.url.searchParams.get("themeId"),
+		themeTitle: page.url.searchParams.get("themeTitle"),
+	}),
+);
 // The stored title is the first user turn verbatim, marker and all.
 const conversationLabel = $derived(
 	formatAugurConversationLabel(conversation?.title ?? ""),
@@ -116,6 +125,8 @@ async function load(id: string) {
 		<AugurChat
 			initialMessages={toPaneMessages(conversation)}
 			initialConversationId={conversation.id}
+			themeId={themeLink.themeId}
+			themeTitle={themeLink.themeTitle}
 		/>
 	</div>
 {/if}

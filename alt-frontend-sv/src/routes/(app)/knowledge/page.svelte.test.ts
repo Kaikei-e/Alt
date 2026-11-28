@@ -124,9 +124,9 @@ describe("/knowledge Themes list page", () => {
 			.element(thirdLink)
 			.not.toHaveTextContent("updated since you read it");
 
-		const trailLink = page.getByRole("link", { name: "Knowledge Trail" });
-		await expect.element(trailLink).toBeInTheDocument();
-		await expect.element(trailLink).toHaveAttribute("href", "/knowledge/trail");
+		await expect
+			.element(page.getByRole("link", { name: "Knowledge Trail" }))
+			.not.toBeInTheDocument();
 	});
 
 	it("renders empty state when no themes exist", async () => {
@@ -143,9 +143,6 @@ describe("/knowledge Themes list page", () => {
 					"No themes yet. A theme appears once you have read a few articles on the same subject.",
 				),
 			)
-			.toBeInTheDocument();
-		await expect
-			.element(page.getByRole("link", { name: "Knowledge Trail" }))
 			.toBeInTheDocument();
 	});
 

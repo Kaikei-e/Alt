@@ -82,11 +82,13 @@ service KnowledgeSovereignService {
   // item, newest first — the patch-exit read (D26).
   rpc GetTrailBranchesForAnchor(GetTrailBranchesForAnchorRequest) returns (GetTrailBranchesForAnchorResponse);
 
-  // === Reading (Read Today queue & reading sources) ===
+  // === Reading (Read Today queue, reading sources, themes, annotations, curations) ===
   rpc GetReadingQueue(GetReadingQueueRequest) returns (GetReadingQueueResponse);
   rpc CountReadingSourcesSince(CountReadingSourcesSinceRequest) returns (CountReadingSourcesSinceResponse);
   rpc ListReadingSourcesInWindow(ListReadingSourcesInWindowRequest) returns (ListReadingSourcesInWindowResponse);
   rpc ListReadingThemes(ListReadingThemesRequest) returns (ListReadingThemesResponse);
+  rpc ListReadingAnnotations(ListReadingAnnotationsRequest) returns (ListReadingAnnotationsResponse);
+  rpc ListReadingThemeCurations(ListReadingThemeCurationsRequest) returns (ListReadingThemeCurationsResponse);
 }
 
 // =============================================================================
@@ -862,4 +864,46 @@ message ReadingThemeEntry {
 
 message ListReadingThemesResponse {
   repeated ReadingThemeEntry themes = 1;
+}
+
+message ListReadingAnnotationsRequest {
+  string user_id = 1;
+  repeated string article_ids = 2;
+  // 0 uses the server default limit.
+  int32 limit = 3;
+}
+
+message ReadingAnnotationEntry {
+  string annotation_id = 1;
+  string article_id = 2;
+  string stance = 3;
+  string excerpt = 4;
+  string note = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListReadingAnnotationsResponse {
+  repeated ReadingAnnotationEntry annotations = 1;
+}
+
+message ListReadingThemeCurationsRequest {
+  string user_id = 1;
+  string theme_id = 2;
+  // 0 uses the server default limit.
+  int32 limit = 3;
+}
+
+message ReadingThemeCurationEntry {
+  string curation_id = 1;
+  string theme_id = 2;
+  string action_kind = 3;
+  string target_hash = 4;
+  string target_text = 5;
+  string user_note = 6;
+  string augur_conversation_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListReadingThemeCurationsResponse {
+  repeated ReadingThemeCurationEntry curations = 1;
 }

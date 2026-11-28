@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flaky test hunter wrapper for Go and Python suites (VERIFY-05).
+# Flaky test hunter wrapper for Go, Python, and Rust suites (VERIFY-05).
 # Thin wrapper: implementation lives in scripts/altharness (Go, `alt-harness flaky-hunt`).
 set -euo pipefail
 

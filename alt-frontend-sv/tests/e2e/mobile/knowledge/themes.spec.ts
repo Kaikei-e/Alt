@@ -47,10 +47,6 @@ test.describe("Mobile Theme Pages (/knowledge)", () => {
 		await expect(openedRow).not.toContainText("· new");
 		await expect(openedRow).not.toContainText("updated since you read it");
 
-		await expect(
-			page.getByRole("link", { name: "Knowledge Trail" }),
-		).toHaveAttribute("href", "/knowledge/trail");
-
 		// Open the unopened theme and confirm RecordThemeOpened fires
 		const recordPromise = page.waitForResponse(
 			(res) =>
@@ -153,12 +149,6 @@ test.describe("Mobile Theme Pages (/knowledge)", () => {
 			.boundingBox();
 		expect(rowLinkBox).not.toBeNull();
 		expect(rowLinkBox?.height).toBeGreaterThanOrEqual(44);
-
-		const trailLinkBox = await page
-			.getByTestId("knowledge-trail-link")
-			.boundingBox();
-		expect(trailLinkBox).not.toBeNull();
-		expect(trailLinkBox?.height).toBeGreaterThanOrEqual(44);
 
 		await gotoMobileRoute(page, `knowledge/themes/${THEME_UNOPENED_ID}`);
 		await expect(page.getByTestId("theme-section-key-points")).toBeVisible();

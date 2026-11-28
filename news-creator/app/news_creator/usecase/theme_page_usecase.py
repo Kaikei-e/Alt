@@ -113,6 +113,18 @@ class ThemePageUsecase:
                 else None
             ),
             "failure_notes": list(request.failure_notes),
+            "user_steering": (
+                {
+                    "pinned_key_points": list(request.user_steering.pinned_key_points),
+                    "dismissed_key_points": list(
+                        request.user_steering.dismissed_key_points
+                    ),
+                    "user_questions": list(request.user_steering.user_questions),
+                    "user_notes": list(request.user_steering.user_notes),
+                }
+                if request.user_steering is not None
+                else None
+            ),
         }
         digest = hashlib.sha256(
             json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -146,6 +158,44 @@ class ThemePageUsecase:
                 "Failed to save theme page response to cache",
                 extra={"cache_key": cache_key, "error": str(exc)},
             )
+
+    @staticmethod
+    def _format_user_steering(request: ThemeGenerateRequest) -> str | None:
+        steering = request.user_steering
+        if steering is None:
+            return None
+        groups: tuple[tuple[str, list[str]], ...] = (
+            (
+                "読者が重要とピン留めした要点（優先保持・出典裏づけ必須）:",
+                steering.pinned_key_points,
+            ),
+            (
+                "読者が不要と却下した要点（繰り返さないこと）:",
+                steering.dismissed_key_points,
+            ),
+            (
+                "読者が立てた問い（入力アイテムに根拠があれば回答または未解決として反映）:",
+                steering.user_questions,
+            ),
+            (
+                "読者の着眼点・抜粋メモ（観点の参考にし、主張は必ず入力アイテムの事実で裏づけること）:",
+                steering.user_notes,
+            ),
+        )
+        steering_lines: list[str] = []
+        for header, entries in groups:
+            if not entries:
+                continue
+            steering_lines.append(header)
+            for entry in entries:
+                single_line = " ".join(
+                    sanitize_untrusted_content(entry).splitlines()
+                ).strip()
+                if single_line:
+                    steering_lines.append(f"- {single_line}")
+        if not steering_lines:
+            return None
+        return "### 読者の着眼点とキュレーション\n" + "\n".join(steering_lines)
 
     def _build_prompt(
         self,
@@ -194,6 +244,10 @@ class ThemePageUsecase:
             else:
                 prev_lines.append("- なし")
             sections.append("### 前回の版\n" + "\n".join(prev_lines))
+
+        steering_section = self._format_user_steering(request)
+        if steering_section:
+            sections.append(steering_section)
 
         if request.failure_notes:
             note_lines = [

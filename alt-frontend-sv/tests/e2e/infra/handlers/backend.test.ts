@@ -377,4 +377,78 @@ describe("E2E mock backend server", () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
 	});
+
+	it("handles SaveArticleAnnotation/List/Delete and CurateThemeItem/List/Remove statefully", async () => {
+		const server = createBackendServer();
+		await new Promise<void>((resolve) => {
+			server.listen(0, "127.0.0.1", () => resolve());
+		});
+		const address = server.address();
+		if (!address || typeof address === "string") {
+			server.close();
+			throw new Error("Expected TCP server address");
+		}
+		const baseUrl = `http://127.0.0.1:${address.port}`;
+		const articleId = "01938e82-7c00-7a7b-9b10-000000000042";
+		const themeId = "01938e82-7c00-7a7b-9b10-100000000001";
+
+		try {
+			const postRpc = async (method: string, body: Record<string, unknown>) => {
+				const res = await fetch(
+					`${baseUrl}/alt.reading.v1.ReadingService/${method}`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(body),
+					},
+				);
+				return {
+					status: res.status,
+					json: (await res.json()) as Record<string, unknown>,
+				};
+			};
+
+			const savedAnn = await postRpc("SaveArticleAnnotation", {
+				articleId,
+				stance: "ANNOTATION_STANCE_TAKEAWAY",
+				note: "Key takeaway from test",
+			});
+			expect(savedAnn.status).toBe(200);
+			const annId = (savedAnn.json.annotation as { annotationId: string })
+				.annotationId;
+
+			const listedAnn = await postRpc("ListArticleAnnotations", {
+				articleIds: [articleId],
+			});
+			expect(listedAnn.status).toBe(200);
+			expect(listedAnn.json.annotations).toHaveLength(1);
+
+			await postRpc("DeleteArticleAnnotation", { annotationId: annId });
+			const listedAnnAfter = await postRpc("ListArticleAnnotations", {
+				articleIds: [articleId],
+			});
+			expect(listedAnnAfter.json.annotations).toHaveLength(0);
+
+			const savedCur = await postRpc("CurateThemeItem", {
+				themeId,
+				kind: "THEME_CURATION_KIND_PIN_KEY_POINT",
+				targetHash: "abc123",
+				targetText: "Important point",
+			});
+			expect(savedCur.status).toBe(200);
+			const curId = (savedCur.json.curation as { curationId: string })
+				.curationId;
+
+			const listedCur = await postRpc("ListThemeCurations", { themeId });
+			expect(listedCur.status).toBe(200);
+			expect(listedCur.json.curations).toHaveLength(1);
+
+			await postRpc("RemoveThemeCuration", { curationId: curId });
+			const listedCurAfter = await postRpc("ListThemeCurations", { themeId });
+			expect(listedCurAfter.json.curations).toHaveLength(0);
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
 });

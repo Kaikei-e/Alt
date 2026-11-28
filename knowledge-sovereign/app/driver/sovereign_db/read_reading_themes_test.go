@@ -358,5 +358,7 @@ func TestRebuildTargetReading_IncludesReadingThemesTables(t *testing.T) {
 		"reading_queue_items",
 		"reading_themes",
 		"reading_theme_members",
+		"reading_annotations",
+		"reading_theme_curations",
 	}, target.Tables())
 }

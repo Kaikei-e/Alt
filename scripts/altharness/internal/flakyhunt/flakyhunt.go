@@ -1,6 +1,6 @@
 // Package flakyhunt implements `alt-harness flaky-hunt` (VERIFY-05), a pure-Go
-// flaky test hunter for Go and Python test suites with seed capture, failure
-// extraction, deterministic repro command generation, and structured evidence.
+// flaky test hunter for Go, Python, and Rust test suites with seed/failure
+// capture, deterministic repro command generation, and structured evidence.
 package flakyhunt
 
 import (
@@ -103,11 +103,11 @@ type config struct {
 const usageText = `Usage: alt-harness flaky-hunt <module> [options] [-- <extra-args>...]
 
 Options:
-  --lang auto|go|python    Test language (default: auto)
-  --rounds N               Number of randomized rounds (default: 5)
-  --count N                Test count per round (default: 1)
-  --seed SEED              Explicit shuffle seed (integer) or "on" for random
-  --pkg PKG                Go package pattern or Python test path (repeatable, default: ./...)
+  --lang auto|go|python|rust Test language (default: auto)
+  --rounds N                 Number of randomized/repeated rounds (default: 5)
+  --count N                  Test count per round (default: 1)
+  --seed SEED                Explicit shuffle seed (integer) or "on" for random
+  --pkg PKG                  Go package, Python test path, or Rust test filter (repeatable)
   --race[=true|false]      Enable Go race detector (default: true)
   --stress-procs N         Set GOMAXPROCS=N during Go runs for contention testing
   --evidence-dir DIR       Output directory for report.json and failure logs
@@ -185,6 +185,8 @@ func RunWithOptions(ctx context.Context, args []string, opts Options) int {
 		pkgDisplay = strings.Join(cfg.pkgs, " ")
 	} else if lang == "python" {
 		pkgDisplay = "."
+	} else if lang == "rust" {
+		pkgDisplay = "--all"
 	}
 
 	rep := Report{
@@ -209,6 +211,8 @@ func RunWithOptions(ctx context.Context, args []string, opts Options) int {
 		runErr = runGoHunt(ctx, cfg, relModule, modReal, evidenceDir, env, &rep)
 	case "python":
 		runErr = runPythonHunt(ctx, cfg, relModule, modReal, evidenceDir, env, &rep)
+	case "rust":
+		runErr = runRustHunt(ctx, cfg, relModule, modReal, evidenceDir, env, &rep)
 	default:
 		fmt.Fprintf(stderr, "ERROR: unsupported language %q\n", lang)
 		return exitUsage
@@ -414,9 +418,9 @@ func parseArgs(args []string) (config, error) {
 	cfg.module = positionals[0]
 
 	switch cfg.lang {
-	case "auto", "go", "python":
+	case "auto", "go", "python", "rust":
 	default:
-		return cfg, fmt.Errorf("invalid --lang %q: must be auto, go, or python", cfg.lang)
+		return cfg, fmt.Errorf("invalid --lang %q: must be auto, go, python, or rust", cfg.lang)
 	}
 	switch cfg.format {
 	case "text", "json":
@@ -715,12 +719,15 @@ func resolveLanguage(modDir, requested string) (string, error) {
 	if isRegularFile(filepath.Join(modDir, "go.mod")) {
 		return "go", nil
 	}
+	if isRegularFile(filepath.Join(modDir, "Cargo.toml")) {
+		return "rust", nil
+	}
 	for _, marker := range []string{"pyproject.toml", "pytest.ini", "setup.cfg"} {
 		if isRegularFile(filepath.Join(modDir, marker)) {
 			return "python", nil
 		}
 	}
-	return "", fmt.Errorf("could not auto-detect language in %s (missing go.mod or pyproject.toml); specify --lang go|python", modDir)
+	return "", fmt.Errorf("could not auto-detect language in %s (missing go.mod, Cargo.toml, or pyproject.toml); specify --lang go|python|rust", modDir)
 }
 
 func buildEnvMap(override map[string]string) map[string]string {

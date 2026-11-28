@@ -3,8 +3,13 @@ import { timestampDate, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
+	AnnotationStance,
+	type ArticleAnnotation,
+	type CurateThemeItemResponse,
 	type GetReadTodayQueueResponse,
 	type GetThemeResponse,
+	type ListArticleAnnotationsResponse,
+	type ListThemeCurationsResponse,
 	type ListThemesResponse,
 	QueueArticleOutcome,
 	type QueueArticleResponse,
@@ -14,6 +19,9 @@ import {
 	ReadingService,
 	ReadingSurface,
 	type RecordReadingEventsResponse,
+	type SaveArticleAnnotationResponse,
+	type ThemeCuration,
+	ThemeCurationKind,
 	type ThemeSentence,
 	type ThemeSource,
 	type ThemeSummary,
@@ -22,7 +30,13 @@ import {
 } from "#lib/gen/alt/reading/v1/reading_pb.js";
 import { uuidv7 } from "#lib/utils/uuidv7.js";
 
-export { QueueArticleOutcome, type ReadingEvent, ReadingSurface };
+export {
+	AnnotationStance,
+	QueueArticleOutcome,
+	type ReadingEvent,
+	ReadingSurface,
+	ThemeCurationKind,
+};
 
 export type ReadingClient = Client<typeof ReadingService>;
 
@@ -119,6 +133,80 @@ export interface ThemePageData {
 export interface RecordThemeOpenedOptions {
 	clientEventId?: string;
 	openedAt?: Date;
+}
+
+export interface ArticleAnnotationItem {
+	annotationId: string;
+	articleId: string;
+	stance: AnnotationStance;
+	excerpt: string;
+	note: string;
+	createdAt: Date | null;
+}
+
+export interface SaveArticleAnnotationParams {
+	articleId: string;
+	stance: AnnotationStance;
+	excerpt?: string;
+	note?: string;
+	clientEventId?: string;
+	createdAt?: Date;
+}
+
+export interface DeleteArticleAnnotationOptions {
+	clientEventId?: string;
+	deletedAt?: Date;
+}
+
+export interface ThemeCurationItem {
+	curationId: string;
+	themeId: string;
+	kind: ThemeCurationKind;
+	targetHash: string;
+	targetText: string;
+	userNote: string;
+	augurConversationId: string;
+	createdAt: Date | null;
+}
+
+export interface CurateThemeItemParams {
+	themeId: string;
+	kind: ThemeCurationKind;
+	targetHash?: string;
+	targetText?: string;
+	userNote?: string;
+	augurConversationId?: string;
+	clientEventId?: string;
+	createdAt?: Date;
+}
+
+export interface RemoveThemeCurationOptions {
+	clientEventId?: string;
+	removedAt?: Date;
+}
+
+function mapArticleAnnotation(item: ArticleAnnotation): ArticleAnnotationItem {
+	return {
+		annotationId: item.annotationId,
+		articleId: item.articleId,
+		stance: item.stance,
+		excerpt: item.excerpt,
+		note: item.note,
+		createdAt: item.createdAt ? timestampDate(item.createdAt) : null,
+	};
+}
+
+function mapThemeCuration(item: ThemeCuration): ThemeCurationItem {
+	return {
+		curationId: item.curationId,
+		themeId: item.themeId,
+		kind: item.kind,
+		targetHash: item.targetHash,
+		targetText: item.targetText,
+		userNote: item.userNote,
+		augurConversationId: item.augurConversationId,
+		createdAt: item.createdAt ? timestampDate(item.createdAt) : null,
+	};
 }
 
 function mapThemeSummary(item: ThemeSummary): ThemeSummaryItem {
@@ -296,4 +384,98 @@ export async function recordThemeOpened(
 		// Telemetry must never block reading; omit identifiers from logs.
 		console.warn("Failed to record theme opened");
 	}
+}
+
+export async function saveArticleAnnotation(
+	transport: Transport,
+	params: SaveArticleAnnotationParams,
+): Promise<ArticleAnnotationItem> {
+	const client = createReadingClient(transport);
+	const response: SaveArticleAnnotationResponse =
+		await client.saveArticleAnnotation({
+			articleId: params.articleId,
+			stance: params.stance,
+			excerpt: params.excerpt ?? "",
+			note: params.note ?? "",
+			clientEventId: params.clientEventId ?? uuidv7(),
+			createdAt: timestampFromDate(params.createdAt ?? new Date()),
+		});
+	if (!response.annotation) {
+		throw new Error("SaveArticleAnnotation returned empty annotation");
+	}
+	return mapArticleAnnotation(response.annotation);
+}
+
+export async function deleteArticleAnnotation(
+	transport: Transport,
+	annotationId: string,
+	options?: DeleteArticleAnnotationOptions,
+): Promise<void> {
+	const client = createReadingClient(transport);
+	await client.deleteArticleAnnotation({
+		annotationId,
+		clientEventId: options?.clientEventId ?? uuidv7(),
+		deletedAt: timestampFromDate(options?.deletedAt ?? new Date()),
+	});
+}
+
+export async function listArticleAnnotations(
+	transport: Transport,
+	articleIds: string[] = [],
+	limit = 0,
+): Promise<ArticleAnnotationItem[]> {
+	const client = createReadingClient(transport);
+	const response: ListArticleAnnotationsResponse =
+		await client.listArticleAnnotations({
+			articleIds,
+			limit,
+		});
+	return response.annotations.map(mapArticleAnnotation);
+}
+
+export async function curateThemeItem(
+	transport: Transport,
+	params: CurateThemeItemParams,
+): Promise<ThemeCurationItem> {
+	const client = createReadingClient(transport);
+	const response: CurateThemeItemResponse = await client.curateThemeItem({
+		themeId: params.themeId,
+		kind: params.kind,
+		targetHash: params.targetHash ?? "",
+		targetText: params.targetText ?? "",
+		userNote: params.userNote ?? "",
+		augurConversationId: params.augurConversationId ?? "",
+		clientEventId: params.clientEventId ?? uuidv7(),
+		createdAt: timestampFromDate(params.createdAt ?? new Date()),
+	});
+	if (!response.curation) {
+		throw new Error("CurateThemeItem returned empty curation");
+	}
+	return mapThemeCuration(response.curation);
+}
+
+export async function removeThemeCuration(
+	transport: Transport,
+	curationId: string,
+	options?: RemoveThemeCurationOptions,
+): Promise<void> {
+	const client = createReadingClient(transport);
+	await client.removeThemeCuration({
+		curationId,
+		clientEventId: options?.clientEventId ?? uuidv7(),
+		removedAt: timestampFromDate(options?.removedAt ?? new Date()),
+	});
+}
+
+export async function listThemeCurations(
+	transport: Transport,
+	themeId: string,
+	limit = 0,
+): Promise<ThemeCurationItem[]> {
+	const client = createReadingClient(transport);
+	const response: ListThemeCurationsResponse = await client.listThemeCurations({
+		themeId,
+		limit,
+	});
+	return response.curations.map(mapThemeCuration);
 }

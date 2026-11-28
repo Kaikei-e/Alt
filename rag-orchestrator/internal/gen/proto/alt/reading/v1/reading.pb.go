@@ -142,6 +142,136 @@ func (QueueArticleOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{1}
 }
 
+// AnnotationStance classifies the user's epistemic reaction to an article takeaway.
+type AnnotationStance int32
+
+const (
+	// Default unspecified stance.
+	AnnotationStance_ANNOTATION_STANCE_UNSPECIFIED AnnotationStance = 0
+	// Something unexpected or counterintuitive.
+	AnnotationStance_ANNOTATION_STANCE_SURPRISE AnnotationStance = 1
+	// An open question raised while reading.
+	AnnotationStance_ANNOTATION_STANCE_QUESTION AnnotationStance = 2
+	// Tension or contradiction against prior understanding.
+	AnnotationStance_ANNOTATION_STANCE_CONTRADICTION AnnotationStance = 3
+	// Core takeaway or synthesized insight.
+	AnnotationStance_ANNOTATION_STANCE_INSIGHT AnnotationStance = 4
+)
+
+// Enum value maps for AnnotationStance.
+var (
+	AnnotationStance_name = map[int32]string{
+		0: "ANNOTATION_STANCE_UNSPECIFIED",
+		1: "ANNOTATION_STANCE_SURPRISE",
+		2: "ANNOTATION_STANCE_QUESTION",
+		3: "ANNOTATION_STANCE_CONTRADICTION",
+		4: "ANNOTATION_STANCE_INSIGHT",
+	}
+	AnnotationStance_value = map[string]int32{
+		"ANNOTATION_STANCE_UNSPECIFIED":   0,
+		"ANNOTATION_STANCE_SURPRISE":      1,
+		"ANNOTATION_STANCE_QUESTION":      2,
+		"ANNOTATION_STANCE_CONTRADICTION": 3,
+		"ANNOTATION_STANCE_INSIGHT":       4,
+	}
+)
+
+func (x AnnotationStance) Enum() *AnnotationStance {
+	p := new(AnnotationStance)
+	*p = x
+	return p
+}
+
+func (x AnnotationStance) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AnnotationStance) Descriptor() protoreflect.EnumDescriptor {
+	return file_alt_reading_v1_reading_proto_enumTypes[2].Descriptor()
+}
+
+func (AnnotationStance) Type() protoreflect.EnumType {
+	return &file_alt_reading_v1_reading_proto_enumTypes[2]
+}
+
+func (x AnnotationStance) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AnnotationStance.Descriptor instead.
+func (AnnotationStance) EnumDescriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{2}
+}
+
+// ThemeCurationKind classifies a user co-creation action on a theme page.
+type ThemeCurationKind int32
+
+const (
+	// Default unspecified kind.
+	ThemeCurationKind_THEME_CURATION_KIND_UNSPECIFIED ThemeCurationKind = 0
+	// Pin a generated key point as confirmed/high-priority.
+	ThemeCurationKind_THEME_CURATION_KIND_PIN_KEY_POINT ThemeCurationKind = 1
+	// Dismiss a noisy or incorrect generated key point.
+	ThemeCurationKind_THEME_CURATION_KIND_DISMISS_KEY_POINT ThemeCurationKind = 2
+	// Add a user-authored open question to the theme.
+	ThemeCurationKind_THEME_CURATION_KIND_ADD_QUESTION ThemeCurationKind = 3
+	// Mark an open question resolved with an optional synthesis note.
+	ThemeCurationKind_THEME_CURATION_KIND_RESOLVE_QUESTION ThemeCurationKind = 4
+	// Add a user seed note or hypothesis to steer future theme versions.
+	ThemeCurationKind_THEME_CURATION_KIND_ADD_SEED_NOTE ThemeCurationKind = 5
+	// Promote an Ask Augur insight into the theme with conversation provenance.
+	ThemeCurationKind_THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT ThemeCurationKind = 6
+)
+
+// Enum value maps for ThemeCurationKind.
+var (
+	ThemeCurationKind_name = map[int32]string{
+		0: "THEME_CURATION_KIND_UNSPECIFIED",
+		1: "THEME_CURATION_KIND_PIN_KEY_POINT",
+		2: "THEME_CURATION_KIND_DISMISS_KEY_POINT",
+		3: "THEME_CURATION_KIND_ADD_QUESTION",
+		4: "THEME_CURATION_KIND_RESOLVE_QUESTION",
+		5: "THEME_CURATION_KIND_ADD_SEED_NOTE",
+		6: "THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT",
+	}
+	ThemeCurationKind_value = map[string]int32{
+		"THEME_CURATION_KIND_UNSPECIFIED":           0,
+		"THEME_CURATION_KIND_PIN_KEY_POINT":         1,
+		"THEME_CURATION_KIND_DISMISS_KEY_POINT":     2,
+		"THEME_CURATION_KIND_ADD_QUESTION":          3,
+		"THEME_CURATION_KIND_RESOLVE_QUESTION":      4,
+		"THEME_CURATION_KIND_ADD_SEED_NOTE":         5,
+		"THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT": 6,
+	}
+)
+
+func (x ThemeCurationKind) Enum() *ThemeCurationKind {
+	p := new(ThemeCurationKind)
+	*p = x
+	return p
+}
+
+func (x ThemeCurationKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ThemeCurationKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_alt_reading_v1_reading_proto_enumTypes[3].Descriptor()
+}
+
+func (ThemeCurationKind) Type() protoreflect.EnumType {
+	return &file_alt_reading_v1_reading_proto_enumTypes[3]
+}
+
+func (x ThemeCurationKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ThemeCurationKind.Descriptor instead.
+func (ThemeCurationKind) EnumDescriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{3}
+}
+
 // SurfaceViewed records that the user viewed a reading surface.
 type SurfaceViewed struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1823,6 +1953,902 @@ func (*RecordThemeOpenedResponse) Descriptor() ([]byte, []int) {
 	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{24}
 }
 
+// ArticleAnnotation represents a user-authored micro-externalization attached to a read article.
+type ArticleAnnotation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique identifier of the annotation.
+	AnnotationId string `protobuf:"bytes,1,opt,name=annotation_id,json=annotationId,proto3" json:"annotation_id,omitempty"`
+	// Identifier of the source article.
+	ArticleId string `protobuf:"bytes,2,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// User's epistemic stance on the excerpt or note.
+	Stance AnnotationStance `protobuf:"varint,3,opt,name=stance,proto3,enum=alt.reading.v1.AnnotationStance" json:"stance,omitempty"`
+	// Optional short excerpt picked from the article (plain text, max 500 chars).
+	Excerpt string `protobuf:"bytes,4,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
+	// Optional 1-line user note or question (plain text, max 500 chars).
+	Note string `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	// Timestamp when the annotation was created.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArticleAnnotation) Reset() {
+	*x = ArticleAnnotation{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArticleAnnotation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArticleAnnotation) ProtoMessage() {}
+
+func (x *ArticleAnnotation) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArticleAnnotation.ProtoReflect.Descriptor instead.
+func (*ArticleAnnotation) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ArticleAnnotation) GetAnnotationId() string {
+	if x != nil {
+		return x.AnnotationId
+	}
+	return ""
+}
+
+func (x *ArticleAnnotation) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *ArticleAnnotation) GetStance() AnnotationStance {
+	if x != nil {
+		return x.Stance
+	}
+	return AnnotationStance_ANNOTATION_STANCE_UNSPECIFIED
+}
+
+func (x *ArticleAnnotation) GetExcerpt() string {
+	if x != nil {
+		return x.Excerpt
+	}
+	return ""
+}
+
+func (x *ArticleAnnotation) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *ArticleAnnotation) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// SaveArticleAnnotationRequest records a new article micro-externalization.
+type SaveArticleAnnotationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the article being annotated.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Epistemic stance for this annotation.
+	Stance AnnotationStance `protobuf:"varint,2,opt,name=stance,proto3,enum=alt.reading.v1.AnnotationStance" json:"stance,omitempty"`
+	// Optional excerpt selected from the article body.
+	Excerpt string `protobuf:"bytes,3,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
+	// Optional 1-line user note.
+	Note string `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	// Client-generated UUID used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,5,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed creation timestamp.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveArticleAnnotationRequest) Reset() {
+	*x = SaveArticleAnnotationRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveArticleAnnotationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveArticleAnnotationRequest) ProtoMessage() {}
+
+func (x *SaveArticleAnnotationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveArticleAnnotationRequest.ProtoReflect.Descriptor instead.
+func (*SaveArticleAnnotationRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *SaveArticleAnnotationRequest) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *SaveArticleAnnotationRequest) GetStance() AnnotationStance {
+	if x != nil {
+		return x.Stance
+	}
+	return AnnotationStance_ANNOTATION_STANCE_UNSPECIFIED
+}
+
+func (x *SaveArticleAnnotationRequest) GetExcerpt() string {
+	if x != nil {
+		return x.Excerpt
+	}
+	return ""
+}
+
+func (x *SaveArticleAnnotationRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *SaveArticleAnnotationRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *SaveArticleAnnotationRequest) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// SaveArticleAnnotationResponse returns the newly saved annotation.
+type SaveArticleAnnotationResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Saved annotation record.
+	Annotation    *ArticleAnnotation `protobuf:"bytes,1,opt,name=annotation,proto3" json:"annotation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveArticleAnnotationResponse) Reset() {
+	*x = SaveArticleAnnotationResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveArticleAnnotationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveArticleAnnotationResponse) ProtoMessage() {}
+
+func (x *SaveArticleAnnotationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveArticleAnnotationResponse.ProtoReflect.Descriptor instead.
+func (*SaveArticleAnnotationResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *SaveArticleAnnotationResponse) GetAnnotation() *ArticleAnnotation {
+	if x != nil {
+		return x.Annotation
+	}
+	return nil
+}
+
+// DeleteArticleAnnotationRequest removes a previously saved article annotation.
+type DeleteArticleAnnotationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the annotation to remove.
+	AnnotationId string `protobuf:"bytes,1,opt,name=annotation_id,json=annotationId,proto3" json:"annotation_id,omitempty"`
+	// Client-generated UUID used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,2,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed deletion timestamp.
+	DeletedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteArticleAnnotationRequest) Reset() {
+	*x = DeleteArticleAnnotationRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteArticleAnnotationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteArticleAnnotationRequest) ProtoMessage() {}
+
+func (x *DeleteArticleAnnotationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteArticleAnnotationRequest.ProtoReflect.Descriptor instead.
+func (*DeleteArticleAnnotationRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DeleteArticleAnnotationRequest) GetAnnotationId() string {
+	if x != nil {
+		return x.AnnotationId
+	}
+	return ""
+}
+
+func (x *DeleteArticleAnnotationRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *DeleteArticleAnnotationRequest) GetDeletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DeletedAt
+	}
+	return nil
+}
+
+// DeleteArticleAnnotationResponse acknowledges the deletion.
+type DeleteArticleAnnotationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteArticleAnnotationResponse) Reset() {
+	*x = DeleteArticleAnnotationResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteArticleAnnotationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteArticleAnnotationResponse) ProtoMessage() {}
+
+func (x *DeleteArticleAnnotationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteArticleAnnotationResponse.ProtoReflect.Descriptor instead.
+func (*DeleteArticleAnnotationResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{29}
+}
+
+// ListArticleAnnotationsRequest lists active annotations for the calling user.
+type ListArticleAnnotationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional list of article IDs to filter by; empty returns recent annotations across all articles.
+	ArticleIds []string `protobuf:"bytes,1,rep,name=article_ids,json=articleIds,proto3" json:"article_ids,omitempty"`
+	// Maximum number of annotations to return (0 uses server default).
+	Limit         int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticleAnnotationsRequest) Reset() {
+	*x = ListArticleAnnotationsRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticleAnnotationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticleAnnotationsRequest) ProtoMessage() {}
+
+func (x *ListArticleAnnotationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticleAnnotationsRequest.ProtoReflect.Descriptor instead.
+func (*ListArticleAnnotationsRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListArticleAnnotationsRequest) GetArticleIds() []string {
+	if x != nil {
+		return x.ArticleIds
+	}
+	return nil
+}
+
+func (x *ListArticleAnnotationsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// ListArticleAnnotationsResponse returns matching annotations newest first.
+type ListArticleAnnotationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Active annotations belonging to the calling user.
+	Annotations   []*ArticleAnnotation `protobuf:"bytes,1,rep,name=annotations,proto3" json:"annotations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticleAnnotationsResponse) Reset() {
+	*x = ListArticleAnnotationsResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticleAnnotationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticleAnnotationsResponse) ProtoMessage() {}
+
+func (x *ListArticleAnnotationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticleAnnotationsResponse.ProtoReflect.Descriptor instead.
+func (*ListArticleAnnotationsResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListArticleAnnotationsResponse) GetAnnotations() []*ArticleAnnotation {
+	if x != nil {
+		return x.Annotations
+	}
+	return nil
+}
+
+// ThemeCuration represents one active user curation on a theme page.
+type ThemeCuration struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique identifier of the curation.
+	CurationId string `protobuf:"bytes,1,opt,name=curation_id,json=curationId,proto3" json:"curation_id,omitempty"`
+	// Identifier of the target theme.
+	ThemeId string `protobuf:"bytes,2,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Co-creation action kind.
+	Kind ThemeCurationKind `protobuf:"varint,3,opt,name=kind,proto3,enum=alt.reading.v1.ThemeCurationKind" json:"kind,omitempty"`
+	// Deterministic hash identifying a target generated sentence (optional for user-added items).
+	TargetHash string `protobuf:"bytes,4,opt,name=target_hash,json=targetHash,proto3" json:"target_hash,omitempty"`
+	// Text of the curated sentence, user question, or promoted insight.
+	TargetText string `protobuf:"bytes,5,opt,name=target_text,json=targetText,proto3" json:"target_text,omitempty"`
+	// Optional 1-line user note or synthesis rationale.
+	UserNote string `protobuf:"bytes,6,opt,name=user_note,json=userNote,proto3" json:"user_note,omitempty"`
+	// Optional Augur conversation ID when promoted from Ask Augur.
+	AugurConversationId string `protobuf:"bytes,7,opt,name=augur_conversation_id,json=augurConversationId,proto3" json:"augur_conversation_id,omitempty"`
+	// Timestamp when the curation was recorded.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThemeCuration) Reset() {
+	*x = ThemeCuration{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeCuration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeCuration) ProtoMessage() {}
+
+func (x *ThemeCuration) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeCuration.ProtoReflect.Descriptor instead.
+func (*ThemeCuration) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ThemeCuration) GetCurationId() string {
+	if x != nil {
+		return x.CurationId
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetKind() ThemeCurationKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ThemeCurationKind_THEME_CURATION_KIND_UNSPECIFIED
+}
+
+func (x *ThemeCuration) GetTargetHash() string {
+	if x != nil {
+		return x.TargetHash
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetTargetText() string {
+	if x != nil {
+		return x.TargetText
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetUserNote() string {
+	if x != nil {
+		return x.UserNote
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetAugurConversationId() string {
+	if x != nil {
+		return x.AugurConversationId
+	}
+	return ""
+}
+
+func (x *ThemeCuration) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// CurateThemeItemRequest records a new co-creation action on a theme page.
+type CurateThemeItemRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the target theme.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Co-creation action kind.
+	Kind ThemeCurationKind `protobuf:"varint,2,opt,name=kind,proto3,enum=alt.reading.v1.ThemeCurationKind" json:"kind,omitempty"`
+	// Optional deterministic hash of the target sentence.
+	TargetHash string `protobuf:"bytes,3,opt,name=target_hash,json=targetHash,proto3" json:"target_hash,omitempty"`
+	// Curated sentence, question, or promoted insight text.
+	TargetText string `protobuf:"bytes,4,opt,name=target_text,json=targetText,proto3" json:"target_text,omitempty"`
+	// Optional user note or answer.
+	UserNote string `protobuf:"bytes,5,opt,name=user_note,json=userNote,proto3" json:"user_note,omitempty"`
+	// Optional Augur conversation ID provenance.
+	AugurConversationId string `protobuf:"bytes,6,opt,name=augur_conversation_id,json=augurConversationId,proto3" json:"augur_conversation_id,omitempty"`
+	// Client-generated UUID used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,7,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed creation timestamp.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CurateThemeItemRequest) Reset() {
+	*x = CurateThemeItemRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CurateThemeItemRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CurateThemeItemRequest) ProtoMessage() {}
+
+func (x *CurateThemeItemRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CurateThemeItemRequest.ProtoReflect.Descriptor instead.
+func (*CurateThemeItemRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CurateThemeItemRequest) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetKind() ThemeCurationKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ThemeCurationKind_THEME_CURATION_KIND_UNSPECIFIED
+}
+
+func (x *CurateThemeItemRequest) GetTargetHash() string {
+	if x != nil {
+		return x.TargetHash
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetTargetText() string {
+	if x != nil {
+		return x.TargetText
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetUserNote() string {
+	if x != nil {
+		return x.UserNote
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetAugurConversationId() string {
+	if x != nil {
+		return x.AugurConversationId
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *CurateThemeItemRequest) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// CurateThemeItemResponse returns the saved curation.
+type CurateThemeItemResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Saved theme curation record.
+	Curation      *ThemeCuration `protobuf:"bytes,1,opt,name=curation,proto3" json:"curation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CurateThemeItemResponse) Reset() {
+	*x = CurateThemeItemResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CurateThemeItemResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CurateThemeItemResponse) ProtoMessage() {}
+
+func (x *CurateThemeItemResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CurateThemeItemResponse.ProtoReflect.Descriptor instead.
+func (*CurateThemeItemResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *CurateThemeItemResponse) GetCuration() *ThemeCuration {
+	if x != nil {
+		return x.Curation
+	}
+	return nil
+}
+
+// RemoveThemeCurationRequest removes (undoes) a theme curation.
+type RemoveThemeCurationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the curation to remove.
+	CurationId string `protobuf:"bytes,1,opt,name=curation_id,json=curationId,proto3" json:"curation_id,omitempty"`
+	// Client-generated UUID used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,2,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed removal timestamp.
+	RemovedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=removed_at,json=removedAt,proto3" json:"removed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveThemeCurationRequest) Reset() {
+	*x = RemoveThemeCurationRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveThemeCurationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveThemeCurationRequest) ProtoMessage() {}
+
+func (x *RemoveThemeCurationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveThemeCurationRequest.ProtoReflect.Descriptor instead.
+func (*RemoveThemeCurationRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *RemoveThemeCurationRequest) GetCurationId() string {
+	if x != nil {
+		return x.CurationId
+	}
+	return ""
+}
+
+func (x *RemoveThemeCurationRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *RemoveThemeCurationRequest) GetRemovedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RemovedAt
+	}
+	return nil
+}
+
+// RemoveThemeCurationResponse acknowledges removal.
+type RemoveThemeCurationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveThemeCurationResponse) Reset() {
+	*x = RemoveThemeCurationResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveThemeCurationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveThemeCurationResponse) ProtoMessage() {}
+
+func (x *RemoveThemeCurationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveThemeCurationResponse.ProtoReflect.Descriptor instead.
+func (*RemoveThemeCurationResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{36}
+}
+
+// ListThemeCurationsRequest lists active curations for a theme.
+type ListThemeCurationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the theme.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Maximum number of curations to return (0 uses server default).
+	Limit         int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListThemeCurationsRequest) Reset() {
+	*x = ListThemeCurationsRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListThemeCurationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListThemeCurationsRequest) ProtoMessage() {}
+
+func (x *ListThemeCurationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListThemeCurationsRequest.ProtoReflect.Descriptor instead.
+func (*ListThemeCurationsRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListThemeCurationsRequest) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *ListThemeCurationsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// ListThemeCurationsResponse returns active curations for the theme.
+type ListThemeCurationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Active theme curations ordered newest first.
+	Curations     []*ThemeCuration `protobuf:"bytes,1,rep,name=curations,proto3" json:"curations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListThemeCurationsResponse) Reset() {
+	*x = ListThemeCurationsResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListThemeCurationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListThemeCurationsResponse) ProtoMessage() {}
+
+func (x *ListThemeCurationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListThemeCurationsResponse.ProtoReflect.Descriptor instead.
+func (*ListThemeCurationsResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ListThemeCurationsResponse) GetCurations() []*ThemeCuration {
+	if x != nil {
+		return x.Curations
+	}
+	return nil
+}
+
 var File_alt_reading_v1_reading_proto protoreflect.FileDescriptor
 
 const file_alt_reading_v1_reading_proto_rawDesc = "" +
@@ -1958,7 +2984,80 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\x12&\n" +
 	"\x0fclient_event_id\x18\x03 \x01(\tR\rclientEventId\x127\n" +
 	"\topened_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bopenedAt\"\x1b\n" +
-	"\x19RecordThemeOpenedResponse*\xa6\x01\n" +
+	"\x19RecordThemeOpenedResponse\"\xfa\x01\n" +
+	"\x11ArticleAnnotation\x12#\n" +
+	"\rannotation_id\x18\x01 \x01(\tR\fannotationId\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x02 \x01(\tR\tarticleId\x128\n" +
+	"\x06stance\x18\x03 \x01(\x0e2 .alt.reading.v1.AnnotationStanceR\x06stance\x12\x18\n" +
+	"\aexcerpt\x18\x04 \x01(\tR\aexcerpt\x12\x12\n" +
+	"\x04note\x18\x05 \x01(\tR\x04note\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x88\x02\n" +
+	"\x1cSaveArticleAnnotationRequest\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x128\n" +
+	"\x06stance\x18\x02 \x01(\x0e2 .alt.reading.v1.AnnotationStanceR\x06stance\x12\x18\n" +
+	"\aexcerpt\x18\x03 \x01(\tR\aexcerpt\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\x12&\n" +
+	"\x0fclient_event_id\x18\x05 \x01(\tR\rclientEventId\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"b\n" +
+	"\x1dSaveArticleAnnotationResponse\x12A\n" +
+	"\n" +
+	"annotation\x18\x01 \x01(\v2!.alt.reading.v1.ArticleAnnotationR\n" +
+	"annotation\"\xa8\x01\n" +
+	"\x1eDeleteArticleAnnotationRequest\x12#\n" +
+	"\rannotation_id\x18\x01 \x01(\tR\fannotationId\x12&\n" +
+	"\x0fclient_event_id\x18\x02 \x01(\tR\rclientEventId\x129\n" +
+	"\n" +
+	"deleted_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\"!\n" +
+	"\x1fDeleteArticleAnnotationResponse\"V\n" +
+	"\x1dListArticleAnnotationsRequest\x12\x1f\n" +
+	"\varticle_ids\x18\x01 \x03(\tR\n" +
+	"articleIds\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"e\n" +
+	"\x1eListArticleAnnotationsResponse\x12C\n" +
+	"\vannotations\x18\x01 \x03(\v2!.alt.reading.v1.ArticleAnnotationR\vannotations\"\xd0\x02\n" +
+	"\rThemeCuration\x12\x1f\n" +
+	"\vcuration_id\x18\x01 \x01(\tR\n" +
+	"curationId\x12\x19\n" +
+	"\btheme_id\x18\x02 \x01(\tR\athemeId\x125\n" +
+	"\x04kind\x18\x03 \x01(\x0e2!.alt.reading.v1.ThemeCurationKindR\x04kind\x12\x1f\n" +
+	"\vtarget_hash\x18\x04 \x01(\tR\n" +
+	"targetHash\x12\x1f\n" +
+	"\vtarget_text\x18\x05 \x01(\tR\n" +
+	"targetText\x12\x1b\n" +
+	"\tuser_note\x18\x06 \x01(\tR\buserNote\x122\n" +
+	"\x15augur_conversation_id\x18\a \x01(\tR\x13augurConversationId\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe0\x02\n" +
+	"\x16CurateThemeItemRequest\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x125\n" +
+	"\x04kind\x18\x02 \x01(\x0e2!.alt.reading.v1.ThemeCurationKindR\x04kind\x12\x1f\n" +
+	"\vtarget_hash\x18\x03 \x01(\tR\n" +
+	"targetHash\x12\x1f\n" +
+	"\vtarget_text\x18\x04 \x01(\tR\n" +
+	"targetText\x12\x1b\n" +
+	"\tuser_note\x18\x05 \x01(\tR\buserNote\x122\n" +
+	"\x15augur_conversation_id\x18\x06 \x01(\tR\x13augurConversationId\x12&\n" +
+	"\x0fclient_event_id\x18\a \x01(\tR\rclientEventId\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"T\n" +
+	"\x17CurateThemeItemResponse\x129\n" +
+	"\bcuration\x18\x01 \x01(\v2\x1d.alt.reading.v1.ThemeCurationR\bcuration\"\xa0\x01\n" +
+	"\x1aRemoveThemeCurationRequest\x12\x1f\n" +
+	"\vcuration_id\x18\x01 \x01(\tR\n" +
+	"curationId\x12&\n" +
+	"\x0fclient_event_id\x18\x02 \x01(\tR\rclientEventId\x129\n" +
+	"\n" +
+	"removed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tremovedAt\"\x1d\n" +
+	"\x1bRemoveThemeCurationResponse\"L\n" +
+	"\x19ListThemeCurationsRequest\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"Y\n" +
+	"\x1aListThemeCurationsResponse\x12;\n" +
+	"\tcurations\x18\x01 \x03(\v2\x1d.alt.reading.v1.ThemeCurationR\tcurations*\xa6\x01\n" +
 	"\x0eReadingSurface\x12\x1f\n" +
 	"\x1bREADING_SURFACE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17READING_SURFACE_GALLERY\x10\x01\x12\x19\n" +
@@ -1969,7 +3068,22 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"!QUEUE_ARTICLE_OUTCOME_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cQUEUE_ARTICLE_OUTCOME_QUEUED\x10\x01\x12(\n" +
 	"$QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED\x10\x02\x12$\n" +
-	" QUEUE_ARTICLE_OUTCOME_QUEUE_FULL\x10\x032\xba\x05\n" +
+	" QUEUE_ARTICLE_OUTCOME_QUEUE_FULL\x10\x03*\xb9\x01\n" +
+	"\x10AnnotationStance\x12!\n" +
+	"\x1dANNOTATION_STANCE_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aANNOTATION_STANCE_SURPRISE\x10\x01\x12\x1e\n" +
+	"\x1aANNOTATION_STANCE_QUESTION\x10\x02\x12#\n" +
+	"\x1fANNOTATION_STANCE_CONTRADICTION\x10\x03\x12\x1d\n" +
+	"\x19ANNOTATION_STANCE_INSIGHT\x10\x04*\xb0\x02\n" +
+	"\x11ThemeCurationKind\x12#\n" +
+	"\x1fTHEME_CURATION_KIND_UNSPECIFIED\x10\x00\x12%\n" +
+	"!THEME_CURATION_KIND_PIN_KEY_POINT\x10\x01\x12)\n" +
+	"%THEME_CURATION_KIND_DISMISS_KEY_POINT\x10\x02\x12$\n" +
+	" THEME_CURATION_KIND_ADD_QUESTION\x10\x03\x12(\n" +
+	"$THEME_CURATION_KIND_RESOLVE_QUESTION\x10\x04\x12%\n" +
+	"!THEME_CURATION_KIND_ADD_SEED_NOTE\x10\x05\x12-\n" +
+	")THEME_CURATION_KIND_PROMOTE_AUGUR_INSIGHT\x10\x062\xe6\n" +
+	"\n" +
 	"\x0eReadingService\x12n\n" +
 	"\x13RecordReadingEvents\x12*.alt.reading.v1.RecordReadingEventsRequest\x1a+.alt.reading.v1.RecordReadingEventsResponse\x12Y\n" +
 	"\fQueueArticle\x12#.alt.reading.v1.QueueArticleRequest\x1a$.alt.reading.v1.QueueArticleResponse\x12_\n" +
@@ -1978,7 +3092,13 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"\n" +
 	"ListThemes\x12!.alt.reading.v1.ListThemesRequest\x1a\".alt.reading.v1.ListThemesResponse\x12M\n" +
 	"\bGetTheme\x12\x1f.alt.reading.v1.GetThemeRequest\x1a .alt.reading.v1.GetThemeResponse\x12h\n" +
-	"\x11RecordThemeOpened\x12(.alt.reading.v1.RecordThemeOpenedRequest\x1a).alt.reading.v1.RecordThemeOpenedResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
+	"\x11RecordThemeOpened\x12(.alt.reading.v1.RecordThemeOpenedRequest\x1a).alt.reading.v1.RecordThemeOpenedResponse\x12t\n" +
+	"\x15SaveArticleAnnotation\x12,.alt.reading.v1.SaveArticleAnnotationRequest\x1a-.alt.reading.v1.SaveArticleAnnotationResponse\x12z\n" +
+	"\x17DeleteArticleAnnotation\x12..alt.reading.v1.DeleteArticleAnnotationRequest\x1a/.alt.reading.v1.DeleteArticleAnnotationResponse\x12w\n" +
+	"\x16ListArticleAnnotations\x12-.alt.reading.v1.ListArticleAnnotationsRequest\x1a..alt.reading.v1.ListArticleAnnotationsResponse\x12b\n" +
+	"\x0fCurateThemeItem\x12&.alt.reading.v1.CurateThemeItemRequest\x1a'.alt.reading.v1.CurateThemeItemResponse\x12n\n" +
+	"\x13RemoveThemeCuration\x12*.alt.reading.v1.RemoveThemeCurationRequest\x1a+.alt.reading.v1.RemoveThemeCurationResponse\x12k\n" +
+	"\x12ListThemeCurations\x12).alt.reading.v1.ListThemeCurationsRequest\x1a*.alt.reading.v1.ListThemeCurationsResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
 
 var (
 	file_alt_reading_v1_reading_proto_rawDescOnce sync.Once
@@ -1992,89 +3112,131 @@ func file_alt_reading_v1_reading_proto_rawDescGZIP() []byte {
 	return file_alt_reading_v1_reading_proto_rawDescData
 }
 
-var file_alt_reading_v1_reading_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_alt_reading_v1_reading_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_alt_reading_v1_reading_proto_goTypes = []any{
-	(ReadingSurface)(0),                 // 0: alt.reading.v1.ReadingSurface
-	(QueueArticleOutcome)(0),            // 1: alt.reading.v1.QueueArticleOutcome
-	(*SurfaceViewed)(nil),               // 2: alt.reading.v1.SurfaceViewed
-	(*ReachedEnd)(nil),                  // 3: alt.reading.v1.ReachedEnd
-	(*SessionEnded)(nil),                // 4: alt.reading.v1.SessionEnded
-	(*Opened)(nil),                      // 5: alt.reading.v1.Opened
-	(*ReadingEvent)(nil),                // 6: alt.reading.v1.ReadingEvent
-	(*RecordReadingEventsRequest)(nil),  // 7: alt.reading.v1.RecordReadingEventsRequest
-	(*RecordReadingEventsResponse)(nil), // 8: alt.reading.v1.RecordReadingEventsResponse
-	(*ReadingQueueItem)(nil),            // 9: alt.reading.v1.ReadingQueueItem
-	(*QueueArticleRequest)(nil),         // 10: alt.reading.v1.QueueArticleRequest
-	(*QueueArticleResponse)(nil),        // 11: alt.reading.v1.QueueArticleResponse
-	(*UnqueueArticleRequest)(nil),       // 12: alt.reading.v1.UnqueueArticleRequest
-	(*UnqueueArticleResponse)(nil),      // 13: alt.reading.v1.UnqueueArticleResponse
-	(*GetReadTodayQueueRequest)(nil),    // 14: alt.reading.v1.GetReadTodayQueueRequest
-	(*GetReadTodayQueueResponse)(nil),   // 15: alt.reading.v1.GetReadTodayQueueResponse
-	(*ListThemesRequest)(nil),           // 16: alt.reading.v1.ListThemesRequest
-	(*ThemeSummary)(nil),                // 17: alt.reading.v1.ThemeSummary
-	(*ListThemesResponse)(nil),          // 18: alt.reading.v1.ListThemesResponse
-	(*GetThemeRequest)(nil),             // 19: alt.reading.v1.GetThemeRequest
-	(*ThemeSentence)(nil),               // 20: alt.reading.v1.ThemeSentence
-	(*ThemeTimelineEntry)(nil),          // 21: alt.reading.v1.ThemeTimelineEntry
-	(*ThemeSource)(nil),                 // 22: alt.reading.v1.ThemeSource
-	(*ThemeVersionRef)(nil),             // 23: alt.reading.v1.ThemeVersionRef
-	(*GetThemeResponse)(nil),            // 24: alt.reading.v1.GetThemeResponse
-	(*RecordThemeOpenedRequest)(nil),    // 25: alt.reading.v1.RecordThemeOpenedRequest
-	(*RecordThemeOpenedResponse)(nil),   // 26: alt.reading.v1.RecordThemeOpenedResponse
-	(*timestamppb.Timestamp)(nil),       // 27: google.protobuf.Timestamp
+	(ReadingSurface)(0),                     // 0: alt.reading.v1.ReadingSurface
+	(QueueArticleOutcome)(0),                // 1: alt.reading.v1.QueueArticleOutcome
+	(AnnotationStance)(0),                   // 2: alt.reading.v1.AnnotationStance
+	(ThemeCurationKind)(0),                  // 3: alt.reading.v1.ThemeCurationKind
+	(*SurfaceViewed)(nil),                   // 4: alt.reading.v1.SurfaceViewed
+	(*ReachedEnd)(nil),                      // 5: alt.reading.v1.ReachedEnd
+	(*SessionEnded)(nil),                    // 6: alt.reading.v1.SessionEnded
+	(*Opened)(nil),                          // 7: alt.reading.v1.Opened
+	(*ReadingEvent)(nil),                    // 8: alt.reading.v1.ReadingEvent
+	(*RecordReadingEventsRequest)(nil),      // 9: alt.reading.v1.RecordReadingEventsRequest
+	(*RecordReadingEventsResponse)(nil),     // 10: alt.reading.v1.RecordReadingEventsResponse
+	(*ReadingQueueItem)(nil),                // 11: alt.reading.v1.ReadingQueueItem
+	(*QueueArticleRequest)(nil),             // 12: alt.reading.v1.QueueArticleRequest
+	(*QueueArticleResponse)(nil),            // 13: alt.reading.v1.QueueArticleResponse
+	(*UnqueueArticleRequest)(nil),           // 14: alt.reading.v1.UnqueueArticleRequest
+	(*UnqueueArticleResponse)(nil),          // 15: alt.reading.v1.UnqueueArticleResponse
+	(*GetReadTodayQueueRequest)(nil),        // 16: alt.reading.v1.GetReadTodayQueueRequest
+	(*GetReadTodayQueueResponse)(nil),       // 17: alt.reading.v1.GetReadTodayQueueResponse
+	(*ListThemesRequest)(nil),               // 18: alt.reading.v1.ListThemesRequest
+	(*ThemeSummary)(nil),                    // 19: alt.reading.v1.ThemeSummary
+	(*ListThemesResponse)(nil),              // 20: alt.reading.v1.ListThemesResponse
+	(*GetThemeRequest)(nil),                 // 21: alt.reading.v1.GetThemeRequest
+	(*ThemeSentence)(nil),                   // 22: alt.reading.v1.ThemeSentence
+	(*ThemeTimelineEntry)(nil),              // 23: alt.reading.v1.ThemeTimelineEntry
+	(*ThemeSource)(nil),                     // 24: alt.reading.v1.ThemeSource
+	(*ThemeVersionRef)(nil),                 // 25: alt.reading.v1.ThemeVersionRef
+	(*GetThemeResponse)(nil),                // 26: alt.reading.v1.GetThemeResponse
+	(*RecordThemeOpenedRequest)(nil),        // 27: alt.reading.v1.RecordThemeOpenedRequest
+	(*RecordThemeOpenedResponse)(nil),       // 28: alt.reading.v1.RecordThemeOpenedResponse
+	(*ArticleAnnotation)(nil),               // 29: alt.reading.v1.ArticleAnnotation
+	(*SaveArticleAnnotationRequest)(nil),    // 30: alt.reading.v1.SaveArticleAnnotationRequest
+	(*SaveArticleAnnotationResponse)(nil),   // 31: alt.reading.v1.SaveArticleAnnotationResponse
+	(*DeleteArticleAnnotationRequest)(nil),  // 32: alt.reading.v1.DeleteArticleAnnotationRequest
+	(*DeleteArticleAnnotationResponse)(nil), // 33: alt.reading.v1.DeleteArticleAnnotationResponse
+	(*ListArticleAnnotationsRequest)(nil),   // 34: alt.reading.v1.ListArticleAnnotationsRequest
+	(*ListArticleAnnotationsResponse)(nil),  // 35: alt.reading.v1.ListArticleAnnotationsResponse
+	(*ThemeCuration)(nil),                   // 36: alt.reading.v1.ThemeCuration
+	(*CurateThemeItemRequest)(nil),          // 37: alt.reading.v1.CurateThemeItemRequest
+	(*CurateThemeItemResponse)(nil),         // 38: alt.reading.v1.CurateThemeItemResponse
+	(*RemoveThemeCurationRequest)(nil),      // 39: alt.reading.v1.RemoveThemeCurationRequest
+	(*RemoveThemeCurationResponse)(nil),     // 40: alt.reading.v1.RemoveThemeCurationResponse
+	(*ListThemeCurationsRequest)(nil),       // 41: alt.reading.v1.ListThemeCurationsRequest
+	(*ListThemeCurationsResponse)(nil),      // 42: alt.reading.v1.ListThemeCurationsResponse
+	(*timestamppb.Timestamp)(nil),           // 43: google.protobuf.Timestamp
 }
 var file_alt_reading_v1_reading_proto_depIdxs = []int32{
 	0,  // 0: alt.reading.v1.SurfaceViewed.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 1: alt.reading.v1.ReachedEnd.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 2: alt.reading.v1.SessionEnded.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 3: alt.reading.v1.Opened.surface:type_name -> alt.reading.v1.ReadingSurface
-	27, // 4: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	2,  // 5: alt.reading.v1.ReadingEvent.surface_viewed:type_name -> alt.reading.v1.SurfaceViewed
-	3,  // 6: alt.reading.v1.ReadingEvent.reached_end:type_name -> alt.reading.v1.ReachedEnd
-	4,  // 7: alt.reading.v1.ReadingEvent.session_ended:type_name -> alt.reading.v1.SessionEnded
-	5,  // 8: alt.reading.v1.ReadingEvent.opened:type_name -> alt.reading.v1.Opened
-	6,  // 9: alt.reading.v1.RecordReadingEventsRequest.events:type_name -> alt.reading.v1.ReadingEvent
-	27, // 10: alt.reading.v1.ReadingQueueItem.queued_at:type_name -> google.protobuf.Timestamp
-	27, // 11: alt.reading.v1.ReadingQueueItem.expires_at:type_name -> google.protobuf.Timestamp
-	27, // 12: alt.reading.v1.QueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	43, // 4: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	4,  // 5: alt.reading.v1.ReadingEvent.surface_viewed:type_name -> alt.reading.v1.SurfaceViewed
+	5,  // 6: alt.reading.v1.ReadingEvent.reached_end:type_name -> alt.reading.v1.ReachedEnd
+	6,  // 7: alt.reading.v1.ReadingEvent.session_ended:type_name -> alt.reading.v1.SessionEnded
+	7,  // 8: alt.reading.v1.ReadingEvent.opened:type_name -> alt.reading.v1.Opened
+	8,  // 9: alt.reading.v1.RecordReadingEventsRequest.events:type_name -> alt.reading.v1.ReadingEvent
+	43, // 10: alt.reading.v1.ReadingQueueItem.queued_at:type_name -> google.protobuf.Timestamp
+	43, // 11: alt.reading.v1.ReadingQueueItem.expires_at:type_name -> google.protobuf.Timestamp
+	43, // 12: alt.reading.v1.QueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
 	0,  // 13: alt.reading.v1.QueueArticleRequest.surface:type_name -> alt.reading.v1.ReadingSurface
 	1,  // 14: alt.reading.v1.QueueArticleResponse.outcome:type_name -> alt.reading.v1.QueueArticleOutcome
-	9,  // 15: alt.reading.v1.QueueArticleResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
-	27, // 16: alt.reading.v1.UnqueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	27, // 17: alt.reading.v1.GetReadTodayQueueRequest.read_since:type_name -> google.protobuf.Timestamp
-	9,  // 18: alt.reading.v1.GetReadTodayQueueResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
-	27, // 19: alt.reading.v1.ThemeSummary.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 20: alt.reading.v1.ThemeSummary.last_opened_at:type_name -> google.protobuf.Timestamp
-	17, // 21: alt.reading.v1.ListThemesResponse.themes:type_name -> alt.reading.v1.ThemeSummary
-	27, // 22: alt.reading.v1.ThemeVersionRef.created_at:type_name -> google.protobuf.Timestamp
-	27, // 23: alt.reading.v1.GetThemeResponse.created_at:type_name -> google.protobuf.Timestamp
-	20, // 24: alt.reading.v1.GetThemeResponse.key_points:type_name -> alt.reading.v1.ThemeSentence
-	21, // 25: alt.reading.v1.GetThemeResponse.timeline:type_name -> alt.reading.v1.ThemeTimelineEntry
-	20, // 26: alt.reading.v1.GetThemeResponse.what_changed:type_name -> alt.reading.v1.ThemeSentence
-	20, // 27: alt.reading.v1.GetThemeResponse.open_questions:type_name -> alt.reading.v1.ThemeSentence
-	22, // 28: alt.reading.v1.GetThemeResponse.sources:type_name -> alt.reading.v1.ThemeSource
-	23, // 29: alt.reading.v1.GetThemeResponse.versions:type_name -> alt.reading.v1.ThemeVersionRef
-	27, // 30: alt.reading.v1.RecordThemeOpenedRequest.opened_at:type_name -> google.protobuf.Timestamp
-	7,  // 31: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
-	10, // 32: alt.reading.v1.ReadingService.QueueArticle:input_type -> alt.reading.v1.QueueArticleRequest
-	12, // 33: alt.reading.v1.ReadingService.UnqueueArticle:input_type -> alt.reading.v1.UnqueueArticleRequest
-	14, // 34: alt.reading.v1.ReadingService.GetReadTodayQueue:input_type -> alt.reading.v1.GetReadTodayQueueRequest
-	16, // 35: alt.reading.v1.ReadingService.ListThemes:input_type -> alt.reading.v1.ListThemesRequest
-	19, // 36: alt.reading.v1.ReadingService.GetTheme:input_type -> alt.reading.v1.GetThemeRequest
-	25, // 37: alt.reading.v1.ReadingService.RecordThemeOpened:input_type -> alt.reading.v1.RecordThemeOpenedRequest
-	8,  // 38: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
-	11, // 39: alt.reading.v1.ReadingService.QueueArticle:output_type -> alt.reading.v1.QueueArticleResponse
-	13, // 40: alt.reading.v1.ReadingService.UnqueueArticle:output_type -> alt.reading.v1.UnqueueArticleResponse
-	15, // 41: alt.reading.v1.ReadingService.GetReadTodayQueue:output_type -> alt.reading.v1.GetReadTodayQueueResponse
-	18, // 42: alt.reading.v1.ReadingService.ListThemes:output_type -> alt.reading.v1.ListThemesResponse
-	24, // 43: alt.reading.v1.ReadingService.GetTheme:output_type -> alt.reading.v1.GetThemeResponse
-	26, // 44: alt.reading.v1.ReadingService.RecordThemeOpened:output_type -> alt.reading.v1.RecordThemeOpenedResponse
-	38, // [38:45] is the sub-list for method output_type
-	31, // [31:38] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	11, // 15: alt.reading.v1.QueueArticleResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
+	43, // 16: alt.reading.v1.UnqueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	43, // 17: alt.reading.v1.GetReadTodayQueueRequest.read_since:type_name -> google.protobuf.Timestamp
+	11, // 18: alt.reading.v1.GetReadTodayQueueResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
+	43, // 19: alt.reading.v1.ThemeSummary.updated_at:type_name -> google.protobuf.Timestamp
+	43, // 20: alt.reading.v1.ThemeSummary.last_opened_at:type_name -> google.protobuf.Timestamp
+	19, // 21: alt.reading.v1.ListThemesResponse.themes:type_name -> alt.reading.v1.ThemeSummary
+	43, // 22: alt.reading.v1.ThemeVersionRef.created_at:type_name -> google.protobuf.Timestamp
+	43, // 23: alt.reading.v1.GetThemeResponse.created_at:type_name -> google.protobuf.Timestamp
+	22, // 24: alt.reading.v1.GetThemeResponse.key_points:type_name -> alt.reading.v1.ThemeSentence
+	23, // 25: alt.reading.v1.GetThemeResponse.timeline:type_name -> alt.reading.v1.ThemeTimelineEntry
+	22, // 26: alt.reading.v1.GetThemeResponse.what_changed:type_name -> alt.reading.v1.ThemeSentence
+	22, // 27: alt.reading.v1.GetThemeResponse.open_questions:type_name -> alt.reading.v1.ThemeSentence
+	24, // 28: alt.reading.v1.GetThemeResponse.sources:type_name -> alt.reading.v1.ThemeSource
+	25, // 29: alt.reading.v1.GetThemeResponse.versions:type_name -> alt.reading.v1.ThemeVersionRef
+	43, // 30: alt.reading.v1.RecordThemeOpenedRequest.opened_at:type_name -> google.protobuf.Timestamp
+	2,  // 31: alt.reading.v1.ArticleAnnotation.stance:type_name -> alt.reading.v1.AnnotationStance
+	43, // 32: alt.reading.v1.ArticleAnnotation.created_at:type_name -> google.protobuf.Timestamp
+	2,  // 33: alt.reading.v1.SaveArticleAnnotationRequest.stance:type_name -> alt.reading.v1.AnnotationStance
+	43, // 34: alt.reading.v1.SaveArticleAnnotationRequest.created_at:type_name -> google.protobuf.Timestamp
+	29, // 35: alt.reading.v1.SaveArticleAnnotationResponse.annotation:type_name -> alt.reading.v1.ArticleAnnotation
+	43, // 36: alt.reading.v1.DeleteArticleAnnotationRequest.deleted_at:type_name -> google.protobuf.Timestamp
+	29, // 37: alt.reading.v1.ListArticleAnnotationsResponse.annotations:type_name -> alt.reading.v1.ArticleAnnotation
+	3,  // 38: alt.reading.v1.ThemeCuration.kind:type_name -> alt.reading.v1.ThemeCurationKind
+	43, // 39: alt.reading.v1.ThemeCuration.created_at:type_name -> google.protobuf.Timestamp
+	3,  // 40: alt.reading.v1.CurateThemeItemRequest.kind:type_name -> alt.reading.v1.ThemeCurationKind
+	43, // 41: alt.reading.v1.CurateThemeItemRequest.created_at:type_name -> google.protobuf.Timestamp
+	36, // 42: alt.reading.v1.CurateThemeItemResponse.curation:type_name -> alt.reading.v1.ThemeCuration
+	43, // 43: alt.reading.v1.RemoveThemeCurationRequest.removed_at:type_name -> google.protobuf.Timestamp
+	36, // 44: alt.reading.v1.ListThemeCurationsResponse.curations:type_name -> alt.reading.v1.ThemeCuration
+	9,  // 45: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
+	12, // 46: alt.reading.v1.ReadingService.QueueArticle:input_type -> alt.reading.v1.QueueArticleRequest
+	14, // 47: alt.reading.v1.ReadingService.UnqueueArticle:input_type -> alt.reading.v1.UnqueueArticleRequest
+	16, // 48: alt.reading.v1.ReadingService.GetReadTodayQueue:input_type -> alt.reading.v1.GetReadTodayQueueRequest
+	18, // 49: alt.reading.v1.ReadingService.ListThemes:input_type -> alt.reading.v1.ListThemesRequest
+	21, // 50: alt.reading.v1.ReadingService.GetTheme:input_type -> alt.reading.v1.GetThemeRequest
+	27, // 51: alt.reading.v1.ReadingService.RecordThemeOpened:input_type -> alt.reading.v1.RecordThemeOpenedRequest
+	30, // 52: alt.reading.v1.ReadingService.SaveArticleAnnotation:input_type -> alt.reading.v1.SaveArticleAnnotationRequest
+	32, // 53: alt.reading.v1.ReadingService.DeleteArticleAnnotation:input_type -> alt.reading.v1.DeleteArticleAnnotationRequest
+	34, // 54: alt.reading.v1.ReadingService.ListArticleAnnotations:input_type -> alt.reading.v1.ListArticleAnnotationsRequest
+	37, // 55: alt.reading.v1.ReadingService.CurateThemeItem:input_type -> alt.reading.v1.CurateThemeItemRequest
+	39, // 56: alt.reading.v1.ReadingService.RemoveThemeCuration:input_type -> alt.reading.v1.RemoveThemeCurationRequest
+	41, // 57: alt.reading.v1.ReadingService.ListThemeCurations:input_type -> alt.reading.v1.ListThemeCurationsRequest
+	10, // 58: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
+	13, // 59: alt.reading.v1.ReadingService.QueueArticle:output_type -> alt.reading.v1.QueueArticleResponse
+	15, // 60: alt.reading.v1.ReadingService.UnqueueArticle:output_type -> alt.reading.v1.UnqueueArticleResponse
+	17, // 61: alt.reading.v1.ReadingService.GetReadTodayQueue:output_type -> alt.reading.v1.GetReadTodayQueueResponse
+	20, // 62: alt.reading.v1.ReadingService.ListThemes:output_type -> alt.reading.v1.ListThemesResponse
+	26, // 63: alt.reading.v1.ReadingService.GetTheme:output_type -> alt.reading.v1.GetThemeResponse
+	28, // 64: alt.reading.v1.ReadingService.RecordThemeOpened:output_type -> alt.reading.v1.RecordThemeOpenedResponse
+	31, // 65: alt.reading.v1.ReadingService.SaveArticleAnnotation:output_type -> alt.reading.v1.SaveArticleAnnotationResponse
+	33, // 66: alt.reading.v1.ReadingService.DeleteArticleAnnotation:output_type -> alt.reading.v1.DeleteArticleAnnotationResponse
+	35, // 67: alt.reading.v1.ReadingService.ListArticleAnnotations:output_type -> alt.reading.v1.ListArticleAnnotationsResponse
+	38, // 68: alt.reading.v1.ReadingService.CurateThemeItem:output_type -> alt.reading.v1.CurateThemeItemResponse
+	40, // 69: alt.reading.v1.ReadingService.RemoveThemeCuration:output_type -> alt.reading.v1.RemoveThemeCurationResponse
+	42, // 70: alt.reading.v1.ReadingService.ListThemeCurations:output_type -> alt.reading.v1.ListThemeCurationsResponse
+	58, // [58:71] is the sub-list for method output_type
+	45, // [45:58] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_alt_reading_v1_reading_proto_init() }
@@ -2095,8 +3257,8 @@ func file_alt_reading_v1_reading_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_reading_v1_reading_proto_rawDesc), len(file_alt_reading_v1_reading_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   25,
+			NumEnums:      4,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

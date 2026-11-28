@@ -139,7 +139,7 @@ func TestProjectionRebuildHandler_ListsRebuildableTargets(t *testing.T) {
 	assert.Equal(t, "knowledge-home-projector", projectors["knowledge-home"])
 	assert.Equal(t, []string{"knowledge_trail_footprints", "knowledge_trail_branches", "knowledge_trail_act_outcomes"}, byName["knowledge-trail"])
 	assert.Equal(t, "knowledge-trail-projector", projectors["knowledge-trail"])
-	assert.Equal(t, []string{"reading_sources", "reading_queue_items", "reading_themes", "reading_theme_members"}, byName["reading"])
+	assert.Equal(t, []string{"reading_sources", "reading_queue_items", "reading_themes", "reading_theme_members", "reading_annotations", "reading_theme_curations"}, byName["reading"])
 	assert.Equal(t, "reading-projector", projectors["reading"])
 
 	for _, tgt := range body.Targets {

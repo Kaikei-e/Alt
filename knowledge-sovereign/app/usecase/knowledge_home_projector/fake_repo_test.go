@@ -47,6 +47,7 @@ type fakeRepo struct {
 	digests          map[string]capturedDigest
 	recallCandidates map[string]capturedRecallCandidate
 	urlPatches       map[string]capturedURLPatch
+	summaryClears    map[string]capturedSummaryClear
 	snoozed          map[string]capturedSnooze
 	recallDismissed  map[string]capturedRecallDismiss
 
@@ -110,6 +111,7 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		digests:                 map[string]capturedDigest{},
 		recallCandidates:        map[string]capturedRecallCandidate{},
 		urlPatches:              map[string]capturedURLPatch{},
+		summaryClears:           map[string]capturedSummaryClear{},
 		snoozed:                 map[string]capturedSnooze{},
 		recallDismissed:         map[string]capturedRecallDismiss{},
 		dismissMissingKeys:      map[string]bool{},
@@ -349,6 +351,18 @@ func (f *fakeRepo) PatchKnowledgeHomeItemURL(_ context.Context, payload json.Raw
 		return fmt.Errorf("fakeRepo.PatchKnowledgeHomeItemURL: tenant_id is required")
 	}
 	f.urlPatches[w.ItemKey] = w
+	return nil
+}
+
+func (f *fakeRepo) ClearKnowledgeHomeItemSummary(_ context.Context, payload json.RawMessage) error {
+	var w capturedSummaryClear
+	if err := json.Unmarshal(payload, &w); err != nil {
+		return fmt.Errorf("fakeRepo.ClearKnowledgeHomeItemSummary: %w", err)
+	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.ClearKnowledgeHomeItemSummary: tenant_id is required")
+	}
+	f.summaryClears[w.ItemKey] = w
 	return nil
 }
 

@@ -40,6 +40,7 @@ const reader = createArticleReader({
 	getArticleId: () => overlayState.article.articleId,
 	getUrl: () => overlayState.article.url,
 	getTitle: () => overlayState.article.title,
+	getInitialSummary: () => overlayState.article.initialSummary,
 	getSurface: () => overlayState.surface,
 	getScrollContainer: () => scrollEl,
 	onArticleIdResolved: (articleId, url) => {

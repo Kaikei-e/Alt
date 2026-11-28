@@ -9,12 +9,10 @@ import {
 	CalendarRange,
 	Compass,
 	Eye,
-	Footprints,
 	Heart,
 	Home,
 	Layers,
 	LayoutGrid,
-	Lightbulb,
 	Link as LinkIcon,
 	Menu,
 	MessagesSquare,
@@ -55,7 +53,7 @@ export const NAV_TABS: NavTab[] = [
 	{ label: "Today", href: "/today", icon: BookOpen },
 	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Layers },
 	{ label: "Gallery", href: "/feeds/visual-preview", icon: LayoutGrid },
-	{ label: "Search", href: "/search", icon: Search },
+	{ label: "Themes", href: "/knowledge", icon: BookMarked },
 	{ label: "Menu", href: "/menu", icon: Menu },
 ];
 
@@ -68,9 +66,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 	{
 		title: "Browse",
 		items: [
-			{ label: "Home", href: "/home", icon: Lightbulb },
-			{ label: "Themes", href: "/knowledge", icon: BookMarked },
-			{ label: "Trail", href: "/knowledge/trail", icon: Footprints },
+			{ label: "Search", href: "/search", icon: Search },
 			{ label: "Library", href: "/feeds", icon: Rss },
 			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },
 			{ label: "Viewed", href: "/feeds/viewed", icon: Eye },

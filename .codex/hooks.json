@@ -101,6 +101,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/scripts/altharness/alt-harness\" lint-changed --hook",
+            "timeout": 60,
+            "statusMessage": "Running changed-file lint gate"
+          }
+        ]
+      }
     ]
   }
 }

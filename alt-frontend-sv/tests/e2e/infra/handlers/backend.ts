@@ -118,6 +118,31 @@ export function createBackendServer(): http.Server {
 		clientEventId: string;
 		openedAt: string;
 	}> = [];
+	const articleAnnotations = new Map<
+		string,
+		{
+			annotationId: string;
+			articleId: string;
+			stance: string;
+			excerpt: string;
+			note: string;
+			createdAt: string;
+		}
+	>();
+	const themeCurations = new Map<
+		string,
+		{
+			curationId: string;
+			themeId: string;
+			kind: string;
+			targetHash: string;
+			targetText: string;
+			userNote: string;
+			augurConversationId: string;
+			createdAt: string;
+		}
+	>();
+	let curationSeq = 0;
 
 	// Feed Inflow Stats & Daily Cap stateful store (isolated block for clean merges)
 	const feedInflowStats = new Map<string, MockFeedInflowStat>(
@@ -883,9 +908,164 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		if (path === "/alt.reading.v1.ReadingService/SaveArticleAnnotation") {
+			const articleId =
+				typeof body.articleId === "string" ? body.articleId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!articleId || !UUID_PATTERN.test(articleId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "article_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			const annotationId = `01938e82-7c00-7a7b-9b20-${String(++curationSeq).padStart(12, "0")}`;
+			const annotation = {
+				annotationId,
+				articleId,
+				stance:
+					typeof body.stance === "string"
+						? body.stance
+						: "ANNOTATION_STANCE_TAKEAWAY",
+				excerpt: typeof body.excerpt === "string" ? body.excerpt : "",
+				note: typeof body.note === "string" ? body.note : "",
+				createdAt:
+					typeof body.createdAt === "string"
+						? body.createdAt
+						: new Date().toISOString(),
+			};
+			articleAnnotations.set(annotationId, annotation);
+			res.writeHead(200);
+			res.end(JSON.stringify({ annotation }));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/DeleteArticleAnnotation") {
+			const annotationId =
+				typeof body.annotationId === "string" ? body.annotationId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!annotationId || !UUID_PATTERN.test(annotationId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "annotation_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			articleAnnotations.delete(annotationId);
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/ListArticleAnnotations") {
+			const filterIds = Array.isArray(body.articleIds)
+				? new Set(
+						body.articleIds.filter(
+							(id): id is string => typeof id === "string" && id.length > 0,
+						),
+					)
+				: null;
+			const limit =
+				typeof body.limit === "number" && body.limit > 0 ? body.limit : 100;
+			const items = [...articleAnnotations.values()]
+				.filter(
+					(a) =>
+						!filterIds || filterIds.size === 0 || filterIds.has(a.articleId),
+				)
+				.reverse()
+				.slice(0, limit);
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ annotations: items }));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/CurateThemeItem") {
+			const themeId =
+				typeof body.themeId === "string" ? body.themeId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!themeId || !UUID_PATTERN.test(themeId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "theme_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			const curationId = `01938e82-7c00-7a7b-9b30-${String(++curationSeq).padStart(12, "0")}`;
+			const curation = {
+				curationId,
+				themeId,
+				kind:
+					typeof body.kind === "string"
+						? body.kind
+						: "THEME_CURATION_KIND_ADD_SEED_NOTE",
+				targetHash: typeof body.targetHash === "string" ? body.targetHash : "",
+				targetText: typeof body.targetText === "string" ? body.targetText : "",
+				userNote: typeof body.userNote === "string" ? body.userNote : "",
+				augurConversationId:
+					typeof body.augurConversationId === "string"
+						? body.augurConversationId
+						: "",
+				createdAt:
+					typeof body.createdAt === "string"
+						? body.createdAt
+						: new Date().toISOString(),
+			};
+			themeCurations.set(curationId, curation);
+			res.writeHead(200);
+			res.end(JSON.stringify({ curation }));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/RemoveThemeCuration") {
+			const curationId =
+				typeof body.curationId === "string" ? body.curationId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!curationId || !UUID_PATTERN.test(curationId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "curation_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			themeCurations.delete(curationId);
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/ListThemeCurations") {
+			const themeId =
+				typeof body.themeId === "string" ? body.themeId.trim() : "";
+			const limit =
+				typeof body.limit === "number" && body.limit > 0 ? body.limit : 100;
+			const items = [...themeCurations.values()]
+				.filter((c) => !themeId || c.themeId === themeId)
+				.reverse()
+				.slice(0, limit);
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ curations: items }));
+			return;
+		}
+
 		if (path === "/__mock/themes/reset") {
 			themesStore = createInitialThemesStore();
 			themeOpenedCalls.length = 0;
+			articleAnnotations.clear();
+			themeCurations.clear();
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify({ ok: true }));

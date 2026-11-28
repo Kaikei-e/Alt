@@ -257,13 +257,15 @@ func placeholderMessage(err error) (string, bool) {
 	return "", false
 }
 
-// savePlaceholder creates and persists a placeholder summary for an article.
+// savePlaceholder creates and persists a placeholder summary for an article
+// without creating a summary version or emitting SummaryVersionCreated (ADR-001042).
 func (s *articleSummarizerService) savePlaceholder(ctx context.Context, article *domain.Article, msg string) error {
 	summary := &domain.ArticleSummary{
 		ArticleID:       article.ID,
 		UserID:          article.UserID,
 		ArticleTitle:    article.Title,
 		SummaryJapanese: msg,
+		SkipVersioning:  true,
 		CreatedAt:       time.Now(),
 	}
 	if err := s.summaryRepo.Create(ctx, summary); err != nil {

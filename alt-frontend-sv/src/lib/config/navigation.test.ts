@@ -11,12 +11,12 @@ describe("NAV_TABS", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Today, Swipe, Gallery, Search, Menu in order", () => {
+	it("has Today, Swipe, Gallery, Themes, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Today",
 			"Swipe",
 			"Gallery",
-			"Search",
+			"Themes",
 			"Menu",
 		]);
 	});
@@ -26,7 +26,7 @@ describe("NAV_TABS", () => {
 			"/today",
 			"/feeds/swipe/visual-preview",
 			"/feeds/visual-preview",
-			"/search",
+			"/knowledge",
 			"/menu",
 		]);
 	});
@@ -51,14 +51,15 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		}
 	});
 
-	it("includes moved primary routes (Home, Trail, Augur) and omits Swipe and Gallery", () => {
+	it("includes Search and Augur in Menu and omits primary tabs and retired Home/Trail", () => {
 		const hrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
 			s.items.map((i) => i.href),
 		);
-		expect(hrefs).toContain("/home");
-		expect(hrefs).toContain("/knowledge");
-		expect(hrefs).toContain("/knowledge/trail");
+		expect(hrefs).toContain("/search");
 		expect(hrefs).toContain("/augur");
+		expect(hrefs).not.toContain("/home");
+		expect(hrefs).not.toContain("/knowledge");
+		expect(hrefs).not.toContain("/knowledge/trail");
 		expect(hrefs).not.toContain("/feeds/swipe/visual-preview");
 		expect(hrefs).not.toContain("/feeds/visual-preview");
 		expect(hrefs).not.toContain("/today");

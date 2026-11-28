@@ -1,5 +1,8 @@
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rask_log_forwarder::buffer::Batch;
 use rask_log_forwarder::reliability::{RetryConfig, RetryManager, RetryStrategy};
+use std::collections::HashSet;
 use std::time::Duration;
 
 #[tokio::test]
@@ -38,18 +41,34 @@ async fn test_retry_with_jitter() {
 
     let retry_manager = RetryManager::new(config);
 
-    // With jitter, delays should vary but be within expected range
-    let delay1 = retry_manager.calculate_delay(1);
-    let delay2 = retry_manager.calculate_delay(1);
+    // Deterministic seeded RNG proves jitter stays within [100ms, 300ms)
+    // and spreads across the ±50% window without birthday-paradox flakiness.
+    let mut rng = StdRng::seed_from_u64(0x5EED_CAFE_u64);
+    let mut unique = HashSet::new();
+    for _ in 0..256 {
+        let delay = retry_manager.calculate_delay_with_rng(1, &mut rng);
+        assert!(delay >= Duration::from_millis(100));
+        assert!(delay < Duration::from_millis(300));
+        unique.insert(delay);
+    }
+    assert!(
+        unique.len() > 50,
+        "seeded jitter should span the ±50% interval (got {} unique values)",
+        unique.len()
+    );
 
-    // Both should be around 200ms but different due to jitter
-    assert!(delay1 >= Duration::from_millis(100));
-    assert!(delay1 <= Duration::from_millis(300));
-    assert!(delay2 >= Duration::from_millis(100));
-    assert!(delay2 <= Duration::from_millis(300));
+    // Replaying an identical seed produces identical delays.
+    let mut rng_a = StdRng::seed_from_u64(0x5EED_CAFE_u64);
+    let mut rng_b = StdRng::seed_from_u64(0x5EED_CAFE_u64);
+    assert_eq!(
+        retry_manager.calculate_delay_with_rng(1, &mut rng_a),
+        retry_manager.calculate_delay_with_rng(1, &mut rng_b),
+    );
 
-    // They should be different (very unlikely to be exactly the same with jitter)
-    assert_ne!(delay1, delay2);
+    // Default unseeded entrypoint still honors the ±50% range invariant.
+    let live_delay = retry_manager.calculate_delay(1);
+    assert!(live_delay >= Duration::from_millis(100));
+    assert!(live_delay <= Duration::from_millis(300));
 }
 
 #[tokio::test]

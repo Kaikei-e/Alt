@@ -4,6 +4,7 @@ import {
 	formatAugurConversationLabel,
 	parseAugurUserMessage,
 	resolveAugurEntry,
+	resolveAugurThemeLink,
 } from "./augur-entry";
 
 describe("augur-entry", () => {
@@ -34,6 +35,19 @@ describe("augur-entry", () => {
 		).toBe(
 			"Regarding the article: Apple Announces M5 Chip [articleId: abc123]\n\nQuestion:\nWhat is the key point?",
 		);
+	});
+
+	it("preserves articleId scope even when context title is empty", () => {
+		const id = "01938e82-7c00-7a7b-9b10-200000000001";
+		const message = buildAugurInitialMessage("Why did latency drop?", "", id);
+		expect(message).toBe(
+			`Regarding the article: [articleId: ${id}]\n\nQuestion:\nWhy did latency drop?`,
+		);
+		expect(parseAugurUserMessage(message)).toEqual({
+			question: "Why did latency drop?",
+			articleTitle: "",
+			articleId: id,
+		});
 	});
 
 	it("uses context format when articleId is absent even with context", () => {
@@ -234,5 +248,33 @@ describe("formatAugurConversationLabel", () => {
 
 	it("returns an empty string for an empty title", () => {
 		expect(formatAugurConversationLabel("   ")).toBe("");
+	});
+});
+
+describe("resolveAugurThemeLink", () => {
+	const THEME_ID = "01938e82-7c00-7a7b-9b10-100000000001";
+
+	it("returns validated themeId and sanitized themeTitle when UUID is valid", () => {
+		expect(
+			resolveAugurThemeLink({
+				themeId: `  ${THEME_ID} `,
+				themeTitle: "  Compiler Toolchains  ",
+			}),
+		).toEqual({
+			themeId: THEME_ID,
+			themeTitle: "Compiler Toolchains",
+		});
+	});
+
+	it("rejects non-UUID themeId values", () => {
+		expect(
+			resolveAugurThemeLink({
+				themeId: "../evil",
+				themeTitle: "Compiler Toolchains",
+			}),
+		).toEqual({
+			themeId: null,
+			themeTitle: null,
+		});
 	});
 });

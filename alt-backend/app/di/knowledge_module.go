@@ -6,6 +6,7 @@ import (
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
 	"alt/orchestrator/gateway/knowledge_metrics_gateway"
+	"alt/orchestrator/gateway/reading_curation_gateway"
 	"alt/orchestrator/gateway/reading_theme_gateway"
 	"alt/orchestrator/gateway/trail_thumbnail_gateway"
 	"alt/orchestrator/gateway/trending_tags_gateway"
@@ -24,6 +25,7 @@ import (
 	"alt/orchestrator/usecase/knowledge_slo_usecase"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
 	"alt/orchestrator/usecase/list_lenses_usecase"
+	"alt/orchestrator/usecase/reading_curation_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
@@ -60,6 +62,12 @@ type KnowledgeModule struct {
 	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
 	ListThemesUsecase                *reading_theme_usecase.ListThemesUsecase
 	RecordThemeOpenedUsecase         *reading_theme_usecase.RecordThemeOpenedUsecase
+	SaveArticleAnnotationUsecase     *reading_curation_usecase.SaveArticleAnnotationUsecase
+	DeleteArticleAnnotationUsecase   *reading_curation_usecase.DeleteArticleAnnotationUsecase
+	ListArticleAnnotationsUsecase    *reading_curation_usecase.ListArticleAnnotationsUsecase
+	CurateThemeItemUsecase           *reading_curation_usecase.CurateThemeItemUsecase
+	RemoveThemeCurationUsecase       *reading_curation_usecase.RemoveThemeCurationUsecase
+	ListThemeCurationsUsecase        *reading_curation_usecase.ListThemeCurationsUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
@@ -174,6 +182,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	readingThemeGw := reading_theme_gateway.NewGateway(sovereignCli)
 	listThemesUC := reading_theme_usecase.NewListThemesUsecase(readingThemeGw)
 	recordThemeOpenedUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(sovereignCli, time.Now)
+	readingCurationGw := reading_curation_gateway.NewGateway(sovereignCli)
+	saveAnnotationUC := reading_curation_usecase.NewSaveArticleAnnotationUsecase(sovereignCli, time.Now)
+	deleteAnnotationUC := reading_curation_usecase.NewDeleteArticleAnnotationUsecase(sovereignCli, time.Now)
+	listAnnotationsUC := reading_curation_usecase.NewListArticleAnnotationsUsecase(readingCurationGw)
+	curateThemeItemUC := reading_curation_usecase.NewCurateThemeItemUsecase(sovereignCli, time.Now)
+	removeThemeCurationUC := reading_curation_usecase.NewRemoveThemeCurationUsecase(sovereignCli, time.Now)
+	listThemeCurationsUC := reading_curation_usecase.NewListThemeCurationsUsecase(readingCurationGw)
+	slog.Info("reading_curation_usecases_enabled")
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
@@ -284,6 +300,12 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		GetReadTodayQueueUsecase:         getReadTodayQueueUC,
 		ListThemesUsecase:                listThemesUC,
 		RecordThemeOpenedUsecase:         recordThemeOpenedUC,
+		SaveArticleAnnotationUsecase:     saveAnnotationUC,
+		DeleteArticleAnnotationUsecase:   deleteAnnotationUC,
+		ListArticleAnnotationsUsecase:    listAnnotationsUC,
+		CurateThemeItemUsecase:           curateThemeItemUC,
+		RemoveThemeCurationUsecase:       removeThemeCurationUC,
+		ListThemeCurationsUsecase:        listThemeCurationsUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,

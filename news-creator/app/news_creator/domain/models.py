@@ -808,6 +808,53 @@ class ThemePreviousVersion(StrictFrozenModel):
         return entries
 
 
+THEME_MAX_STEERING_ENTRIES = 10
+THEME_MAX_STEERING_ENTRY_CHARS = 500
+
+
+class ThemeUserSteering(StrictFrozenModel):
+    """Optional human co-creation steering signals for theme generation (ADR-001044)."""
+
+    pinned_key_points: list[str] = Field(
+        default_factory=list,
+        max_length=THEME_MAX_STEERING_ENTRIES,
+        description="Key points explicitly pinned by the user",
+    )
+    dismissed_key_points: list[str] = Field(
+        default_factory=list,
+        max_length=THEME_MAX_STEERING_ENTRIES,
+        description="Key points dismissed by the user as noisy or inaccurate",
+    )
+    user_questions: list[str] = Field(
+        default_factory=list,
+        max_length=THEME_MAX_STEERING_ENTRIES,
+        description="User-authored open questions to track in this theme",
+    )
+    user_notes: list[str] = Field(
+        default_factory=list,
+        max_length=THEME_MAX_STEERING_ENTRIES,
+        description="User takeaways and seed notes from source articles",
+    )
+
+    @field_validator(
+        "pinned_key_points",
+        "dismissed_key_points",
+        "user_questions",
+        "user_notes",
+        mode="after",
+    )
+    @classmethod
+    def _validate_steering_entries(cls, entries: list[str]) -> list[str]:
+        for idx, entry in enumerate(entries):
+            if not entry.strip() or len(entry) > THEME_MAX_STEERING_ENTRY_CHARS:
+                msg = (
+                    f"steering[{idx}] must be 1..={THEME_MAX_STEERING_ENTRY_CHARS} "
+                    "non-blank chars"
+                )
+                raise ValueError(msg)
+        return entries
+
+
 class ThemeGenerateRequest(StrictFrozenModel):
     """Request payload for POST /v1/themes/generate."""
 
@@ -831,6 +878,10 @@ class ThemeGenerateRequest(StrictFrozenModel):
         default_factory=list,
         max_length=THEME_MAX_FAILURE_NOTES,
         description="Optional failure notes for regeneration",
+    )
+    user_steering: ThemeUserSteering | None = Field(
+        default=None,
+        description="Optional user curation and takeaway steering context",
     )
 
     @field_validator("failure_notes", mode="after")

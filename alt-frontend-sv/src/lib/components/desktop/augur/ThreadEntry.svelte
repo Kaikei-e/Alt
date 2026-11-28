@@ -24,6 +24,10 @@ type Props = {
 	index?: number;
 	/** True while this turn's answer is still being streamed/revealed. */
 	streaming?: boolean;
+	canPromoteToTheme?: boolean;
+	isPromotedToTheme?: boolean;
+	isPromotingToTheme?: boolean;
+	onPromoteToTheme?: () => void;
 };
 
 let {
@@ -33,6 +37,10 @@ let {
 	citations,
 	index = 0,
 	streaming = false,
+	canPromoteToTheme = false,
+	isPromotedToTheme = false,
+	isPromotingToTheme = false,
+	onPromoteToTheme,
 }: Props = $props();
 
 let isUser = $derived(role === "user");
@@ -120,6 +128,25 @@ function sourceHref(c: Citation): string | undefined {
 					{/each}
 				</ol>
 			</footer>
+		{/if}
+		{#if !streaming && canPromoteToTheme && onPromoteToTheme}
+			<div class="entry-promote">
+				<button
+					type="button"
+					class="promote-btn"
+					data-testid="augur-promote-to-theme"
+					disabled={isPromotedToTheme || isPromotingToTheme}
+					onclick={onPromoteToTheme}
+				>
+					{#if isPromotedToTheme}
+						Saved to Theme
+					{:else if isPromotingToTheme}
+						Saving…
+					{:else}
+						Save insight to Theme
+					{/if}
+				</button>
+			</div>
 		{/if}
 	{/if}
 
@@ -259,6 +286,28 @@ function sourceHref(c: Citation): string | undefined {
 	}
 
 	/* Bottom rule separator */
+	.entry-promote {
+		margin-top: 0.65rem;
+	}
+	.promote-btn {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.72rem;
+		color: var(--alt-primary, #2f4f4f);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+	}
+	.promote-btn:disabled {
+		color: var(--alt-ash, #999);
+		text-decoration: none;
+		cursor: default;
+	}
 	.entry-rule {
 		height: 1px; background: var(--surface-border, #c8c8c8);
 		margin-top: 1rem;

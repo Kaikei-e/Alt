@@ -310,4 +310,57 @@ describe("useSummarize", () => {
 			expect(s.isSummarizing).toBe(false);
 		});
 	});
+
+	describe("seed()", () => {
+		it("seeds an existing summary and transitions buttonState to success without streaming", () => {
+			const s = useSummarize();
+			s.seed("  既存の日本語要約  ");
+
+			expect(s.summary).toBe("既存の日本語要約");
+			expect(s.isSummarizing).toBe(false);
+			expect(s.summaryError).toBeNull();
+			expect(s.buttonState).toBe("success");
+			expect(streamSummarizeWithAbortAdapter).not.toHaveBeenCalled();
+		});
+
+		it("clears summary to idle when seeded with null or blank text", () => {
+			const s = useSummarize();
+			s.seed("既存の日本語要約");
+			s.seed("   ");
+
+			expect(s.summary).toBeNull();
+			expect(s.buttonState).toBe("idle");
+		});
+
+		it("aborts any in-flight stream and clears prior errors when seeding", () => {
+			const mockController = new AbortController();
+			const abortSpy = vi.spyOn(mockController, "abort");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockReturnValue(
+				mockController,
+			);
+
+			const s = useSummarize();
+			s.summarize("https://example.com/feed");
+			s.seed("キャッシュ済み要約");
+
+			expect(abortSpy).toHaveBeenCalled();
+			expect(s.isSummarizing).toBe(false);
+			expect(s.summaryError).toBeNull();
+			expect(s.summary).toBe("キャッシュ済み要約");
+			expect(s.buttonState).toBe("success");
+		});
+
+		it("allows forceRefresh summarize() to replace a seeded summary", () => {
+			const s = useSummarize();
+			s.seed("古い要約");
+			s.summarize("https://example.com/feed", "art-1", "Title", true);
+
+			const { updateState, onComplete } = captureAdapterCallbacks();
+			updateState("再生成された要約");
+			onComplete({ articleId: "art-1", wasCached: false });
+
+			expect(s.summary).toBe("再生成された要約");
+			expect(s.buttonState).toBe("success");
+		});
+	});
 });

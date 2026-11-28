@@ -21,6 +21,7 @@ const (
 	EventRecallSnoozed         = "RecallSnoozed"
 	EventRecallDismissed       = "RecallDismissed"
 	EventSummarySuperseded     = "SummarySuperseded"
+	EventSummaryRetracted      = "SummaryRetracted"
 	EventTagSetSuperseded      = "TagSetSuperseded"
 	EventHomeItemSuperseded    = "HomeItemSuperseded"
 	EventReasonMerged          = "ReasonMerged"
@@ -82,13 +83,17 @@ const (
 	// `ArticleUrlBackfilledPayload` in knowledge_event_payload.go.
 	EventArticleUrlBackfilled = "ArticleUrlBackfilled"
 
-	EventReadingSurfaceViewed = "reading.surface_viewed.v1"
-	EventReadingReachedEnd    = "reading.reached_end.v1"
-	EventReadingSessionEnded  = "reading.session_ended.v1"
-	EventReadingOpened        = "reading.opened.v1"
-	EventReadingQueued        = "reading.queued.v1"
-	EventReadingUnqueued      = "reading.unqueued.v1"
-	EventReadingThemeOpened   = "reading.theme_opened.v1"
+	EventReadingSurfaceViewed       = "reading.surface_viewed.v1"
+	EventReadingReachedEnd          = "reading.reached_end.v1"
+	EventReadingSessionEnded        = "reading.session_ended.v1"
+	EventReadingOpened              = "reading.opened.v1"
+	EventReadingQueued              = "reading.queued.v1"
+	EventReadingUnqueued            = "reading.unqueued.v1"
+	EventReadingThemeOpened         = "reading.theme_opened.v1"
+	EventReadingAnnotationCreated   = "reading.annotation_created.v1"
+	EventReadingAnnotationDeleted   = "reading.annotation_deleted.v1"
+	EventReadingThemeItemCurated    = "reading.theme_item_curated.v1"
+	EventReadingThemeCurationRemove = "reading.theme_curation_removed.v1"
 )
 
 // Dedupe key namespaces for AppendKnowledgeEvent. Each producer MUST use

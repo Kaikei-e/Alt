@@ -18,6 +18,7 @@ var (
 	agyRunPreflightFn      = defaultAgyRunPreflight
 	agyRunLayersFn         = defaultAgyRunLayers
 	agyRunDocdagValidateFn = defaultAgyRunDocdagValidate
+	agyRunChangedLintFn    = defaultAgyRunChangedLint
 	agyFormatFileFn        = defaultAgyFormatFile
 )
 
@@ -780,6 +781,17 @@ func runAgyStop(ctx context.Context, stdin io.Reader, stdout io.Writer) int {
 			})
 			return 0
 		}
+		if code, output := agyRunChangedLintFn(ctx, repo); code != 0 {
+			reason := strings.TrimSpace(output)
+			if reason == "" {
+				reason = "Changed-file lint gate failed (alt-harness lint-changed); fix lint findings before stopping."
+			}
+			writeAgyJSON(stdout, map[string]any{
+				"decision": "continue",
+				"reason":   reason,
+			})
+			return 0
+		}
 	}
 
 	writeAgyJSON(stdout, map[string]any{"decision": "allow"})
@@ -906,25 +918,38 @@ func defaultAgyRunDocdagValidate(ctx context.Context, repoRoot string) (int, str
 func defaultAgyFormatFile(ctx context.Context, repoRoot, filePath string) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	var cmd *exec.Cmd
+	workDir := repoRoot
 	switch ext {
 	case ".go":
 		if bin, err := exec.LookPath("gofmt"); err == nil {
-			cmd = exec.CommandContext(ctx, bin, "-w", filePath)
+			cmd = exec.CommandContext(ctx, bin, "-s", "-w", filePath)
 		}
 	case ".py":
+		if pyRoot := findNearestProjectRoot(filePath, repoRoot, "pyproject.toml"); pyRoot != "" {
+			workDir = pyRoot
+		}
 		if bin, err := exec.LookPath("uv"); err == nil {
 			cmd = exec.CommandContext(ctx, bin, "run", "--no-sync", "ruff", "format", "--quiet", filePath)
 		}
 	case ".ts", ".tsx", ".svelte":
-		if bin, err := exec.LookPath("npx"); err == nil {
-			cmd = exec.CommandContext(ctx, bin, "--no-install", "biome", "format", "--write", filePath)
+		if tsRoot := findNearestProjectRoot(filePath, repoRoot, "package.json"); tsRoot != "" {
+			workDir = tsRoot
+			localBiome := filepath.Join(tsRoot, "node_modules", ".bin", "biome")
+			if st, err := os.Stat(localBiome); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+				cmd = exec.CommandContext(ctx, localBiome, "format", "--write", filePath)
+			}
+		}
+		if cmd == nil {
+			if bin, err := exec.LookPath("npx"); err == nil {
+				cmd = exec.CommandContext(ctx, bin, "--no-install", "biome", "format", "--write", filePath)
+			}
 		}
 	}
 	if cmd == nil {
 		return
 	}
-	if repoRoot != "" {
-		cmd.Dir = repoRoot
+	if workDir != "" {
+		cmd.Dir = workDir
 	}
 	_ = cmd.Run()
 }

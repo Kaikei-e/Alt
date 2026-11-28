@@ -21,6 +21,7 @@ export interface UseSummarize {
 		title?: string,
 		forceRefresh?: boolean,
 	): void;
+	seed(initialSummary: string | null): void;
 	abort(): void;
 	reset(): void;
 }
@@ -128,6 +129,14 @@ export function useSummarize(): UseSummarize {
 		}
 	}
 
+	function seed(initialSummary: string | null) {
+		abort();
+		isSummarizing = false;
+		summaryError = null;
+		retryCount = 0;
+		summary = initialSummary?.trim() || null;
+	}
+
 	function reset() {
 		abort();
 		isSummarizing = false;
@@ -150,6 +159,7 @@ export function useSummarize(): UseSummarize {
 			return buttonState;
 		},
 		summarize,
+		seed,
 		abort,
 		reset,
 	};

@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
@@ -34,6 +35,7 @@ export interface CreateArticleReaderOptions {
 	getArticleId: () => string | null | undefined;
 	getUrl: () => string | null | undefined;
 	getTitle: () => string | null | undefined;
+	getInitialSummary?: () => string | null | undefined;
 	getSurface: () => ReadingSurface;
 	getAutoSummarize?: () => boolean;
 	getScrollContainer?: () => ElementScrollTarget | null | undefined;
@@ -193,7 +195,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		}
 	});
 
-	function resetReaderState() {
+	function resetReaderState(seedInitial = false) {
 		contentToken++;
 		if (contentRetryTimer) {
 			clearTimeout(contentRetryTimer);
@@ -201,6 +203,14 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		}
 		speech.stop();
 		summarizer.reset();
+		if (seedInitial) {
+			const initialSummary = untrack(
+				() => options.getInitialSummary?.()?.trim() || null,
+			);
+			if (initialSummary) {
+				summarizer.seed(initialSummary);
+			}
+		}
 		articleContent = null;
 		fetchedArticleId = null;
 		loadedForKey = null;
@@ -282,7 +292,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		previousSuppliedId = nextSuppliedId;
 
 		if (urlChanged || idSwitched) {
-			resetReaderState();
+			resetReaderState(true);
 		}
 	});
 

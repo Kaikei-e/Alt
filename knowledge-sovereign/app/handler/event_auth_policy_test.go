@@ -815,6 +815,8 @@ func TestPolicyAuth_ReadingThemesAndRecapSourcesAccess(t *testing.T) {
 				AllowedMethods: map[string]bool{
 					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes":          true,
 					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow": true,
+					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingAnnotations":     true,
+					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemeCurations":  true,
 					"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent":       true,
 				},
 				AllowedEvents: map[string]bool{
@@ -873,6 +875,50 @@ func TestPolicyAuth_ReadingThemesAndRecapSourcesAccess(t *testing.T) {
 		okReq.Header().Set("Authorization", "Bearer "+backendToken)
 		okReq.Header().Set("X-Alt-Backend-Token", validJWT)
 		_, err = client.ListReadingThemes(context.Background(), okReq)
+		require.NoError(t, err)
+	})
+
+	t.Run("alt-backend ListReadingAnnotations and ListReadingThemeCurations enforce user JWT delegation", func(t *testing.T) {
+		wrongUserJWT := createTestBackendToken(t, jwtSigningKey, otherUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		validJWT := createTestBackendToken(t, jwtSigningKey, targetUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		themeID := uuid.NewString()
+
+		noJWTAnn := connect.NewRequest(&sovereignv1.ListReadingAnnotationsRequest{UserId: targetUserID})
+		noJWTAnn.Header().Set("Authorization", "Bearer "+backendToken)
+		_, err := client.ListReadingAnnotations(context.Background(), noJWTAnn)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+		wrongAnn := connect.NewRequest(&sovereignv1.ListReadingAnnotationsRequest{UserId: targetUserID})
+		wrongAnn.Header().Set("Authorization", "Bearer "+backendToken)
+		wrongAnn.Header().Set("X-Alt-Backend-Token", wrongUserJWT)
+		_, err = client.ListReadingAnnotations(context.Background(), wrongAnn)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+		okAnn := connect.NewRequest(&sovereignv1.ListReadingAnnotationsRequest{UserId: targetUserID, Limit: 10})
+		okAnn.Header().Set("Authorization", "Bearer "+backendToken)
+		okAnn.Header().Set("X-Alt-Backend-Token", validJWT)
+		_, err = client.ListReadingAnnotations(context.Background(), okAnn)
+		require.NoError(t, err)
+
+		noJWTCur := connect.NewRequest(&sovereignv1.ListReadingThemeCurationsRequest{UserId: targetUserID, ThemeId: themeID})
+		noJWTCur.Header().Set("Authorization", "Bearer "+backendToken)
+		_, err = client.ListReadingThemeCurations(context.Background(), noJWTCur)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+		wrongCur := connect.NewRequest(&sovereignv1.ListReadingThemeCurationsRequest{UserId: targetUserID, ThemeId: themeID})
+		wrongCur.Header().Set("Authorization", "Bearer "+backendToken)
+		wrongCur.Header().Set("X-Alt-Backend-Token", wrongUserJWT)
+		_, err = client.ListReadingThemeCurations(context.Background(), wrongCur)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+		okCur := connect.NewRequest(&sovereignv1.ListReadingThemeCurationsRequest{UserId: targetUserID, ThemeId: themeID, Limit: 10})
+		okCur.Header().Set("Authorization", "Bearer "+backendToken)
+		okCur.Header().Set("X-Alt-Backend-Token", validJWT)
+		_, err = client.ListReadingThemeCurations(context.Background(), okCur)
 		require.NoError(t, err)
 	})
 

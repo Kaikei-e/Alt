@@ -22,7 +22,7 @@ go_nosec = 6
 go_nosec = 24
 
 [targets.alt-frontend-sv]
-ts_biome_ignore = 21
+ts_biome_ignore = 19
 
 [targets.altctl]
 go_nolint = 1

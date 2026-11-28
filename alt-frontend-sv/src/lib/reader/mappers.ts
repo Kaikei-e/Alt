@@ -1,4 +1,5 @@
 import type { TagTrailArticle } from "#lib/connect/index.js";
+import type { KnowledgeHomeItemData } from "#lib/connect/knowledge_home.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import type { SearchFeedItem } from "#lib/schema/search.js";
 import type { ReaderArticleItem } from "./types.js";
@@ -40,5 +41,28 @@ export function tagTrailArticleToReaderItem(
 		title: article.title ?? null,
 		author: article.feedTitle ?? null,
 		publishedAt: article.publishedAt ?? null,
+	};
+}
+
+export function knowledgeHomeItemToReaderItem(
+	item: KnowledgeHomeItemData,
+): ReaderArticleItem {
+	const articleId = item.itemKey.startsWith("article:")
+		? item.itemKey.slice(8)
+		: item.articleId;
+	const url = item.url ?? "";
+	const readySummary =
+		item.summaryState === "ready" ? item.summaryExcerpt?.trim() || null : null;
+	return {
+		articleId: articleId || null,
+		url,
+		title: item.title ?? null,
+		publishedAt: item.publishedAt
+			? new Date(item.publishedAt).toLocaleDateString()
+			: null,
+		tagsLabel: (item.tags ?? []).join(" · ") || null,
+		fallbackDescription: null,
+		excerpt: null,
+		initialSummary: readySummary,
 	};
 }

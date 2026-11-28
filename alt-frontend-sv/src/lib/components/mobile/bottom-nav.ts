@@ -18,7 +18,7 @@ export function isImmersiveRoute(pathname: string): boolean {
  * - /today/* → Today (0)
  * - /feeds/swipe/* → Swipe (1)
  * - /feeds/visual-preview/* → Gallery (2)
- * - /search/* and /feeds/search/* → Search (3)
+ * - /knowledge and /knowledge/* → Themes (3)
  * - everything else surfaced via the Menu page → Menu (4)
  */
 export function getActiveTabIndex(pathname: string): number {
@@ -32,12 +32,7 @@ export function getActiveTabIndex(pathname: string): number {
 	) {
 		return 2;
 	}
-	if (
-		pathname === "/search" ||
-		pathname.startsWith("/search/") ||
-		pathname === "/feeds/search" ||
-		pathname.startsWith("/feeds/search/")
-	) {
+	if (pathname === "/knowledge" || pathname.startsWith("/knowledge/")) {
 		return 3;
 	}
 	return 4;

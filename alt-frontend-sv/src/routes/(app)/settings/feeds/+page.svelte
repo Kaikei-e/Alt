@@ -281,7 +281,7 @@ function handleBackToFeeds() {
 }
 
 function handleBackToHome() {
-	void goto("/home");
+	void goto("/today");
 }
 </script>
 

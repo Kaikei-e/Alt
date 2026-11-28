@@ -1462,7 +1462,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 		assert.Equal(t, "user-1", summaryRepo.lastSummary.UserID)
 		assert.Equal(t, "本文が短すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
 			"should save the known placeholder for short content")
-		assert.False(t, summaryRepo.lastSummary.SkipVersioning, "too-short placeholder must preserve default versioning")
+		assert.True(t, summaryRepo.lastSummary.SkipVersioning, "too-short placeholder must skip summary versioning (ADR-001042)")
 	})
 
 	t.Run("should still complete job even if placeholder save fails", func(t *testing.T) {
@@ -1514,7 +1514,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 		assert.Equal(t, "article-long", summaryRepo.lastSummary.ArticleID)
 		assert.Equal(t, "本文が長すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
 			"should save the known placeholder for long content")
-		assert.False(t, summaryRepo.lastSummary.SkipVersioning, "too-long placeholder must preserve default versioning")
+		assert.True(t, summaryRepo.lastSummary.SkipVersioning, "too-long placeholder must skip summary versioning (ADR-001042)")
 
 		// Should be marked completed, not dead_letter
 		assert.Len(t, jobRepo.updateCalls, 1)

@@ -535,6 +535,17 @@ export const CONNECT_RPC_PATHS = {
 	getTheme: "**/api/v2/alt.reading.v1.ReadingService/GetTheme",
 	recordThemeOpened:
 		"**/api/v2/alt.reading.v1.ReadingService/RecordThemeOpened",
+	saveArticleAnnotation:
+		"**/api/v2/alt.reading.v1.ReadingService/SaveArticleAnnotation",
+	deleteArticleAnnotation:
+		"**/api/v2/alt.reading.v1.ReadingService/DeleteArticleAnnotation",
+	listArticleAnnotations:
+		"**/api/v2/alt.reading.v1.ReadingService/ListArticleAnnotations",
+	curateThemeItem: "**/api/v2/alt.reading.v1.ReadingService/CurateThemeItem",
+	removeThemeCuration:
+		"**/api/v2/alt.reading.v1.ReadingService/RemoveThemeCuration",
+	listThemeCurations:
+		"**/api/v2/alt.reading.v1.ReadingService/ListThemeCurations",
 	// TTS service
 	ttsSynthesizeStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
 };

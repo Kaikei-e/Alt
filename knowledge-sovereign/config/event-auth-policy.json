@@ -17,6 +17,8 @@
         "/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
         "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
         "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingAnnotations",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemeCurations",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendRecallSignal",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeUserEvent",
@@ -38,6 +40,7 @@
       "allowed_events": [
         "SummaryVersionCreated",
         "SummarySuperseded",
+        "SummaryRetracted",
         "HomeItemsSeen",
         "HomeItemOpened",
         "HomeItemAsked",
@@ -55,6 +58,10 @@
         "reading.queued.v1",
         "reading.unqueued.v1",
         "reading.theme_opened.v1",
+        "reading.annotation_created.v1",
+        "reading.annotation_deleted.v1",
+        "reading.theme_item_curated.v1",
+        "reading.theme_curation_removed.v1",
         "open",
         "dismiss",
         "ask",
@@ -76,6 +83,7 @@
         "ArticleCreated",
         "SummaryVersionCreated",
         "SummarySuperseded",
+        "SummaryRetracted",
         "TagSetVersionCreated",
         "TagSetSuperseded"
       ],
@@ -113,7 +121,9 @@
       "token_file": "/run/secrets/sovereign_recap_token",
       "allowed_methods": [
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
-        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingAnnotations",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemeCurations"
       ],
       "allowed_events": [
         "recap.topic_snapshotted.v1",

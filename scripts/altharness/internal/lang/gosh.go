@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -78,9 +79,13 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if rc != 0 {
 		return rc
 	}
-	vulnBin, rc := ensureGoTool(ctx, stderr, root, cache, "govulncheck", govulnModule, govulncheckVersion)
-	if rc != 0 {
-		return rc
+	skipGovulncheck := strings.TrimSpace(os.Getenv("ALT_LINT_SKIP_GOVULNCHECK")) == "1"
+	vulnBin := ""
+	if !skipGovulncheck {
+		vulnBin, rc = ensureGoTool(ctx, stderr, root, cache, "govulncheck", govulnModule, govulncheckVersion)
+		if rc != 0 {
+			return rc
+		}
 	}
 	env := []string{"GOFLAGS=-buildvcs=false"}
 	canaryDir, err := os.MkdirTemp("", "alt-go-canary-")
@@ -212,41 +217,46 @@ func RunGo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	fmt.Fprintf(stdout, "==> [%s] govulncheck (SARIF)\n", rel)
-	if rc := runGovuln(ctx, project, env, vulnBin, []string{"-format=sarif", "./..."}, filepath.Join(reports, "govulncheck.sarif"), filepath.Join(reports, "govulncheck.stderr"), stderr, "ERROR: govulncheck execution failed"); rc != 0 {
-		return rc
-	}
-	if info, err := os.Stat(filepath.Join(reports, "govulncheck.sarif")); err != nil || info.Size() == 0 {
-		fmt.Fprintln(stderr, "ERROR: govulncheck did not produce a non-empty ./_reports/govulncheck.sarif")
-		return 1
-	}
-	if rc := runGovuln(ctx, project, env, vulnBin, []string{"-format=json", "./..."}, govulnPath, filepath.Join(reports, "govulncheck.stderr"), stderr, "ERROR: govulncheck JSON coverage run failed"); rc != 0 {
-		return rc
-	}
-	if canary.RunAudit(ctx, []string{"go-verify-govulncheck",
-		"--project-dir", project, "--govulncheck-sarif", filepath.Join(reports, "govulncheck.sarif"), "--govulncheck-json", govulnPath}, stdout, stderr) != 0 {
-		return 1
-	}
-	unique := filepath.Join(reports, "govulncheck.sarif.tmp")
-	if rc := jqInto(ctx, project, stderr, `(.runs[]?.results[]?.stacks | select(type == "array")) |= unique`, filepath.Join(reports, "govulncheck.sarif"), unique); rc != 0 {
-		return rc
-	}
-	if err := os.Rename(unique, filepath.Join(reports, "govulncheck.sarif")); err != nil {
-		fmt.Fprintf(stderr, "ERROR: %s\n", err.Error())
-		return 1
-	}
-	if code, err := run(ctx, stderr, stderr, project, nil, "jq", "-r", govulnMessageJQ, filepath.Join(reports, "govulncheck.sarif")); err != nil || code != 0 {
-		fmt.Fprintln(stderr, "ERROR: failed to render govulncheck findings")
-		return 1
-	}
-	calledOut, _, calledCode, calledErr := capture(ctx, project, nil, "jq", `[.runs[]?.results[]? | select(.level == "error")] | length`, filepath.Join(reports, "govulncheck.sarif"))
-	if calledErr != nil || calledCode != 0 {
-		fmt.Fprintln(stderr, "ERROR: failed to count govulncheck results")
-		return 1
-	}
-	if n, _ := strconv.Atoi(strings.TrimSpace(calledOut)); n > 0 {
-		status["govulncheck"] = "FAIL"
-		overall = 1
+	if skipGovulncheck {
+		fmt.Fprintf(stdout, "==> [%s] govulncheck SKIPPED (ALT_LINT_SKIP_GOVULNCHECK=1)\n", rel)
+		status["govulncheck"] = "SKIP (ALT_LINT_SKIP_GOVULNCHECK=1)"
+	} else {
+		fmt.Fprintf(stdout, "==> [%s] govulncheck (SARIF)\n", rel)
+		if rc := runGovuln(ctx, project, env, vulnBin, []string{"-format=sarif", "./..."}, filepath.Join(reports, "govulncheck.sarif"), filepath.Join(reports, "govulncheck.stderr"), stderr, "ERROR: govulncheck execution failed"); rc != 0 {
+			return rc
+		}
+		if info, err := os.Stat(filepath.Join(reports, "govulncheck.sarif")); err != nil || info.Size() == 0 {
+			fmt.Fprintln(stderr, "ERROR: govulncheck did not produce a non-empty ./_reports/govulncheck.sarif")
+			return 1
+		}
+		if rc := runGovuln(ctx, project, env, vulnBin, []string{"-format=json", "./..."}, govulnPath, filepath.Join(reports, "govulncheck.stderr"), stderr, "ERROR: govulncheck JSON coverage run failed"); rc != 0 {
+			return rc
+		}
+		if canary.RunAudit(ctx, []string{"go-verify-govulncheck",
+			"--project-dir", project, "--govulncheck-sarif", filepath.Join(reports, "govulncheck.sarif"), "--govulncheck-json", govulnPath}, stdout, stderr) != 0 {
+			return 1
+		}
+		unique := filepath.Join(reports, "govulncheck.sarif.tmp")
+		if rc := jqInto(ctx, project, stderr, `(.runs[]?.results[]?.stacks | select(type == "array")) |= unique`, filepath.Join(reports, "govulncheck.sarif"), unique); rc != 0 {
+			return rc
+		}
+		if err := os.Rename(unique, filepath.Join(reports, "govulncheck.sarif")); err != nil {
+			fmt.Fprintf(stderr, "ERROR: %s\n", err.Error())
+			return 1
+		}
+		if code, err := run(ctx, stderr, stderr, project, nil, "jq", "-r", govulnMessageJQ, filepath.Join(reports, "govulncheck.sarif")); err != nil || code != 0 {
+			fmt.Fprintln(stderr, "ERROR: failed to render govulncheck findings")
+			return 1
+		}
+		calledOut, _, calledCode, calledErr := capture(ctx, project, nil, "jq", `[.runs[]?.results[]? | select(.level == "error")] | length`, filepath.Join(reports, "govulncheck.sarif"))
+		if calledErr != nil || calledCode != 0 {
+			fmt.Fprintln(stderr, "ERROR: failed to count govulncheck results")
+			return 1
+		}
+		if n, _ := strconv.Atoi(strings.TrimSpace(calledOut)); n > 0 {
+			status["govulncheck"] = "FAIL"
+			overall = 1
+		}
 	}
 	fmt.Fprintf(stdout, "==> [%s] summary\n", rel)
 	for _, item := range []struct{ name, key string }{
@@ -262,6 +272,9 @@ func ensureGoTool(ctx context.Context, stderr io.Writer, root, cache, name, modu
 	bin := filepath.Join(cache, name+"-"+version, name)
 	if st, err := os.Stat(bin); err == nil && st.Mode()&0o111 != 0 {
 		return bin, 0
+	}
+	if pathBin := findPinnedGoToolOnPath(ctx, name, version); pathBin != "" {
+		return pathBin, 0
 	}
 	binDir := filepath.Dir(bin)
 	if err := os.MkdirAll(binDir, fsperm.Dir); err != nil {
@@ -282,6 +295,32 @@ func ensureGoTool(ctx context.Context, stderr io.Writer, root, cache, name, modu
 		return "", code
 	}
 	return bin, 0
+}
+
+func findPinnedGoToolOnPath(ctx context.Context, name, version string) string {
+	pathBin, err := exec.LookPath(name)
+	if err != nil {
+		return ""
+	}
+	want := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if want == "" {
+		return ""
+	}
+	verArg := "--version"
+	if name == "govulncheck" {
+		verArg = "-version"
+	}
+	out, _, code, runErr := capture(ctx, "", nil, pathBin, verArg)
+	if runErr != nil || code != 0 {
+		return ""
+	}
+	// Match exact semver token bounded by non-version characters so e.g. 2.14.0
+	// never matches 2.14.01 or 12.14.0.
+	pat := regexp.MustCompile(`(^|[^0-9A-Za-z.-])v?` + regexp.QuoteMeta(want) + `($|[^0-9A-Za-z.-])`)
+	if pat.MatchString(out) {
+		return pathBin
+	}
+	return ""
 }
 
 func runGovuln(ctx context.Context, dir string, env []string, bin string, args []string, stdoutPath, stderrPath string, userErr io.Writer, failText string) int {

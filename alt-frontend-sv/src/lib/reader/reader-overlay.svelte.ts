@@ -32,6 +32,7 @@ function toPlainReaderItem(item: ReaderArticleItem): ReaderArticleItem {
 		tagsLabel: item.tagsLabel ?? null,
 		fallbackDescription: item.fallbackDescription ?? null,
 		excerpt: item.excerpt ?? null,
+		initialSummary: item.initialSummary?.trim() || null,
 	};
 }
 

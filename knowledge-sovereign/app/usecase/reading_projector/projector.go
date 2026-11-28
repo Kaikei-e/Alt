@@ -29,6 +29,10 @@ type Repository interface {
 	RemoveReadingQueueItem(ctx context.Context, userID, articleID uuid.UUID, removedAt time.Time, reason string, eventSeq int64) error
 	UpsertReadingThemeVersion(ctx context.Context, theme sovereign_db.ReadingTheme, memberArticleIDs []uuid.UUID) error
 	MarkReadingThemeOpened(ctx context.Context, userID, themeID uuid.UUID, openedAt time.Time, version int) error
+	UpsertReadingAnnotation(ctx context.Context, ann sovereign_db.ReadingAnnotation) error
+	DeleteReadingAnnotation(ctx context.Context, userID, annotationID uuid.UUID, deletedAt time.Time, eventSeq int64) error
+	UpsertReadingThemeCuration(ctx context.Context, cur sovereign_db.ReadingThemeCuration) error
+	DeleteReadingThemeCuration(ctx context.Context, userID, curationID uuid.UUID, deletedAt time.Time, eventSeq int64) error
 }
 
 var _ Repository = (*sovereign_db.Repository)(nil)

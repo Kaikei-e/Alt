@@ -132,6 +132,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "s=\"$CLAUDE_PROJECT_DIR/scripts/altharness/alt-harness\"; [ -x \"$s\" ] || exit 0; \"$s\" lint-changed --hook",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [

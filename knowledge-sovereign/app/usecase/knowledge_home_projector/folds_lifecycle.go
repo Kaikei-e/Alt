@@ -200,6 +200,41 @@ func (p *Projector) foldSummarySuperseded(ctx context.Context, evt sovereign_db.
 	return p.upsertHomeItem(ctx, item)
 }
 
+type summaryRetractedPayload struct {
+	ArticleID string `json:"article_id"`
+	Reason    string `json:"reason"`
+}
+
+func buildSummaryRetractedWrite(evt sovereign_db.KnowledgeEvent, version int) (sovereign_db.ClearKnowledgeHomeItemSummaryPayload, error) {
+	var payload summaryRetractedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return sovereign_db.ClearKnowledgeHomeItemSummaryPayload{}, fmt.Errorf("unmarshal SummaryRetracted payload: %w", err)
+	}
+	articleID, err := uuid.Parse(payload.ArticleID)
+	if err != nil {
+		return sovereign_db.ClearKnowledgeHomeItemSummaryPayload{}, fmt.Errorf("parse article_id: %w", err)
+	}
+	return sovereign_db.ClearKnowledgeHomeItemSummaryPayload{
+		UserID:            resolveUserID(evt).String(),
+		TenantID:          evt.TenantID.String(),
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ProjectionVersion: version,
+		OccurredAt:        evt.OccurredAt,
+	}, nil
+}
+
+func (p *Projector) foldSummaryRetracted(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
+	clearPayload, err := buildSummaryRetractedWrite(evt, version)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(clearPayload)
+	if err != nil {
+		return fmt.Errorf("marshal ClearKnowledgeHomeItemSummary payload: %w", err)
+	}
+	return p.repo.ClearKnowledgeHomeItemSummary(ctx, raw)
+}
+
 // buildTagSetSupersededWrite is a pure builder that creates the homeItemWrite for TagSetSuperseded.
 func buildTagSetSupersededWrite(evt sovereign_db.KnowledgeEvent, version int) (homeItemWrite, error) {
 	var payload tagSetSupersededPayload

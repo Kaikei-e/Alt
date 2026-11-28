@@ -72,6 +72,10 @@ vi.mock("#lib/connect/reading.js", async (importOriginal) => {
 		...actual,
 		getTheme: vi.fn(),
 		recordThemeOpened: vi.fn().mockResolvedValue(undefined),
+		listThemeCurations: vi.fn().mockResolvedValue([]),
+		listArticleAnnotations: vi.fn().mockResolvedValue([]),
+		curateThemeItem: vi.fn(),
+		removeThemeCuration: vi.fn().mockResolvedValue(undefined),
 	};
 });
 
@@ -91,7 +95,16 @@ vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
 });
 
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
-import { getTheme, recordThemeOpened } from "#lib/connect/reading.js";
+import {
+	AnnotationStance,
+	curateThemeItem,
+	getTheme,
+	listArticleAnnotations,
+	listThemeCurations,
+	recordThemeOpened,
+	removeThemeCuration,
+	ThemeCurationKind,
+} from "#lib/connect/reading.js";
 import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
 import { resetReaderOverlaySessions } from "#lib/reader/reader-overlay.svelte.js";
 import { formatCompactDate } from "#lib/reading/themes-format.js";
@@ -200,6 +213,9 @@ describe("/knowledge/themes/[themeId] page", () => {
 		currentPageURL = new URL(`http://localhost/knowledge/themes/${THEME_ID}`);
 		currentParams = { themeId: THEME_ID };
 		vi.mocked(getItemBranches).mockResolvedValue([]);
+		vi.mocked(listThemeCurations).mockResolvedValue([]);
+		vi.mocked(listArticleAnnotations).mockResolvedValue([]);
+		vi.mocked(removeThemeCuration).mockResolvedValue(undefined);
 	});
 
 	it("renders all sections in order, maps markers to sources, omits missing source ids, and opens reader overlay", async () => {
@@ -241,6 +257,7 @@ describe("/knowledge/themes/[themeId] page", () => {
 		// Key points sentence has [2] (for SRC_2) and NO marker for missing-source-id, placed in its own marker row outside <p>
 		const keyPointsSection = page.getByTestId("theme-section-key-points");
 		const keyPointMarkerButtons = keyPointsSection
+			.getByTestId("theme-marker-row")
 			.getByRole("button")
 			.elements();
 		expect(keyPointMarkerButtons.map((el) => el.textContent?.trim())).toEqual([
@@ -393,6 +410,122 @@ describe("/knowledge/themes/[themeId] page", () => {
 		await expect
 			.element(
 				page.getByRole("heading", { level: 1, name: "Compiler Toolchains" }),
+			)
+			.toBeInTheDocument();
+	});
+
+	it("supports pinning key points, adding user questions, resolving open questions, and rendering source takeaways and promoted insights", async () => {
+		vi.mocked(getTheme).mockResolvedValueOnce(VERSION_2_DATA);
+		vi.mocked(listThemeCurations).mockResolvedValueOnce([
+			{
+				curationId: "cur-augur-1",
+				themeId: THEME_ID,
+				kind: ThemeCurationKind.PROMOTE_AUGUR_INSIGHT,
+				targetHash: "",
+				targetText: "Why did rebuild latency drop?",
+				userNote: "Parallel symbol tables removed lock contention.",
+				augurConversationId: "conv-77",
+				createdAt: new Date("2026-11-19T12:00:00Z"),
+			},
+		]);
+		vi.mocked(listArticleAnnotations).mockResolvedValueOnce([
+			{
+				annotationId: "ann-1",
+				articleId: SRC_2,
+				stance: AnnotationStance.INSIGHT,
+				excerpt: "Parallel symbol merging scales linearly up to 16 cores.",
+				note: "Check our CI runner core count.",
+				createdAt: new Date("2026-11-19T10:00:00Z"),
+			},
+		]);
+		vi.mocked(curateThemeItem).mockResolvedValueOnce({
+			curationId: "cur-pin-1",
+			themeId: THEME_ID,
+			kind: ThemeCurationKind.PIN_KEY_POINT,
+			targetHash: "hash-kp-1",
+			targetText: "Incremental linking cuts rebuild latency.",
+			userNote: "",
+			augurConversationId: "",
+			createdAt: new Date("2026-11-20T00:00:00Z"),
+		});
+		vi.mocked(curateThemeItem).mockResolvedValueOnce({
+			curationId: "cur-q-1",
+			themeId: THEME_ID,
+			kind: ThemeCurationKind.ADD_QUESTION,
+			targetHash: "",
+			targetText: "Does remote caching help incremental Rust builds?",
+			userNote: "",
+			augurConversationId: "",
+			createdAt: new Date("2026-11-20T01:00:00Z"),
+		});
+
+		render(Page);
+		await settle();
+
+		// Promoted Augur insight & user source takeaways render
+		await expect
+			.element(page.getByTestId("theme-section-promoted-insights"))
+			.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText("Parallel symbol tables removed lock contention."),
+			)
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "Open thread" }))
+			.toHaveAttribute(
+				"href",
+				`/augur/conv-77?themeId=${THEME_ID}&themeTitle=Compiler+Toolchains`,
+			);
+		await expect
+			.element(page.getByTestId("theme-section-takeaways"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Check our CI runner core count."))
+			.toBeInTheDocument();
+
+		// Open question includes Ask Augur link carrying themeId
+		const askAugurLink = page
+			.getByTestId("theme-section-open-questions")
+			.getByRole("link", { name: "Ask Augur" });
+		await expect.element(askAugurLink).toBeInTheDocument();
+		expect(askAugurLink.element().getAttribute("href")).toContain(
+			`themeId=${THEME_ID}`,
+		);
+
+		// Pin the key point
+		await page
+			.getByTestId("theme-keypoint-actions")
+			.getByRole("button", { name: "Pin" })
+			.click();
+		await settle();
+		expect(curateThemeItem).toHaveBeenCalledWith(
+			"client-transport",
+			expect.objectContaining({
+				themeId: THEME_ID,
+				kind: ThemeCurationKind.PIN_KEY_POINT,
+				targetText: "Incremental linking cuts rebuild latency.",
+			}),
+		);
+		await expect
+			.element(
+				page
+					.getByTestId("theme-keypoint-actions")
+					.getByRole("button", { name: "Pinned" }),
+			)
+			.toBeInTheDocument();
+
+		// Add a user question via composer
+		await page.getByTestId("theme-add-curation-toggle").click();
+		await page
+			.getByPlaceholder("Add an open question to explore…")
+			.fill("Does remote caching help incremental Rust builds?");
+		await page.getByRole("button", { name: "Save", exact: true }).click();
+		await settle();
+
+		await expect
+			.element(
+				page.getByText("Does remote caching help incremental Rust builds?"),
 			)
 			.toBeInTheDocument();
 	});

@@ -25,7 +25,7 @@ export class DesktopTagArticlesPage extends BasePage {
 		this.loadMoreButton = page.getByRole("button", { name: /load more/i });
 		this.emptyState = page.getByTestId("empty-state");
 		this.errorMessage = page.getByText(/failed|error/i).first();
-		this.backLink = page.getByRole("link", { name: /home/i }).first();
+		this.backLink = page.getByRole("link", { name: /today/i }).first();
 		this.detailPanel = page.getByTestId("reader-overlay");
 		this.fetchContentButton = this.detailPanel.getByTestId("fetch-button");
 		this.closeDetailButton = this.detailPanel.getByTestId(
