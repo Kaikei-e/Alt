@@ -160,7 +160,7 @@ jobs:
       # is already a required status check, and a separate job would sit
       # non-blocking until branch protection is re-wired.
       - id: setup-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
@@ -284,7 +284,7 @@ jobs:
             scripts
           sparse-checkout-cone-mode: true
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
@@ -441,7 +441,7 @@ jobs:
             --broker-username "${PACT_BROKER_USERNAME}" \
             --broker-password "${PACT_BROKER_PASSWORD}"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
@@ -607,7 +607,7 @@ jobs:
             --broker-password "${PACT_BROKER_PASSWORD}"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
         with:
           enable-cache: true
           # setup-uv v9 flipped the prune-cache default to false; keep pruning
@@ -708,7 +708,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
         with:
           enable-cache: true
           prune-cache: true
