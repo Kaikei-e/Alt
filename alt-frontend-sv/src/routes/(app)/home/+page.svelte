@@ -27,10 +27,9 @@ import { useKnowledgeHome } from "#lib/hooks/useKnowledgeHome.svelte.js";
 import { useLens } from "#lib/hooks/useLens.svelte.js";
 import { useRecallRail } from "#lib/hooks/useRecallRail.svelte.js";
 import { useStreamUpdates } from "#lib/hooks/useStreamUpdates.svelte.js";
-import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import { knowledgeHomeItemToReaderItem } from "#lib/reader/mappers.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/instrumentation.js";
-import type { RenderFeed } from "#lib/schema/feed.js";
 import { useToastStore } from "#lib/stores/toast.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { browser } from "$app/env";
@@ -66,27 +65,6 @@ let lensDraft = $state<Omit<LensVersionData, "versionId">>({
 	includePulse: false,
 	sortMode: "relevance",
 });
-
-function toHomeRenderFeed(item: KnowledgeHomeItemData): RenderFeed {
-	const articleId = item.itemKey.startsWith("article:")
-		? item.itemKey.slice(8)
-		: item.articleId;
-	const url = item.url ?? "";
-	return {
-		id: articleId || item.itemKey,
-		title: item.title,
-		description: item.summaryExcerpt ?? "",
-		link: url,
-		published: item.publishedAt,
-		articleId: articleId || undefined,
-		publishedAtFormatted: item.publishedAt
-			? new Date(item.publishedAt).toLocaleDateString()
-			: "",
-		mergedTagsLabel: (item.tags ?? []).join(" · "),
-		normalizedUrl: url,
-		excerpt: item.summaryExcerpt ?? "",
-	};
-}
 
 const activeLensName = $derived(
 	lens.activeLensId
@@ -173,14 +151,11 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	if (type === "open" && articleId) {
 		if (item.url) {
 			home.trackAction(type, itemKey, metadata);
-			const items = visibleItems.map((entry) =>
-				renderFeedToReaderItem(toHomeRenderFeed(entry)),
-			);
+			const items = visibleItems.map(knowledgeHomeItemToReaderItem);
 			const idx = visibleItems.findIndex((entry) => entry.itemKey === itemKey);
 			openReaderOverlay({
 				surface: ReadingSurface.OTHER,
-				items:
-					idx >= 0 ? items : [renderFeedToReaderItem(toHomeRenderFeed(item))],
+				items: idx >= 0 ? items : [knowledgeHomeItemToReaderItem(item)],
 				currentIndex: idx >= 0 ? idx : 0,
 				onSelectItem: (_selected, nextIndex) => {
 					const target = visibleItems[nextIndex];
@@ -226,7 +201,7 @@ function handleRecallOpen(itemKey: string) {
 		home.trackAction("open", itemKey);
 		openReaderOverlay({
 			surface: ReadingSurface.OTHER,
-			items: [renderFeedToReaderItem(toHomeRenderFeed(candidate.item))],
+			items: [knowledgeHomeItemToReaderItem(candidate.item)],
 			currentIndex: 0,
 		});
 	} else {

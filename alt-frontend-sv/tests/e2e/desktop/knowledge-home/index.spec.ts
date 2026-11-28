@@ -113,6 +113,28 @@ test.describe("Knowledge Home - Summary Display", () => {
 		await expect(chip).not.toBeVisible();
 	});
 
+	test("opening a ready card renders its Japanese summary in AI SUMMARY without duplicating it in Excerpt", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await homePage.goto();
+		await homePage.waitForHomeLoaded();
+
+		const openButton = homePage.getOpenButton(
+			KNOWLEDGE_HOME_ITEM_READY.itemKey,
+		);
+		await openButton.click();
+
+		const rail = page.getByTestId("article-rail");
+		await expect(rail).toBeVisible({ timeout: 10000 });
+		await expect(rail.getByTestId("ai-summary")).toContainText(
+			"非同期ランタイム",
+		);
+		await expect(rail.getByRole("heading", { name: /^excerpt$/i })).toHaveCount(
+			0,
+		);
+	});
+
 	test("displays Summarizing chip when summary_state is pending", async () => {
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();

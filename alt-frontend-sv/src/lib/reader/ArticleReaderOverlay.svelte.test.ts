@@ -31,6 +31,16 @@ vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
 vi.mock("#lib/connect/reading.js", { spy: true });
 vi.mock("#lib/connect/transport-client.js", { spy: true });
 
+const mockStreamSummarize = vi.fn();
+vi.mock("#lib/connect/index.js", async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>();
+	return {
+		...actual,
+		streamSummarizeWithAbortAdapter: (...args: unknown[]) =>
+			mockStreamSummarize(...args),
+	};
+});
+
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
 	.fn()
@@ -659,5 +669,140 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		currentPageState = {};
 		unmount();
 		triggerSpy.mockRestore();
+	});
+
+	it("seeds AI SUMMARY immediately from initialSummary without rendering Excerpt, resets on navigation, and clears on re-fetch", async () => {
+		mockGetFeedContent
+			.mockResolvedValueOnce({
+				content: "<p>First seeded body.</p>",
+				article_id: "art-seed-1",
+			})
+			.mockResolvedValueOnce({
+				content: "<p>Refetched first body.</p>",
+				article_id: "art-seed-1",
+			})
+			.mockResolvedValueOnce({
+				content: "<p>Second unseeded body.</p>",
+				article_id: "art-seed-2",
+			});
+
+		await testPage.viewport(1440, 900);
+		const { unmount } = render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [
+				{
+					articleId: "art-seed-1",
+					url: "https://example.com/seed-1",
+					title: "Seeded Article",
+					excerpt: null,
+					fallbackDescription: null,
+					initialSummary: "既存の日本語要約が最初から表示されます。",
+				},
+				{
+					articleId: "art-seed-2",
+					url: "https://example.com/seed-2",
+					title: "Unseeded Article",
+					excerpt: null,
+					fallbackDescription: null,
+					initialSummary: null,
+				},
+			],
+			currentIndex: 0,
+		});
+
+		const rail = testPage.getByTestId("article-rail");
+		await expect.element(rail).toBeVisible();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.toHaveTextContent("既存の日本語要約が最初から表示されます。");
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(rail.getByTestId("summary-speech-button"))
+			.toBeVisible();
+		await expect
+			.element(rail.getByTestId("summarize-button"))
+			.toHaveAccessibleName("Re-summarize");
+		expect(mockStreamSummarize).not.toHaveBeenCalled();
+
+		// Re-fetch clears the seeded summary and does not re-seed the stale summary
+		await rail.getByTestId("fetch-button").click();
+		await expect
+			.element(testPage.getByText("Refetched first body."))
+			.toBeInTheDocument();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.not.toBeInTheDocument();
+
+		// Navigating to an unseeded item keeps AI SUMMARY hidden
+		await testPage.getByTestId("reader-next-button").click();
+		await expect
+			.element(testPage.getByText("Second unseeded body."))
+			.toBeInTheDocument();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.not.toBeInTheDocument();
+
+		currentPageState = {};
+		unmount();
+	});
+
+	it("keeps distinct RSS Excerpt alongside AI SUMMARY, but hides Excerpt when it duplicates AI SUMMARY", async () => {
+		mockGetFeedContent.mockResolvedValue({
+			content: "<p>Editorial rail dedupe body.</p>",
+			article_id: "art-dedupe-1",
+		});
+
+		await testPage.viewport(1440, 900);
+		const { unmount } = render(ArticleReaderOverlay);
+
+		// Case 1: distinct English RSS excerpt + Japanese AI summary -> both visible
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [
+				{
+					articleId: "art-dedupe-1",
+					url: "https://example.com/dedupe-1",
+					title: "Distinct Excerpt",
+					excerpt: "Original English RSS excerpt from publisher.",
+					initialSummary: "日本語の AI 要約テキスト。",
+				},
+				{
+					articleId: "art-dedupe-2",
+					url: "https://example.com/dedupe-2",
+					title: "Duplicate Excerpt",
+					excerpt: "同じ日本語要約テキスト。\n  二文目です。",
+					initialSummary: "同じ日本語要約テキスト。 二文目です。",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		const rail = testPage.getByTestId("article-rail");
+		await expect.element(rail).toBeVisible();
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.toBeVisible();
+		await expect
+			.element(rail.getByText("Original English RSS excerpt from publisher."))
+			.toBeVisible();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.toHaveTextContent("日本語の AI 要約テキスト。");
+
+		// Case 2: Excerpt duplicates AI SUMMARY (modulo whitespace) -> Excerpt hidden
+		await testPage.getByTestId("reader-next-button").click();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.toHaveTextContent("同じ日本語要約テキスト。 二文目です。");
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.not.toBeInTheDocument();
+
+		currentPageState = {};
+		unmount();
 	});
 });

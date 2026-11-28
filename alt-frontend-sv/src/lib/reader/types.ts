@@ -9,6 +9,7 @@ export interface ReaderArticleItem {
 	tagsLabel?: string | null;
 	fallbackDescription?: string | null;
 	excerpt?: string | null;
+	initialSummary?: string | null;
 }
 
 export interface ReaderOverlayRouteState {

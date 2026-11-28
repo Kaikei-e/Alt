@@ -522,4 +522,109 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 
 		expect(goto).not.toHaveBeenCalled();
 	});
+
+	it("shows a ready Home item's Japanese summary under AI SUMMARY without a duplicate Excerpt section", async () => {
+		await testPage.viewport(1440, 900);
+		const jaSummary =
+			"この記事は分散合意アルゴリズムのレイテンシ改善手法を日本語で要約しています。";
+		mockItems = [
+			makeHomeItem({
+				itemKey: "article:art-ready-ja",
+				articleId: "art-ready-ja",
+				title: "Distributed Consensus Notes",
+				url: "https://example.com/consensus",
+				summaryState: "ready",
+				summaryExcerpt: jaSummary,
+			}),
+			makeHomeItem({
+				itemKey: "article:art-pending-ja",
+				articleId: "art-pending-ja",
+				title: "Pending Article",
+				url: "https://example.com/pending",
+				summaryState: "pending",
+				summaryExcerpt: undefined,
+			}),
+		];
+		mockGetFeedContent.mockImplementation((url: string) =>
+			Promise.resolve({
+				content: `<p>Body for ${url}</p>`,
+				article_id: url.endsWith("pending") ? "art-pending-ja" : "art-ready-ja",
+			}),
+		);
+
+		render(HomePage);
+		render(ArticleReaderOverlay);
+
+		await testPage
+			.getByRole("button", { name: "Distributed Consensus Notes", exact: true })
+			.click();
+
+		const rail = testPage.getByTestId("article-rail");
+		await expect.element(rail).toBeVisible();
+		await expect.element(rail.getByTestId("ai-summary")).toBeVisible();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.toHaveTextContent(jaSummary);
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(rail.getByTestId("summary-speech-button"))
+			.toBeVisible();
+		await expect
+			.element(rail.getByTestId("summarize-button"))
+			.toHaveAccessibleName("Re-summarize");
+
+		// Stepping to a pending article clears AI SUMMARY and keeps Excerpt absent
+		await testPage.getByRole("button", { name: "Next article" }).click();
+		await expect
+			.element(testPage.getByText("Body for https://example.com/pending"))
+			.toBeInTheDocument();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.not.toBeInTheDocument();
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it("shows a ready Recall item's Japanese summary under AI SUMMARY without an Excerpt section", async () => {
+		await testPage.viewport(1440, 900);
+		const recallSummary = "Recall 対象の日本語要約テキスト。";
+		mockRecallCandidates = [
+			{
+				itemKey: "article:recall-ja",
+				recallScore: 0.85,
+				reasons: [{ type: "not_revisited", description: "Not revisited" }],
+				firstEligibleAt: "2026-10-14T09:00:00Z",
+				nextSuggestAt: "2026-10-15T09:00:00Z",
+				item: makeHomeItem({
+					itemKey: "article:recall-ja",
+					articleId: "recall-ja",
+					title: "Recall Consensus Article",
+					url: "https://example.com/recall-ja",
+					summaryState: "ready",
+					summaryExcerpt: recallSummary,
+				}),
+			},
+		];
+		mockGetFeedContent.mockResolvedValue({
+			content: "<p>Recall article full body</p>",
+			article_id: "recall-ja",
+		});
+
+		render(HomePage);
+		render(ArticleReaderOverlay);
+
+		await testPage.getByText("Recall Consensus Article").click();
+
+		const rail = testPage.getByTestId("article-rail");
+		await expect.element(rail).toBeVisible();
+		await expect
+			.element(rail.getByTestId("ai-summary"))
+			.toHaveTextContent(recallSummary);
+		await expect
+			.element(rail.getByRole("heading", { name: /^excerpt$/i }))
+			.not.toBeInTheDocument();
+	});
 });
